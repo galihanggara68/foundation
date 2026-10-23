@@ -4,6 +4,7 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit/gohex"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit/tsclean"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/validate"
 )
@@ -16,6 +17,8 @@ type compilerRegistry struct {
 
 func defaultRegistry() *compilerRegistry {
 	goHexKey := arch.TargetKey{Kind: "backend", Language: "go", Architecture: "hexagonal"}
+	goLayeredKey := arch.TargetKey{Kind: "backend", Language: "go", Architecture: "layered"}
+	tsCleanKey := arch.TargetKey{Kind: "backend", Language: "typescript", Architecture: "clean"}
 	return &compilerRegistry{
 		passes: []validate.Pass{
 			validate.DeclarationPass{},
@@ -25,10 +28,14 @@ func defaultRegistry() *compilerRegistry {
 			validate.ScenarioTypeCheckPass{},
 		},
 		lowerers: map[arch.TargetKey]arch.PatternLowerer{
-			goHexKey: arch.GoHexagonalLowerer{},
+			goHexKey:     arch.GoHexagonalLowerer{},
+			goLayeredKey: arch.GoLayeredLowerer{},
+			tsCleanKey:   arch.TSCleanLowerer{},
 		},
 		emitters: map[arch.TargetKey]emit.TargetEmitter{
-			goHexKey: gohex.Emitter{},
+			goHexKey:     gohex.Emitter{},
+			goLayeredKey: gohex.LayeredEmitter{},
+			tsCleanKey:   tsclean.Emitter{},
 		},
 	}
 }

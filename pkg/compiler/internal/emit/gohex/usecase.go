@@ -5,40 +5,32 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
-func hasUCTrait(uc arch.UseCaseIR, name string) (ir.TraitDecl, bool) {
-	for _, tr := range uc.Traits {
-		if tr.Name == name {
-			return tr, true
-		}
-	}
-	return ir.TraitDecl{}, false
-}
-
-func emitGoSingleUseCase(module string, uc arch.UseCaseIR) string {
+func (lay goLayout) emitGoSingleUseCase(module string, uc arch.UseCaseIR) string {
 	var sb strings.Builder
-	_, isTx := hasUCTrait(uc, "transactional")
-	idemTrait, isIdem := hasUCTrait(uc, "idempotent")
-	cacheTrait, isCache := hasUCTrait(uc, "cache")
-	retryTrait, isRetry := hasUCTrait(uc, "retry")
-	_, isOutbox := hasUCTrait(uc, "outbox")
+	_, isTx := uc.HasTrait("transactional")
+	idemTrait, isIdem := uc.HasTrait("idempotent")
+	cacheTrait, isCache := uc.HasTrait("cache")
+	retryTrait, isRetry := uc.HasTrait("retry")
+	_, isOutbox := uc.HasTrait("outbox")
 
-	sb.WriteString("package usecases\n\nimport (\n\t\"context\"\n")
+	sb.WriteString(fmt.Sprintf("package %s\n\nimport (\n\t\"context\"\n", lay.UseCasesPkg))
 	if isIdem || isCache {
 		sb.WriteString("\t\"fmt\"\n\t\"sync\"\n")
 	}
 	if isCache || isRetry {
 		sb.WriteString("\t\"time\"\n")
 	}
-	sb.WriteString(fmt.Sprintf("\t\"%s/internal/domain\"\n", module))
+	sb.WriteString(fmt.Sprintf("\t\"%s/%s\"\n", module, lay.DomainDir))
 	if len(uc.RepoDeps) > 0 || len(uc.SlotDeps) > 0 || uc.EmitsEvents || isTx {
-		sb.WriteString(fmt.Sprintf("\t\"%s/internal/ports\"\n", module))
+		sb.WriteString(fmt.Sprintf("\t\"%s/%s\"\n", module, lay.PortsDir))
 	}
 	sb.WriteString(")\n\n")
 
-	retType := goType(uc.ReturnType, false)
+	retType := lay.goType(uc.ReturnType, false)
 
 	if isIdem {
 		sb.WriteString(fmt.Sprintf("type idem%sEntry struct {\n\tres %s\n\terr error\n}\n\n", uc.Name, retType))
@@ -49,16 +41,16 @@ func emitGoSingleUseCase(module string, uc arch.UseCaseIR) string {
 
 	sb.WriteString(fmt.Sprintf("type %s struct {\n", uc.Name))
 	for _, dep := range uc.RepoDeps {
-		sb.WriteString(fmt.Sprintf("\t%sRepo ports.%sRepository\n", dep, dep))
+		sb.WriteString(fmt.Sprintf("\t%sRepo %s.%sRepository\n", dep, lay.PortsPkg, dep))
 	}
 	for _, sDep := range uc.SlotDeps {
-		sb.WriteString(fmt.Sprintf("\t%sSlot ports.%sSlot\n", sDep, sDep))
+		sb.WriteString(fmt.Sprintf("\t%sSlot %s.%sSlot\n", sDep, lay.PortsPkg, sDep))
 	}
 	if uc.EmitsEvents {
-		sb.WriteString("\tEvents ports.EventPublisher\n")
+		sb.WriteString(fmt.Sprintf("\tEvents %s.EventPublisher\n", lay.PortsPkg))
 	}
 	if isTx {
-		sb.WriteString("\tTxManager ports.TransactionManager\n")
+		sb.WriteString(fmt.Sprintf("\tTxManager %s.TransactionManager\n", lay.PortsPkg))
 	}
 	if isIdem {
 		sb.WriteString(fmt.Sprintf("\tidemMu sync.Mutex\n\tidemStore map[string]idem%sEntry\n", uc.Name))
@@ -70,16 +62,16 @@ func emitGoSingleUseCase(module string, uc arch.UseCaseIR) string {
 
 	var ctorParams []string
 	for _, dep := range uc.RepoDeps {
-		ctorParams = append(ctorParams, fmt.Sprintf("%sRepo ports.%sRepository", strings.ToLower(dep), dep))
+		ctorParams = append(ctorParams, fmt.Sprintf("%sRepo %s.%sRepository", strings.ToLower(dep), lay.PortsPkg, dep))
 	}
 	for _, sDep := range uc.SlotDeps {
-		ctorParams = append(ctorParams, fmt.Sprintf("%sSlot ports.%sSlot", strings.ToLower(sDep), sDep))
+		ctorParams = append(ctorParams, fmt.Sprintf("%sSlot %s.%sSlot", strings.ToLower(sDep), lay.PortsPkg, sDep))
 	}
 	if uc.EmitsEvents {
-		ctorParams = append(ctorParams, "events ports.EventPublisher")
+		ctorParams = append(ctorParams, fmt.Sprintf("events %s.EventPublisher", lay.PortsPkg))
 	}
 	if isTx {
-		ctorParams = append(ctorParams, "txManager ports.TransactionManager")
+		ctorParams = append(ctorParams, fmt.Sprintf("txManager %s.TransactionManager", lay.PortsPkg))
 	}
 	sb.WriteString(fmt.Sprintf("func New%s(%s) *%s {\n\treturn &%s{\n", uc.Name, strings.Join(ctorParams, ", "), uc.Name, uc.Name))
 	for _, dep := range uc.RepoDeps {
@@ -107,7 +99,7 @@ func emitGoSingleUseCase(module string, uc arch.UseCaseIR) string {
 	execParams = append(execParams, "ctx context.Context")
 	callArgNames = append(callArgNames, "ctx")
 	for _, p := range uc.Params {
-		execParams = append(execParams, fmt.Sprintf("%s %s", p.Name, goType(p.Type, false)))
+		execParams = append(execParams, fmt.Sprintf("%s %s", p.Name, lay.goType(p.Type, false)))
 		callArgNames = append(callArgNames, p.Name)
 	}
 
@@ -174,9 +166,9 @@ func emitGoSingleUseCase(module string, uc arch.UseCaseIR) string {
 	sb.WriteString("\treturn finalRes, finalErr\n}\n\n")
 
 	sb.WriteString(fmt.Sprintf("func (uc *%s) executePipeline(%s) (%s, error) {\n", uc.Name, strings.Join(execParams, ", "), retType))
-	sb.WriteString(fmt.Sprintf("\tvar zero %s\n\t_ = zero\n\t_ = domain.Actor{}\n", retType))
+	sb.WriteString(fmt.Sprintf("\tvar zero %s\n\t_ = zero\n\t_ = %s.Actor{}\n", retType, lay.DomainPkg))
 	if uc.UsesActor {
-		sb.WriteString("\tactor := domain.ActorFromContext(ctx)\n\t_ = actor\n")
+		sb.WriteString(fmt.Sprintf("\tactor := %s.ActorFromContext(ctx)\n\t_ = actor\n", lay.DomainPkg))
 	}
 	if isOutbox && uc.EmitsEvents {
 		sb.WriteString("\ttype outboxMsg struct {\n\t\teventType string\n\t\tpayload any\n\t}\n\tvar outboxQueue []outboxMsg\n")
@@ -187,27 +179,13 @@ func emitGoSingleUseCase(module string, uc arch.UseCaseIR) string {
 		declaredVars[p.Name] = true
 	}
 	stepCounter := 0
-	emitGoSteps(&sb, uc.Steps, declaredVars, &stepCounter, isOutbox && uc.EmitsEvents, "\t")
+	lay.emitGoSteps(&sb, uc.Steps, declaredVars, &stepCounter, isOutbox && uc.EmitsEvents, "\t")
 
 	sb.WriteString("}\n")
 	return sb.String()
 }
 
-func formatIdempotentKeyGoExpr(rawKey string, params []ir.ParamDecl) string {
-	if rawKey == "" {
-		if len(params) > 0 {
-			return params[0].Name
-		}
-		return `"default"`
-	}
-	if strings.Contains(rawKey, ".") {
-		parts := strings.SplitN(rawKey, ".", 2)
-		return fmt.Sprintf("%s.%s", parts[0], arch.ExportIdent(parts[1]))
-	}
-	return rawKey
-}
-
-func emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[string]bool, stepCounter *int, useOutbox bool, indent string) {
+func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[string]bool, stepCounter *int, useOutbox bool, indent string) {
 	for _, s := range steps {
 		*stepCounter++
 		idx := *stepCounter
@@ -215,15 +193,15 @@ func emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 		case ir.StepRequire:
 			var args []string
 			for _, arg := range s.PolicyArgs {
-				args = append(args, emitGoExpr(arg, false))
+				args = append(args, lay.emitGoExpr(arg, false))
 			}
-			sb.WriteString(fmt.Sprintf("%sif !domain.%s(%s) {\n%s\treturn zero, domain.Err%s\n%s}\n",
-				indent, s.PolicyName, strings.Join(args, ", "), indent, s.ElseError, indent))
+			sb.WriteString(fmt.Sprintf("%sif !%s.%s(%s) {\n%s\treturn zero, %s.Err%s\n%s}\n",
+				indent, lay.DomainPkg, s.PolicyName, strings.Join(args, ", "), indent, lay.DomainPkg, s.ElseError, indent))
 
 		case ir.StepGuard:
 			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("%sif !(%s) {\n%s\treturn zero, domain.Err%s\n%s}\n",
-					indent, emitGoExpr(*s.Expr, false), indent, s.ElseError, indent))
+				sb.WriteString(fmt.Sprintf("%sif !(%s) {\n%s\treturn zero, %s.Err%s\n%s}\n",
+					indent, lay.emitGoExpr(*s.Expr, false), indent, lay.DomainPkg, s.ElseError, indent))
 			}
 
 		case ir.StepLet:
@@ -234,36 +212,36 @@ func emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 				} else {
 					declaredVars[s.VarName] = true
 				}
-				sb.WriteString(fmt.Sprintf("%s%s %s %s\n%s_ = %s\n", indent, s.VarName, assignOp, emitGoExpr(*s.Expr, false), indent, s.VarName))
+				sb.WriteString(fmt.Sprintf("%s%s %s %s\n%s_ = %s\n", indent, s.VarName, assignOp, lay.emitGoExpr(*s.Expr, false), indent, s.VarName))
 			}
 
 		case ir.StepCreate:
 			declaredVars[s.VarName] = true
-			sb.WriteString(fmt.Sprintf("%s%s, err := uc.%sRepo.Create(ctx, domain.%s{\n", indent, s.VarName, s.EntityName, s.EntityName))
-			emitGoFieldInits(sb, s.Fields, indent+"\t")
+			sb.WriteString(fmt.Sprintf("%s%s, err := uc.%sRepo.Create(ctx, %s.%s{\n", indent, s.VarName, s.EntityName, lay.DomainPkg, s.EntityName))
+			lay.emitGoFieldInits(sb, s.Fields, indent+"\t")
 			sb.WriteString(fmt.Sprintf("%s})\n", indent))
 			sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n%s_ = %s\n", indent, indent, indent, indent, s.VarName))
 
 		case ir.StepQuery:
 			declaredVars[s.VarName] = true
 			mName := "FindBy" + arch.ExportIdent(s.WhereField)
-			wExpr := emitGoExpr(*s.WhereValue, false)
+			wExpr := lay.emitGoExpr(*s.WhereValue, false)
 			sb.WriteString(fmt.Sprintf("%s%sPtr, err := uc.%sRepo.%s(ctx, %s)\n", indent, s.VarName, s.EntityName, mName, wExpr))
 			sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n", indent, indent, indent))
 			if s.ElseError != "" {
-				sb.WriteString(fmt.Sprintf("%sif %sPtr == nil {\n%s\treturn zero, domain.Err%s\n%s}\n", indent, s.VarName, indent, s.ElseError, indent))
+				sb.WriteString(fmt.Sprintf("%sif %sPtr == nil {\n%s\treturn zero, %s.Err%s\n%s}\n", indent, s.VarName, indent, lay.DomainPkg, s.ElseError, indent))
 			}
 			sb.WriteString(fmt.Sprintf("%s%s := *%sPtr\n%s_ = %s\n", indent, s.VarName, s.VarName, indent, s.VarName))
 
 		case ir.StepUpdate:
 			mName := "FindBy" + arch.ExportIdent(s.WhereField)
-			wExpr := emitGoExpr(*s.WhereValue, false)
+			wExpr := lay.emitGoExpr(*s.WhereValue, false)
 			updVar := fmt.Sprintf("updTarget%d", idx)
 			sb.WriteString(fmt.Sprintf("%s%s, err := uc.%sRepo.%s(ctx, %s)\n", indent, updVar, s.EntityName, mName, wExpr))
 			sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n", indent, indent, indent))
 			sb.WriteString(fmt.Sprintf("%sif %s != nil {\n", indent, updVar))
 			for _, fi := range s.Fields {
-				sb.WriteString(fmt.Sprintf("%s\t%s.%s = %s\n", indent, updVar, arch.ExportIdent(fi.Name), emitGoExpr(fi.Value, false)))
+				sb.WriteString(fmt.Sprintf("%s\t%s.%s = %s\n", indent, updVar, arch.ExportIdent(fi.Name), lay.emitGoExpr(fi.Value, false)))
 			}
 			sb.WriteString(fmt.Sprintf("%s\tif err := uc.%sRepo.Update(ctx, *%s); err != nil {\n%s\t\treturn zero, err\n%s\t}\n",
 				indent, s.EntityName, updVar, indent, indent))
@@ -271,17 +249,17 @@ func emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 
 		case ir.StepDelete:
 			mName := "DeleteBy" + arch.ExportIdent(s.WhereField)
-			wExpr := emitGoExpr(*s.WhereValue, false)
+			wExpr := lay.emitGoExpr(*s.WhereValue, false)
 			sb.WriteString(fmt.Sprintf("%sif err := uc.%sRepo.%s(ctx, %s); err != nil {\n%s\treturn zero, err\n%s}\n",
 				indent, s.EntityName, mName, wExpr, indent, indent))
 
 		case ir.StepIf:
 			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("%sif %s {\n", indent, emitGoExpr(*s.Expr, false)))
-				emitGoSteps(sb, s.ThenSteps, cloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"\t")
+				sb.WriteString(fmt.Sprintf("%sif %s {\n", indent, lay.emitGoExpr(*s.Expr, false)))
+				lay.emitGoSteps(sb, s.ThenSteps, emit.CloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"\t")
 				if len(s.ElseSteps) > 0 {
 					sb.WriteString(fmt.Sprintf("%s} else {\n", indent))
-					emitGoSteps(sb, s.ElseSteps, cloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"\t")
+					lay.emitGoSteps(sb, s.ElseSteps, emit.CloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"\t")
 				}
 				sb.WriteString(fmt.Sprintf("%s}\n", indent))
 			}
@@ -289,10 +267,10 @@ func emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 		case ir.StepMatch:
 			if s.Expr != nil {
 				enumType := s.Expr.InferredType
-				sb.WriteString(fmt.Sprintf("%sswitch %s {\n", indent, emitGoExpr(*s.Expr, false)))
+				sb.WriteString(fmt.Sprintf("%sswitch %s {\n", indent, lay.emitGoExpr(*s.Expr, false)))
 				for _, arm := range s.MatchArms {
-					sb.WriteString(fmt.Sprintf("%scase domain.%s%s:\n", indent, enumType, arch.ExportIdent(arm.Variant)))
-					emitGoSteps(sb, arm.Steps, cloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"\t")
+					sb.WriteString(fmt.Sprintf("%scase %s.%s%s:\n", indent, lay.DomainPkg, enumType, arch.ExportIdent(arm.Variant)))
+					lay.emitGoSteps(sb, arm.Steps, emit.CloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"\t")
 				}
 				sb.WriteString(fmt.Sprintf("%s}\n", indent))
 			}
@@ -300,22 +278,23 @@ func emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 		case ir.StepFor:
 			if s.Expr != nil {
 				sb.WriteString(fmt.Sprintf("%sfor _, %s := range %s {\n%s\t_ = %s\n",
-					indent, s.IterVar, emitGoExpr(*s.Expr, false), indent, s.IterVar))
-				loopVars := cloneBoolMap(declaredVars)
+					indent, s.IterVar, lay.emitGoExpr(*s.Expr, false), indent, s.IterVar))
+				loopVars := emit.CloneBoolMap(declaredVars)
 				loopVars[s.IterVar] = true
-				emitGoSteps(sb, s.ThenSteps, loopVars, stepCounter, useOutbox, indent+"\t")
+				lay.emitGoSteps(sb, s.ThenSteps, loopVars, stepCounter, useOutbox, indent+"\t")
 				sb.WriteString(fmt.Sprintf("%s}\n", indent))
 			}
 
 		case ir.StepEmit:
 			if useOutbox {
-				sb.WriteString(fmt.Sprintf("%soutboxQueue = append(outboxQueue, outboxMsg{\n%s\teventType: %q,\n%s\tpayload: domain.%s{\n",
-					indent, indent, s.EventName, indent, s.EventName))
-				emitGoFieldInits(sb, s.Fields, indent+"\t\t")
+				sb.WriteString(fmt.Sprintf("%soutboxQueue = append(outboxQueue, outboxMsg{\n%s\teventType: %q,\n%s\tpayload: %s.%s{\n",
+					indent, indent, s.EventName, indent, lay.DomainPkg, s.EventName))
+				lay.emitGoFieldInits(sb, s.Fields, indent+"\t\t")
 				sb.WriteString(fmt.Sprintf("%s\t},\n%s})\n", indent, indent))
 			} else {
-				sb.WriteString(fmt.Sprintf("%sif uc.Events != nil {\n%s\t_ = uc.Events.Publish(ctx, %q, domain.%s{\n", indent, indent, s.EventName, s.EventName))
-				emitGoFieldInits(sb, s.Fields, indent+"\t\t")
+				sb.WriteString(fmt.Sprintf("%sif uc.Events != nil {\n%s\t_ = uc.Events.Publish(ctx, %q, %s.%s{\n",
+					indent, indent, s.EventName, lay.DomainPkg, s.EventName))
+				lay.emitGoFieldInits(sb, s.Fields, indent+"\t\t")
 				sb.WriteString(fmt.Sprintf("%s\t})\n%s}\n", indent, indent))
 			}
 
@@ -323,7 +302,7 @@ func emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 			var callArgs []string
 			callArgs = append(callArgs, "ctx")
 			for _, arg := range s.SlotArgs {
-				callArgs = append(callArgs, emitGoExpr(arg, false))
+				callArgs = append(callArgs, lay.emitGoExpr(arg, false))
 			}
 			callExpr := fmt.Sprintf("uc.%sSlot.%s(%s)", s.SlotName, s.SlotMethod, strings.Join(callArgs, ", "))
 			if s.VarName != "" {
@@ -333,7 +312,7 @@ func emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 				sb.WriteString(fmt.Sprintf("%serr := %s\n", indent, callExpr))
 			}
 			if s.ElseError != "" {
-				sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, domain.Err%s\n%s}\n", indent, indent, s.ElseError, indent))
+				sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, %s.Err%s\n%s}\n", indent, indent, lay.DomainPkg, s.ElseError, indent))
 			} else {
 				sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n", indent, indent, indent))
 			}
@@ -344,117 +323,8 @@ func emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 					indent, indent, indent, indent, indent))
 			}
 			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("%sreturn %s, nil\n", indent, emitGoExpr(*s.Expr, false)))
+				sb.WriteString(fmt.Sprintf("%sreturn %s, nil\n", indent, lay.emitGoExpr(*s.Expr, false)))
 			}
 		}
 	}
-}
-
-func cloneBoolMap(in map[string]bool) map[string]bool {
-	out := make(map[string]bool, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func emitGoExpr(e ir.Expr, inDomainPkg bool) string {
-	switch e.Kind {
-	case ir.ExprString:
-		return fmt.Sprintf("%q", e.Value)
-	case ir.ExprInt, ir.ExprFloat, ir.ExprBool:
-		return e.Value
-	case ir.ExprEnumLit:
-		prefix := "domain."
-		if inDomainPkg {
-			prefix = ""
-		}
-		if e.InferredType != "" {
-			return fmt.Sprintf("%s%s%s", prefix, e.InferredType, arch.ExportIdent(e.Value))
-		}
-		return fmt.Sprintf("%q", e.Value)
-	case ir.ExprList:
-		sliceGoType := goType(e.InferredType, inDomainPkg)
-		var items []string
-		for _, it := range e.Items {
-			items = append(items, emitGoExpr(it, inDomainPkg))
-		}
-		return fmt.Sprintf("%s{%s}", sliceGoType, strings.Join(items, ", "))
-	case ir.ExprIdent:
-		return e.Value
-	case ir.ExprField:
-		if e.Left != nil {
-			return fmt.Sprintf("%s.%s", emitGoExpr(*e.Left, inDomainPkg), arch.ExportIdent(e.Field))
-		}
-		return fmt.Sprintf("%s.%s", e.Target, arch.ExportIdent(e.Field))
-	case ir.ExprCombinator:
-		return emitGoCombinatorExpr(e, inDomainPkg)
-	case ir.ExprBinary:
-		leftStr := emitGoExpr(*e.Left, inDomainPkg)
-		rightStr := emitGoExpr(*e.Right, inDomainPkg)
-		if (e.Left.InferredType == "decimal" && e.Right.InferredType == "int") ||
-			(e.Left.InferredType == "int" && e.Right.InferredType == "decimal") {
-			if e.Left.InferredType == "int" {
-				leftStr = fmt.Sprintf("float64(%s)", leftStr)
-			}
-			if e.Right.InferredType == "int" {
-				rightStr = fmt.Sprintf("float64(%s)", rightStr)
-			}
-		}
-		return fmt.Sprintf("(%s %s %s)", leftStr, e.Op, rightStr)
-	case ir.ExprConstruct:
-		prefix := "domain."
-		if inDomainPkg {
-			prefix = ""
-		}
-		var parts []string
-		for _, f := range e.Fields {
-			parts = append(parts, fmt.Sprintf("%s: %s", arch.ExportIdent(f.Name), emitGoExpr(f.Value, inDomainPkg)))
-		}
-		return fmt.Sprintf("%s%s{%s}", prefix, e.TypeName, strings.Join(parts, ", "))
-	default:
-		return e.Value
-	}
-}
-
-func emitGoCombinatorExpr(e ir.Expr, inDomainPkg bool) string {
-	recvStr := emitGoExpr(*e.Left, inDomainPkg)
-	retGoType := goType(e.InferredType, inDomainPkg)
-	param := e.Target
-	if param == "" {
-		param = "_item"
-	}
-	switch e.Op {
-	case "filter":
-		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
-		return fmt.Sprintf("func() %s { var _out %s; for _, %s := range %s { if %s { _out = append(_out, %s) } }; return _out }()",
-			retGoType, retGoType, param, recvStr, bodyStr, param)
-	case "map":
-		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
-		return fmt.Sprintf("func() %s { var _out %s; for _, %s := range %s { _out = append(_out, %s) }; return _out }()",
-			retGoType, retGoType, param, recvStr, bodyStr)
-	case "sum":
-		bodyStr := param
-		if e.Right != nil {
-			bodyStr = emitGoExpr(*e.Right, inDomainPkg)
-		}
-		return fmt.Sprintf("func() %s { var _sum %s; for _, %s := range %s { _sum += %s }; return _sum }()",
-			retGoType, retGoType, param, recvStr, bodyStr)
-	case "count":
-		if e.Right == nil {
-			return fmt.Sprintf("len(%s)", recvStr)
-		}
-		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
-		return fmt.Sprintf("func() int { var _cnt int; for _, %s := range %s { if %s { _cnt++ } }; return _cnt }()",
-			param, recvStr, bodyStr)
-	case "any":
-		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
-		return fmt.Sprintf("func() bool { for _, %s := range %s { if %s { return true } }; return false }()",
-			param, recvStr, bodyStr)
-	case "all":
-		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
-		return fmt.Sprintf("func() bool { for _, %s := range %s { if !(%s) { return false } }; return true }()",
-			param, recvStr, bodyStr)
-	}
-	return recvStr
 }

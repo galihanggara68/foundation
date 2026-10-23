@@ -104,6 +104,44 @@ type UseCaseIR struct {
 	UsesActor   bool           `json:"uses_actor,omitempty"`
 }
 
+// HasTrait looks up a tactical or transport trait on the lowered UseCaseIR by name.
+func (uc UseCaseIR) HasTrait(name string) (ir.TraitDecl, bool) {
+	for _, tr := range uc.Traits {
+		if tr.Name == name {
+			return tr, true
+		}
+	}
+	return ir.TraitDecl{}, false
+}
+
+// EntityByName looks up a lowered EntityDecl by Entity name (zero value when absent).
+func (a *ArchitectureIR) EntityByName(name string) ir.EntityDecl {
+	for _, e := range a.DomainEntities {
+		if e.Name == name {
+			return e
+		}
+	}
+	return ir.EntityDecl{}
+}
+
+// EntityPKField returns the primary-key field name (snake_case) and exported Go identifier (PascalCase) for an EntityDecl.
+func EntityPKField(ent ir.EntityDecl) (string, string) {
+	pkField := "id"
+	pkExport := "ID"
+	if len(ent.Fields) > 0 {
+		pkField = ent.Fields[0].Name
+		pkExport = ExportIdent(ent.Fields[0].Name)
+	}
+	for _, f := range ent.Fields {
+		for _, tr := range f.Traits {
+			if tr.Name == "pk" {
+				return f.Name, ExportIdent(f.Name)
+			}
+		}
+	}
+	return pkField, pkExport
+}
+
 type HTTPHandlerIR struct {
 	ActionName string         `json:"action_name"`
 	Method     string         `json:"method"`

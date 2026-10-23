@@ -8,25 +8,44 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
-func slotNeedsDomainPkg(sl ir.SlotDecl) bool {
+func (lay goLayout) slotNeedsDomainPkg(sl ir.SlotDecl) bool {
 	for _, m := range sl.Methods {
 		for _, p := range m.Params {
-			if strings.Contains(goType(p.Type, false), "domain.") {
+			if strings.Contains(lay.goType(p.Type, false), lay.DomainPkg+".") {
 				return true
 			}
 		}
-		if strings.Contains(goType(m.ReturnType, false), "domain.") {
+		if strings.Contains(lay.goType(m.ReturnType, false), lay.DomainPkg+".") {
 			return true
 		}
 	}
 	return false
 }
 
-func emitGoSlotPort(module string, sl ir.SlotDecl) string {
+func (lay goLayout) emitGoSlotTypeAliases(archIR *arch.ArchitectureIR) string {
 	var sb strings.Builder
-	sb.WriteString("package ports\n\nimport (\n\t\"context\"\n")
-	if slotNeedsDomainPkg(sl) {
-		sb.WriteString(fmt.Sprintf("\t\"%s/internal/domain\"\n", module))
+	sb.WriteString(fmt.Sprintf("package slots\n\nimport \"%s/%s\"\n\n", archIR.Module, lay.DomainDir))
+	sb.WriteString(fmt.Sprintf("type DomainError = %s.DomainError\n", lay.DomainPkg))
+	for _, en := range archIR.DomainEnums {
+		sb.WriteString(fmt.Sprintf("type %s = %s.%s\n", en.Name, lay.DomainPkg, en.Name))
+	}
+	for _, v := range archIR.DomainValues {
+		sb.WriteString(fmt.Sprintf("type %s = %s.%s\n", v.Name, lay.DomainPkg, v.Name))
+	}
+	for _, e := range archIR.DomainEntities {
+		sb.WriteString(fmt.Sprintf("type %s = %s.%s\n", e.Name, lay.DomainPkg, e.Name))
+	}
+	for _, errDecl := range archIR.DomainErrors {
+		sb.WriteString(fmt.Sprintf("var Err%s = %s.Err%s\n", errDecl.Name, lay.DomainPkg, errDecl.Name))
+	}
+	return sb.String()
+}
+
+func (lay goLayout) emitGoSlotPort(module string, sl ir.SlotDecl) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("package %s\n\nimport (\n\t\"context\"\n", lay.PortsPkg))
+	if lay.slotNeedsDomainPkg(sl) {
+		sb.WriteString(fmt.Sprintf("\t\"%s/%s\"\n", module, lay.DomainDir))
 	}
 	sb.WriteString(")\n\n")
 
@@ -35,10 +54,10 @@ func emitGoSlotPort(module string, sl ir.SlotDecl) string {
 		var params []string
 		params = append(params, "ctx context.Context")
 		for _, p := range m.Params {
-			params = append(params, fmt.Sprintf("%s %s", p.Name, goType(p.Type, false)))
+			params = append(params, fmt.Sprintf("%s %s", p.Name, lay.goType(p.Type, false)))
 		}
 		if m.ReturnType != "" {
-			sb.WriteString(fmt.Sprintf("\t%s(%s) (%s, error)\n", m.Name, strings.Join(params, ", "), goType(m.ReturnType, false)))
+			sb.WriteString(fmt.Sprintf("\t%s(%s) (%s, error)\n", m.Name, strings.Join(params, ", "), lay.goType(m.ReturnType, false)))
 		} else {
 			sb.WriteString(fmt.Sprintf("\t%s(%s) error\n", m.Name, strings.Join(params, ", ")))
 		}
@@ -47,16 +66,12 @@ func emitGoSlotPort(module string, sl ir.SlotDecl) string {
 	return sb.String()
 }
 
-func emitGoSlotStub(module string, sl ir.SlotDecl) string {
+func (lay goLayout) emitGoSlotStub(sl ir.SlotDecl) string {
 	var sb strings.Builder
-	sb.WriteString("package slots\n\nimport (\n\t\"context\"\n")
-	if slotNeedsDomainPkg(sl) {
-		sb.WriteString(fmt.Sprintf("\t\"%s/internal/domain\"\n", module))
-	}
-	sb.WriteString(")\n\n")
+	sb.WriteString("package slots\n\nimport \"context\"\n\n")
 
 	stubType := sl.Name + "Stub"
-	sb.WriteString(fmt.Sprintf("// %s is a create-if-missing starter implementation of ports.%sSlot.\n", stubType, sl.Name))
+	sb.WriteString(fmt.Sprintf("// %s is a create-if-missing starter implementation of %sSlot.\n", stubType, sl.Name))
 	sb.WriteString("// Developers may freely edit this file; Foundation never overwrites existing Slot Stubs.\n")
 	sb.WriteString(fmt.Sprintf("type %s struct{}\n\n", stubType))
 	sb.WriteString(fmt.Sprintf("func New%sSlot() *%s {\n\treturn &%s{}\n}\n\n", sl.Name, stubType, stubType))
@@ -65,10 +80,10 @@ func emitGoSlotStub(module string, sl ir.SlotDecl) string {
 		var params []string
 		params = append(params, "ctx context.Context")
 		for _, p := range m.Params {
-			params = append(params, fmt.Sprintf("%s %s", p.Name, goType(p.Type, false)))
+			params = append(params, fmt.Sprintf("%s %s", p.Name, lay.goType(p.Type, true)))
 		}
 		if m.ReturnType != "" {
-			retGo := goType(m.ReturnType, false)
+			retGo := lay.goType(m.ReturnType, true)
 			sb.WriteString(fmt.Sprintf("func (s *%s) %s(%s) (%s, error) {\n\t_ = ctx\n", stubType, m.Name, strings.Join(params, ", "), retGo))
 			for _, p := range m.Params {
 				sb.WriteString(fmt.Sprintf("\t_ = %s\n", p.Name))
@@ -85,47 +100,53 @@ func emitGoSlotStub(module string, sl ir.SlotDecl) string {
 	return sb.String()
 }
 
-func emitGoMemorySlotFake(module string, sl ir.SlotDecl) string {
+func (lay goLayout) emitGoMemorySlotFake(module string, sl ir.SlotDecl) string {
 	var sb strings.Builder
-	sb.WriteString("package memory\n\nimport (\n\t\"context\"\n\t\"reflect\"\n\t\"sync\"\n")
-	if slotNeedsDomainPkg(sl) {
-		sb.WriteString(fmt.Sprintf("\t\"%s/internal/domain\"\n", module))
+	sb.WriteString(fmt.Sprintf("package %s\n\nimport (\n\t\"context\"\n\t\"reflect\"\n\t\"sync\"\n", lay.MemoryPkg))
+	if lay.slotNeedsDomainPkg(sl) {
+		sb.WriteString(fmt.Sprintf("\t\"%s/%s\"\n", module, lay.DomainDir))
 	}
-	sb.WriteString(fmt.Sprintf("\t\"%s/internal/ports\"\n", module))
+	if !lay.UnifiedRepositories {
+		sb.WriteString(fmt.Sprintf("\t\"%s/%s\"\n", module, lay.PortsDir))
+	}
 	sb.WriteString(")\n\n")
+
+	portInterface := sl.Name + "Slot"
+	if !lay.UnifiedRepositories {
+		portInterface = lay.PortsPkg + "." + portInterface
+	}
 
 	fakeType := "Fake" + sl.Name + "Slot"
 	for _, m := range sl.Methods {
 		ruleType := fmt.Sprintf("fake%s%sRule", sl.Name, m.Name)
 		sb.WriteString(fmt.Sprintf("type %s struct {\n\thasArgs bool\n", ruleType))
 		for _, p := range m.Params {
-			sb.WriteString(fmt.Sprintf("\targ_%s %s\n", p.Name, goType(p.Type, false)))
+			sb.WriteString(fmt.Sprintf("\targ_%s %s\n", p.Name, lay.goType(p.Type, false)))
 		}
 		if m.ReturnType != "" {
-			sb.WriteString(fmt.Sprintf("\tret %s\n", goType(m.ReturnType, false)))
+			sb.WriteString(fmt.Sprintf("\tret %s\n", lay.goType(m.ReturnType, false)))
 		}
 		sb.WriteString("\terr error\n}\n\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("type %s struct {\n\tmu sync.RWMutex\n\tfallback ports.%sSlot\n", fakeType, sl.Name))
+	sb.WriteString(fmt.Sprintf("type %s struct {\n\tmu sync.RWMutex\n\tfallback %s\n", fakeType, portInterface))
 	for _, m := range sl.Methods {
 		sb.WriteString(fmt.Sprintf("\trules%s []fake%s%sRule\n", m.Name, sl.Name, m.Name))
 	}
 	sb.WriteString("}\n\n")
 
-	sb.WriteString(fmt.Sprintf("func New%s(fallback ports.%sSlot) *%s {\n\t_ = reflect.DeepEqual\n\treturn &%s{fallback: fallback}\n}\n\n",
-		fakeType, sl.Name, fakeType, fakeType))
+	sb.WriteString(fmt.Sprintf("func New%s(fallback %s) *%s {\n\t_ = reflect.DeepEqual\n\treturn &%s{fallback: fallback}\n}\n\n",
+		fakeType, portInterface, fakeType, fakeType))
 
 	for _, m := range sl.Methods {
 		ruleType := fmt.Sprintf("fake%s%sRule", sl.Name, m.Name)
 		var paramDecls []string
 		for _, p := range m.Params {
-			paramDecls = append(paramDecls, fmt.Sprintf("%s %s", p.Name, goType(p.Type, false)))
+			paramDecls = append(paramDecls, fmt.Sprintf("%s %s", p.Name, lay.goType(p.Type, false)))
 		}
-		retGo := goType(m.ReturnType, false)
+		retGo := lay.goType(m.ReturnType, false)
 
 		if m.ReturnType != "" {
-			// Stub<Method>Return(args..., ret)
 			stubWithArgs := append([]string{}, paramDecls...)
 			stubWithArgs = append(stubWithArgs, fmt.Sprintf("ret %s", retGo))
 			sb.WriteString(fmt.Sprintf("func (f *%s) Stub%sReturn(%s) {\n\tf.mu.Lock()\n\tdefer f.mu.Unlock()\n\tf.rules%s = append(f.rules%s, %s{\n\t\thasArgs: true,\n",
@@ -135,12 +156,10 @@ func emitGoMemorySlotFake(module string, sl ir.SlotDecl) string {
 			}
 			sb.WriteString("\t\tret: ret,\n\t})\n}\n\n")
 
-			// Stub<Method>ReturnAny(ret)
 			sb.WriteString(fmt.Sprintf("func (f *%s) Stub%sReturnAny(ret %s) {\n\tf.mu.Lock()\n\tdefer f.mu.Unlock()\n\tf.rules%s = append(f.rules%s, %s{hasArgs: false, ret: ret})\n}\n\n",
 				fakeType, m.Name, retGo, m.Name, m.Name, ruleType))
 		}
 
-		// Stub<Method>Error(args..., err)
 		if len(paramDecls) > 0 {
 			errWithArgs := append([]string{}, paramDecls...)
 			errWithArgs = append(errWithArgs, "err error")
@@ -152,11 +171,9 @@ func emitGoMemorySlotFake(module string, sl ir.SlotDecl) string {
 			sb.WriteString("\t\terr: err,\n\t})\n}\n\n")
 		}
 
-		// Stub<Method>ErrorAny(err)
 		sb.WriteString(fmt.Sprintf("func (f *%s) Stub%sErrorAny(err error) {\n\tf.mu.Lock()\n\tdefer f.mu.Unlock()\n\tf.rules%s = append(f.rules%s, %s{hasArgs: false, err: err})\n}\n\n",
 			fakeType, m.Name, m.Name, m.Name, ruleType))
 
-		// Implement port method
 		callParams := append([]string{"ctx context.Context"}, paramDecls...)
 		var forwardArgs []string
 		forwardArgs = append(forwardArgs, "ctx")
@@ -198,7 +215,7 @@ func emitGoMemorySlotFake(module string, sl ir.SlotDecl) string {
 	return sb.String()
 }
 
-func emitGoContractsTest(archIR *arch.ArchitectureIR) string {
+func (lay goLayout) emitGoContractsTest(archIR *arch.ArchitectureIR) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf(`package scenarios_test
 
@@ -207,17 +224,17 @@ import (
 	"errors"
 	"testing"
 
-	"%s/internal/domain"
-	"%s/internal/ports"
+	"%s/%s"
+	"%s/%s"
 	"%s/internal/slots"
 )
 
-`, archIR.Module, archIR.Module, archIR.Module))
+`, archIR.Module, lay.DomainDir, archIR.Module, lay.PortsDir, archIR.Module))
 
 	for _, sl := range archIR.Slots {
 		sb.WriteString(fmt.Sprintf("func TestContract_%sSlot(t *testing.T) {\n", sl.Name))
 		sb.WriteString("\tctx := context.Background()\n")
-		sb.WriteString(fmt.Sprintf("\tvar impl ports.%sSlot = slots.New%sSlot()\n", sl.Name, sl.Name))
+		sb.WriteString(fmt.Sprintf("\tvar impl %s.%sSlot = slots.New%sSlot()\n", lay.PortsPkg, sl.Name, sl.Name))
 		sb.WriteString(fmt.Sprintf("\tif impl == nil {\n\t\tt.Fatalf(\"expected non-nil %sSlot implementation\")\n\t}\n", sl.Name))
 
 		for _, m := range sl.Methods {
@@ -225,7 +242,7 @@ import (
 			callArgs = append(callArgs, "ctx")
 			for idx, p := range m.Params {
 				argVar := fmt.Sprintf("arg_%s_%d", m.Name, idx)
-				sb.WriteString(fmt.Sprintf("\tvar %s %s\n", argVar, goType(p.Type, false)))
+				sb.WriteString(fmt.Sprintf("\tvar %s %s\n", argVar, lay.goType(p.Type, false)))
 				callArgs = append(callArgs, argVar)
 			}
 			if m.ReturnType != "" {
@@ -237,7 +254,7 @@ import (
 			if len(m.Throws) > 0 {
 				var checks []string
 				for _, th := range m.Throws {
-					checks = append(checks, fmt.Sprintf("errors.Is(err, domain.Err%s)", th))
+					checks = append(checks, fmt.Sprintf("errors.Is(err, %s.Err%s)", lay.DomainPkg, th))
 				}
 				sb.WriteString(fmt.Sprintf("\t\tif !(%s) {\n\t\t\tt.Fatalf(\"slot %s.%s returned undeclared error %%v; allowed throws: %v\", err)\n\t\t}\n",
 					strings.Join(checks, " || "), sl.Name, m.Name, m.Throws))
@@ -246,7 +263,7 @@ import (
 			}
 			sb.WriteString("\t}\n")
 		}
-		sb.WriteString("\t_ = errors.Is\n\t_ = domain.DomainError{}\n}\n\n")
+		sb.WriteString(fmt.Sprintf("\t_ = errors.Is\n\t_ = %s.DomainError{}\n}\n\n", lay.DomainPkg))
 	}
 
 	return sb.String()

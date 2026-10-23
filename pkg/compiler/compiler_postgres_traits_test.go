@@ -400,4 +400,3 @@ targets:
 		t.Fatalf("expected generated scenarios and tactical trait tests to pass, got: %+v", testDiags)
 	}
 }
-

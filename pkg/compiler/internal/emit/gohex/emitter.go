@@ -10,19 +10,104 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
+type goLayout struct {
+	DomainPkg       string
+	DomainDir       string
+	PortsPkg        string
+	PortsDir        string
+	UseCasesPkg     string
+	UseCasesDir     string
+	UseCaseFileSuf  string
+	MemoryPkg       string
+	MemoryDir       string
+	MemoryRepoSuf   string
+	MemorySlotSuf   string
+	MemoryEventFile string
+	MemoryTxFile    string
+	PostgresPkg     string
+	PostgresDir     string
+	PostgresRepoSuf string
+	PostgresTxFile  string
+	HTTPPkg         string
+	HTTPDir         string
+	// UnifiedRepositories marks layouts whose memory/postgres adapters live in the
+	// same package as the repository ports (layered); hexagonal keeps them separate.
+	UnifiedRepositories bool
+}
+
+func hexagonalLayout() goLayout {
+	return goLayout{
+		DomainPkg:       "domain",
+		DomainDir:       "internal/domain",
+		PortsPkg:        "ports",
+		PortsDir:        "internal/ports",
+		UseCasesPkg:     "usecases",
+		UseCasesDir:     "internal/usecases",
+		UseCaseFileSuf:  "_usecase.go",
+		MemoryPkg:       "memory",
+		MemoryDir:       "internal/adapters/memory",
+		MemoryRepoSuf:   "_repository.go",
+		MemorySlotSuf:   "_slot.go",
+		MemoryEventFile: "event_publisher.go",
+		MemoryTxFile:    "transaction_manager.go",
+		PostgresPkg:     "postgres",
+		PostgresDir:     "internal/adapters/postgres",
+		PostgresRepoSuf: "_repository.go",
+		PostgresTxFile:  "transaction_manager.go",
+		HTTPPkg:         "httpadapter",
+		HTTPDir:         "internal/adapters/http",
+	}
+}
+
+func layeredLayout() goLayout {
+	return goLayout{
+		DomainPkg:       "models",
+		DomainDir:       "internal/models",
+		PortsPkg:        "repositories",
+		PortsDir:        "internal/repositories",
+		UseCasesPkg:     "services",
+		UseCasesDir:     "internal/services",
+		UseCaseFileSuf:  "_service.go",
+		MemoryPkg:       "repositories",
+		MemoryDir:       "internal/repositories",
+		MemoryRepoSuf:   "_memory.go",
+		MemorySlotSuf:   "_fake.go",
+		MemoryEventFile: "event_publisher_memory.go",
+		MemoryTxFile:    "transaction_manager_memory.go",
+		PostgresPkg:     "repositories",
+		PostgresDir:     "internal/repositories",
+		PostgresRepoSuf: "_postgres.go",
+		PostgresTxFile:  "postgres_tx.go",
+		HTTPPkg:         "handlers",
+		HTTPDir:         "internal/handlers",
+
+		UnifiedRepositories: true,
+	}
+}
+
 // Emitter implements emit.TargetEmitter for Go Hexagonal Architecture.
 type Emitter struct{}
 
 func (Emitter) Emit(archIR *arch.ArchitectureIR) (emit.Emission, []ir.Diagnostic) {
-	tracked, stubs, diags := Emit(archIR)
+	tracked, stubs, diags := emitWithLayout(archIR, hexagonalLayout())
 	return emit.Emission{
 		TrackedFiles: tracked,
 		StubFiles:    stubs,
 	}, diags
 }
 
-// Emit synthesizes a complete Go Hexagonal Architecture workspace from the lowered ArchitectureIR.
-func Emit(archIR *arch.ArchitectureIR) (map[string][]byte, map[string][]byte, []ir.Diagnostic) {
+// LayeredEmitter implements emit.TargetEmitter for Go Layered Architecture.
+type LayeredEmitter struct{}
+
+func (LayeredEmitter) Emit(archIR *arch.ArchitectureIR) (emit.Emission, []ir.Diagnostic) {
+	tracked, stubs, diags := emitWithLayout(archIR, layeredLayout())
+	return emit.Emission{
+		TrackedFiles: tracked,
+		StubFiles:    stubs,
+	}, diags
+}
+
+func emitWithLayout(archIR *arch.ArchitectureIR, lay goLayout) (map[string][]byte, map[string][]byte, []ir.Diagnostic) {
 	files := make(map[string][]byte)
 	stubs := make(map[string][]byte)
 
@@ -45,167 +130,127 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 		files[fmt.Sprintf("migrations/%s.down.sql", mig.Name)] = []byte(mig.DownSQL)
 	}
 
-	if len(archIR.DomainEnums) > 0 {
-		enumsCode, err := formatGo("internal/domain/enums.go", emitGoDomainEnums(archIR))
+	addGoFile := func(relPath, src string) *ir.Diagnostic {
+		code, err := formatGo(relPath, src)
 		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag("internal/domain/enums.go", err)}
+			d := errDiag(relPath, err)
+			return &d
 		}
-		files["internal/domain/enums.go"] = enumsCode
+		files[relPath] = code
+		return nil
+	}
+
+	if len(archIR.DomainEnums) > 0 {
+		if d := addGoFile(lay.DomainDir+"/enums.go", lay.emitGoDomainEnums(archIR)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
+		}
 	}
 
 	for _, e := range archIR.DomainEntities {
-		relPath := fmt.Sprintf("internal/domain/%s_entity.go", strings.ToLower(e.Name))
-		code, err := formatGo(relPath, "package domain\n\n"+emitGoStructDef(e.Name, e.Fields))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag(relPath, err)}
+		relPath := fmt.Sprintf("%s/%s_entity.go", lay.DomainDir, strings.ToLower(e.Name))
+		if d := addGoFile(relPath, "package "+lay.DomainPkg+"\n\n"+lay.emitGoStructDef(e.Name, e.Fields)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files[relPath] = code
 	}
 
-	domainValues, err := formatGo("internal/domain/values.go", emitGoDomainValues(archIR))
-	if err != nil {
-		return nil, nil, []ir.Diagnostic{errDiag("internal/domain/values.go", err)}
+	if d := addGoFile(lay.DomainDir+"/values.go", lay.emitGoDomainValues(archIR)); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
 	}
-	files["internal/domain/values.go"] = domainValues
-
-	domainErrors, err := formatGo("internal/domain/errors.go", emitGoDomainErrors(archIR))
-	if err != nil {
-		return nil, nil, []ir.Diagnostic{errDiag("internal/domain/errors.go", err)}
+	if d := addGoFile(lay.DomainDir+"/errors.go", lay.emitGoDomainErrors(archIR)); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
 	}
-	files["internal/domain/errors.go"] = domainErrors
-
 	if len(archIR.DomainEvents) > 0 {
-		eventsCode, err := formatGo("internal/domain/events.go", emitGoDomainEvents(archIR))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag("internal/domain/events.go", err)}
+		if d := addGoFile(lay.DomainDir+"/events.go", lay.emitGoDomainEvents(archIR)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files["internal/domain/events.go"] = eventsCode
 	}
-
 	if len(archIR.DomainPolicies) > 0 {
-		policiesCode, err := formatGo("internal/domain/policies.go", emitGoDomainPolicies(archIR))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag("internal/domain/policies.go", err)}
+		if d := addGoFile(lay.DomainDir+"/policies.go", lay.emitGoDomainPolicies(archIR)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files["internal/domain/policies.go"] = policiesCode
 	}
 
 	for _, p := range archIR.Ports {
-		relPath := fmt.Sprintf("internal/ports/%s_repository.go", strings.ToLower(p.EntityName))
-		code, err := formatGo(relPath, emitGoSinglePort(archIR.Module, p))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag(relPath, err)}
+		relPath := fmt.Sprintf("%s/%s_repository.go", lay.PortsDir, strings.ToLower(p.EntityName))
+		if d := addGoFile(relPath, lay.emitGoSinglePort(archIR.Module, p)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files[relPath] = code
 	}
 
 	for _, sl := range archIR.Slots {
-		portPath := fmt.Sprintf("internal/ports/%s_slot.go", strings.ToLower(sl.Name))
-		portCode, err := formatGo(portPath, emitGoSlotPort(archIR.Module, sl))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag(portPath, err)}
+		portPath := fmt.Sprintf("%s/%s_slot.go", lay.PortsDir, strings.ToLower(sl.Name))
+		if d := addGoFile(portPath, lay.emitGoSlotPort(archIR.Module, sl)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files[portPath] = portCode
 
 		stubPath := fmt.Sprintf("internal/slots/%s_stub.go", strings.ToLower(sl.Name))
-		stubCode, err := formatGo(stubPath, emitGoSlotStub(archIR.Module, sl))
+		stubCode, err := formatGo(stubPath, lay.emitGoSlotStub(sl))
 		if err != nil {
 			return nil, nil, []ir.Diagnostic{errDiag(stubPath, err)}
 		}
 		stubs[stubPath] = stubCode
 
-		fakePath := fmt.Sprintf("internal/adapters/memory/%s_slot.go", strings.ToLower(sl.Name))
-		fakeCode, err := formatGo(fakePath, emitGoMemorySlotFake(archIR.Module, sl))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag(fakePath, err)}
+		fakePath := fmt.Sprintf("%s/%s%s", lay.MemoryDir, strings.ToLower(sl.Name), lay.MemorySlotSuf)
+		if d := addGoFile(fakePath, lay.emitGoMemorySlotFake(archIR.Module, sl)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files[fakePath] = fakeCode
 	}
 
 	if len(archIR.Slots) > 0 {
-		contractsCode, err := formatGo("contracts_test.go", emitGoContractsTest(archIR))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag("contracts_test.go", err)}
+		if d := addGoFile("internal/slots/contracts.go", lay.emitGoSlotTypeAliases(archIR)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files["contracts_test.go"] = contractsCode
+		if d := addGoFile("contracts_test.go", lay.emitGoContractsTest(archIR)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
+		}
 	}
 
 	if len(archIR.DomainEvents) > 0 {
-		evPortCode, err := formatGo("internal/ports/event_publisher.go", emitGoEventPublisherPort())
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag("internal/ports/event_publisher.go", err)}
+		if d := addGoFile(lay.PortsDir+"/event_publisher.go", lay.emitGoEventPublisherPort()); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files["internal/ports/event_publisher.go"] = evPortCode
+		if d := addGoFile(lay.MemoryDir+"/"+lay.MemoryEventFile, lay.emitGoMemoryEventPublisher()); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
+		}
 	}
 
-	txPortCode, err := formatGo("internal/ports/transaction_manager.go", emitGoTransactionManagerPort())
-	if err != nil {
-		return nil, nil, []ir.Diagnostic{errDiag("internal/ports/transaction_manager.go", err)}
+	if d := addGoFile(lay.PortsDir+"/transaction_manager.go", lay.emitGoTransactionManagerPort()); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
 	}
-	files["internal/ports/transaction_manager.go"] = txPortCode
+	if d := addGoFile(lay.MemoryDir+"/"+lay.MemoryTxFile, lay.emitGoMemoryTransactionManager()); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
+	}
+	if d := addGoFile(lay.PostgresDir+"/"+lay.PostgresTxFile, lay.emitGoPostgresTxManager()); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
+	}
 
 	for _, uc := range archIR.UseCases {
-		relPath := fmt.Sprintf("internal/usecases/%s_usecase.go", strings.ToLower(uc.ActionName))
-		code, err := formatGo(relPath, emitGoSingleUseCase(archIR.Module, uc))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag(relPath, err)}
+		relPath := fmt.Sprintf("%s/%s%s", lay.UseCasesDir, strings.ToLower(uc.ActionName), lay.UseCaseFileSuf)
+		if d := addGoFile(relPath, lay.emitGoSingleUseCase(archIR.Module, uc)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files[relPath] = code
 	}
 
 	for _, p := range archIR.Ports {
-		relPath := fmt.Sprintf("internal/adapters/memory/%s_repository.go", strings.ToLower(p.EntityName))
-		code, err := formatGo(relPath, emitGoSingleMemoryRepo(archIR, p))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag(relPath, err)}
+		memPath := fmt.Sprintf("%s/%s%s", lay.MemoryDir, strings.ToLower(p.EntityName), lay.MemoryRepoSuf)
+		if d := addGoFile(memPath, lay.emitGoSingleMemoryRepo(archIR, p)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files[relPath] = code
-
-		pgPath := fmt.Sprintf("internal/adapters/postgres/%s_repository.go", strings.ToLower(p.EntityName))
-		pgCode, err := formatGo(pgPath, emitGoSinglePostgresRepo(archIR, p))
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag(pgPath, err)}
+		pgPath := fmt.Sprintf("%s/%s%s", lay.PostgresDir, strings.ToLower(p.EntityName), lay.PostgresRepoSuf)
+		if d := addGoFile(pgPath, lay.emitGoSinglePostgresRepo(archIR, p)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
 		}
-		files[pgPath] = pgCode
 	}
 
-	txMemCode, err := formatGo("internal/adapters/memory/transaction_manager.go", emitGoMemoryTransactionManager())
-	if err != nil {
-		return nil, nil, []ir.Diagnostic{errDiag("internal/adapters/memory/transaction_manager.go", err)}
+	if d := addGoFile(lay.HTTPDir+"/router.go", lay.emitGoChiRouter(archIR)); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
 	}
-	files["internal/adapters/memory/transaction_manager.go"] = txMemCode
-
-	txPgCode, err := formatGo("internal/adapters/postgres/transaction_manager.go", emitGoPostgresTxManager())
-	if err != nil {
-		return nil, nil, []ir.Diagnostic{errDiag("internal/adapters/postgres/transaction_manager.go", err)}
+	if d := addGoFile("internal/bootstrap/container.go", lay.emitGoBootstrap(archIR)); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
 	}
-	files["internal/adapters/postgres/transaction_manager.go"] = txPgCode
-
-	if len(archIR.DomainEvents) > 0 {
-		evMemCode, err := formatGo("internal/adapters/memory/event_publisher.go", emitGoMemoryEventPublisher())
-		if err != nil {
-			return nil, nil, []ir.Diagnostic{errDiag("internal/adapters/memory/event_publisher.go", err)}
-		}
-		files["internal/adapters/memory/event_publisher.go"] = evMemCode
+	if d := addGoFile("scenarios_test.go", lay.emitGoScenariosTest(archIR)); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
 	}
-
-	httpRouterCode, err := formatGo("internal/adapters/http/router.go", emitGoChiRouter(archIR))
-	if err != nil {
-		return nil, nil, []ir.Diagnostic{errDiag("internal/adapters/http/router.go", err)}
-	}
-	files["internal/adapters/http/router.go"] = httpRouterCode
-
-	bootstrapCode, err := formatGo("internal/bootstrap/container.go", emitGoBootstrap(archIR))
-	if err != nil {
-		return nil, nil, []ir.Diagnostic{errDiag("internal/bootstrap/container.go", err)}
-	}
-	files["internal/bootstrap/container.go"] = bootstrapCode
-
-	scenariosCode, err := formatGo("scenarios_test.go", emitGoScenariosTest(archIR))
-	if err != nil {
-		return nil, nil, []ir.Diagnostic{errDiag("scenarios_test.go", err)}
-	}
-	files["scenarios_test.go"] = scenariosCode
 
 	return files, stubs, nil
 }
@@ -227,9 +272,9 @@ func errDiag(file string, err error) ir.Diagnostic {
 	}
 }
 
-func goType(fdnType string, inDomainPkg bool) string {
+func (lay goLayout) goType(fdnType string, inDomainPkg bool) string {
 	if strings.HasPrefix(fdnType, "[]") {
-		return "[]" + goType(strings.TrimPrefix(fdnType, "[]"), inDomainPkg)
+		return "[]" + lay.goType(strings.TrimPrefix(fdnType, "[]"), inDomainPkg)
 	}
 	switch fdnType {
 	case "uuid", "string", "timestamp":
@@ -244,6 +289,6 @@ func goType(fdnType string, inDomainPkg bool) string {
 		if inDomainPkg {
 			return fdnType
 		}
-		return "domain." + fdnType
+		return lay.DomainPkg + "." + fdnType
 	}
 }

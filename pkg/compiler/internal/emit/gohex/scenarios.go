@@ -24,7 +24,7 @@ func sanitizeTestFuncName(name string) string {
 	return sb.String()
 }
 
-func emitGoScenariosTest(archIR *arch.ArchitectureIR) string {
+func (lay goLayout) emitGoScenariosTest(archIR *arch.ArchitectureIR) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf(`package scenarios_test
 
@@ -38,10 +38,10 @@ import (
 	"testing"
 
 	"%s/internal/bootstrap"
-	"%s/internal/domain"
+	"%s/%s"
 )
 
-`, archIR.Module, archIR.Module))
+`, archIR.Module, archIR.Module, lay.DomainDir))
 
 	for _, sc := range archIR.Scenarios {
 		fnName := sanitizeTestFuncName(sc.Name)
@@ -51,23 +51,23 @@ import (
 
 		for _, g := range sc.Givens {
 			if g.EntityName == "actor" {
-				sb.WriteString("\tctx = domain.WithActor(ctx, domain.Actor{\n")
-				emitGoFieldInits(&sb, g.Fields, "\t\t")
+				sb.WriteString(fmt.Sprintf("\tctx = %s.WithActor(ctx, %s.Actor{\n", lay.DomainPkg, lay.DomainPkg))
+				lay.emitGoFieldInits(&sb, g.Fields, "\t\t")
 				sb.WriteString("\t})\n")
 				continue
 			}
-			sb.WriteString(fmt.Sprintf("\tc.%sRepo.Seed(domain.%s{\n", g.EntityName, g.EntityName))
-			emitGoFieldInits(&sb, g.Fields, "\t\t")
+			sb.WriteString(fmt.Sprintf("\tc.%sRepo.Seed(%s.%s{\n", g.EntityName, lay.DomainPkg, g.EntityName))
+			lay.emitGoFieldInits(&sb, g.Fields, "\t\t")
 			sb.WriteString("\t})\n")
 		}
 
 		for _, gs := range sc.GivenSlots {
 			var stubArgs []string
 			for _, arg := range gs.Args {
-				stubArgs = append(stubArgs, emitGoExpr(arg, false))
+				stubArgs = append(stubArgs, lay.emitGoExpr(arg, false))
 			}
 			if gs.ReturnExpr != nil {
-				retExpr := emitGoExpr(*gs.ReturnExpr, false)
+				retExpr := lay.emitGoExpr(*gs.ReturnExpr, false)
 				if len(stubArgs) > 0 {
 					stubArgs = append(stubArgs, retExpr)
 					sb.WriteString(fmt.Sprintf("\tc.%sSlot.Stub%sReturn(%s)\n", gs.SlotName, gs.MethodName, strings.Join(stubArgs, ", ")))
@@ -75,7 +75,7 @@ import (
 					sb.WriteString(fmt.Sprintf("\tc.%sSlot.Stub%sReturnAny(%s)\n", gs.SlotName, gs.MethodName, retExpr))
 				}
 			} else if gs.ThrowsError != "" {
-				errExpr := "domain.Err" + gs.ThrowsError
+				errExpr := lay.DomainPkg + ".Err" + gs.ThrowsError
 				if len(stubArgs) > 0 {
 					stubArgs = append(stubArgs, errExpr)
 					sb.WriteString(fmt.Sprintf("\tc.%sSlot.Stub%sError(%s)\n", gs.SlotName, gs.MethodName, strings.Join(stubArgs, ", ")))
@@ -88,7 +88,7 @@ import (
 		var callArgs []string
 		callArgs = append(callArgs, "ctx")
 		for _, arg := range sc.WhenArgs {
-			callArgs = append(callArgs, emitGoExpr(arg, false))
+			callArgs = append(callArgs, lay.emitGoExpr(arg, false))
 		}
 		sb.WriteString(fmt.Sprintf("\tresult, err := c.%s.Execute(%s)\n", sc.WhenAction, strings.Join(callArgs, ", ")))
 
@@ -97,8 +97,8 @@ import (
 			if ex.ErrorRaised != "" {
 				expectsError = true
 				sb.WriteString("\t_ = result\n")
-				sb.WriteString(fmt.Sprintf("\tif !errors.Is(err, domain.Err%s) {\n\t\tt.Fatalf(\"expected error %s, got %%v\", err)\n\t}\n",
-					ex.ErrorRaised, ex.ErrorRaised))
+				sb.WriteString(fmt.Sprintf("\tif !errors.Is(err, %s.Err%s) {\n\t\tt.Fatalf(\"expected error %s, got %%v\", err)\n\t}\n",
+					lay.DomainPkg, ex.ErrorRaised, ex.ErrorRaised))
 			}
 		}
 
@@ -106,14 +106,14 @@ import (
 			sb.WriteString("\tif err != nil {\n\t\tt.Fatalf(\"unexpected error: %v\", err)\n\t}\n")
 			sb.WriteString("\t_ = result\n")
 			for idx, ex := range sc.Expects {
-				emitGoScenarioExpect(&sb, idx, ex)
+				lay.emitGoScenarioExpect(&sb, idx, ex)
 			}
 		}
 
 		sb.WriteString("}\n\n")
 	}
 
-	sb.WriteString(`func TestHTTPAdapter_Integration(t *testing.T) {
+	sb.WriteString(fmt.Sprintf(`func TestHTTPAdapter_Integration(t *testing.T) {
 	c := bootstrap.NewTestContainer()
 	if c.HTTPServer == nil {
 		t.Fatal("expected non-nil HTTPServer")
@@ -122,29 +122,29 @@ import (
 	rec := httptest.NewRecorder()
 	c.HTTPServer.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 for unknown route, got %d", rec.Code)
+		t.Fatalf("expected 404 for unknown route, got %%d", rec.Code)
 	}
 	_ = json.Marshal
 	_ = errors.Is
-	_ = domain.DomainError{}
+	_ = %s.DomainError{}
 }
-`)
+`, lay.DomainPkg))
 
 	return sb.String()
 }
 
-func emitGoScenarioExpect(sb *strings.Builder, idx int, ex ir.ExpectDecl) {
+func (lay goLayout) emitGoScenarioExpect(sb *strings.Builder, idx int, ex ir.ExpectDecl) {
 	if ex.EmittedEvent != "" {
 		evVar := fmt.Sprintf("emitted%d", idx)
 		sb.WriteString(fmt.Sprintf("\t%s := c.Events.ByType(%q)\n", evVar, ex.EmittedEvent))
 		sb.WriteString(fmt.Sprintf("\tif len(%s) == 0 {\n\t\tt.Fatalf(\"expected event %s to be emitted, but none were published\")\n\t}\n",
 			evVar, ex.EmittedEvent))
 		if len(ex.EmittedFields) > 0 {
-			sb.WriteString(fmt.Sprintf("\tevPayload%d, ok := %s[len(%s)-1].(domain.%s)\n", idx, evVar, evVar, ex.EmittedEvent))
+			sb.WriteString(fmt.Sprintf("\tevPayload%d, ok := %s[len(%s)-1].(%s.%s)\n", idx, evVar, evVar, lay.DomainPkg, ex.EmittedEvent))
 			sb.WriteString(fmt.Sprintf("\tif !ok {\n\t\tt.Fatalf(\"unexpected event payload type for %s\")\n\t}\n", ex.EmittedEvent))
 			for _, fi := range ex.EmittedFields {
 				fieldAccess := fmt.Sprintf("evPayload%d.%s", idx, arch.ExportIdent(fi.Name))
-				expectedVal := emitGoExpr(fi.Value, false)
+				expectedVal := lay.emitGoExpr(fi.Value, false)
 				sb.WriteString(fmt.Sprintf("\tif %s != %s {\n\t\tt.Fatalf(\"event %s.%s mismatch: got %%v, want %%v\", %s, %s)\n\t}\n",
 					fieldAccess, expectedVal, ex.EmittedEvent, fi.Name, fieldAccess, expectedVal))
 			}
@@ -154,7 +154,7 @@ func emitGoScenarioExpect(sb *strings.Builder, idx int, ex ir.ExpectDecl) {
 
 	if ex.StoredEntity != "" && ex.WhereValue != nil {
 		findMethod := "FindBy" + arch.ExportIdent(ex.WhereField)
-		whereExpr := emitGoExpr(*ex.WhereValue, false)
+		whereExpr := lay.emitGoExpr(*ex.WhereValue, false)
 		storedVar := fmt.Sprintf("stored%d", idx)
 		sb.WriteString(fmt.Sprintf("\t%s, err := c.%sRepo.%s(ctx, %s)\n", storedVar, ex.StoredEntity, findMethod, whereExpr))
 		sb.WriteString("\tif err != nil {\n\t\tt.Fatalf(\"unexpected repo error: %v\", err)\n\t}\n")
@@ -167,15 +167,15 @@ func emitGoScenarioExpect(sb *strings.Builder, idx int, ex ir.ExpectDecl) {
 			storedVar, ex.StoredEntity, ex.WhereField, whereExpr))
 		for _, fi := range ex.StoredFields {
 			fieldAccess := fmt.Sprintf("%s.%s", storedVar, arch.ExportIdent(fi.Name))
-			expectedVal := emitGoExpr(fi.Value, false)
+			expectedVal := lay.emitGoExpr(fi.Value, false)
 			sb.WriteString(fmt.Sprintf("\tif %s != %s {\n\t\tt.Fatalf(\"stored %s.%s mismatch: got %%v, want %%v\", %s, %s)\n\t}\n",
 				fieldAccess, expectedVal, ex.StoredEntity, fi.Name, fieldAccess, expectedVal))
 		}
 		return
 	}
 
-	leftStr := emitGoExpr(ex.Left, false)
-	rightStr := emitGoExpr(ex.Right, false)
+	leftStr := lay.emitGoExpr(ex.Left, false)
+	rightStr := lay.emitGoExpr(ex.Right, false)
 	sb.WriteString(fmt.Sprintf("\tif !(%s %s %s) {\n\t\tt.Fatalf(\"assertion failed: expected %%v %s %%v\", %s, %s)\n\t}\n",
 		leftStr, ex.Op, rightStr, ex.Op, leftStr, rightStr))
 }

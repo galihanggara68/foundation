@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 
@@ -34,6 +35,29 @@ type GenerationManifest struct {
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// pruneEmptyDirs removes directories that became empty after pruning stale generated files,
+// so switching architectures never leaves the previous layout's empty package tree behind.
+// It climbs from each pruned file's directory toward outDir and stops at the first non-empty directory.
+func pruneEmptyDirs(outDir string, relDirs []string) {
+	seen := make(map[string]bool)
+	for _, d := range relDirs {
+		if d == "." || seen[d] {
+			continue
+		}
+		seen[d] = true
+		for cur := d; cur != "."; cur = path.Dir(cur) {
+			abs := filepath.Join(outDir, filepath.FromSlash(cur))
+			entries, err := os.ReadDir(abs)
+			if err != nil || len(entries) > 0 {
+				break
+			}
+			if err := os.Remove(abs); err != nil {
+				break
+			}
+		}
+	}
 }
 
 // ReconcileManifest compares the newly emitted files with the existing .foundation-manifest.json,
@@ -95,12 +119,15 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 	}
 
 	// 2. Prune stale files that were in the previous manifest but are no longer emitted
+	var prunedDirs []string
 	for rel := range prev.Files {
 		if _, stillPresent := trackedFiles[rel]; !stillPresent {
 			diskPath := filepath.Join(outDir, filepath.FromSlash(rel))
 			_ = os.Remove(diskPath)
+			prunedDirs = append(prunedDirs, path.Dir(rel))
 		}
 	}
+	pruneEmptyDirs(outDir, prunedDirs)
 
 	// 3. Write all tracked files in deterministic order and compute new manifest hashes
 	nextManifest := GenerationManifest{

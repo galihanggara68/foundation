@@ -269,4 +269,3 @@ func (s *ShippingCalculatorStub) Quote(_ context.Context, address domain.Address
 		t.Fatalf("expected handwritten slot stub to pass contract and scenario tests, got: %+v", testDiags)
 	}
 }
-

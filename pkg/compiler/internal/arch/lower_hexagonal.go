@@ -24,6 +24,7 @@ func (GoHexagonalLowerer) Lower(sem *ir.SemanticIR, bp *BuildProfile, target Tar
 		DomainErrors:   sem.Errors,
 		DomainEvents:   sem.Events,
 		DomainPolicies: sem.Policies,
+		Slots:          sem.Slots,
 		Scenarios:      sem.Scenarios,
 		Layers: []ArchLayer{
 			{Name: "domain", Package: "internal/domain"},
@@ -31,6 +32,8 @@ func (GoHexagonalLowerer) Lower(sem *ir.SemanticIR, bp *BuildProfile, target Tar
 			{Name: "usecases", Package: "internal/usecases"},
 			{Name: "adapters_http", Package: "internal/adapters/http"},
 			{Name: "adapters_memory", Package: "internal/adapters/memory"},
+			{Name: "adapters_postgres", Package: "internal/adapters/postgres"},
+			{Name: "slots", Package: "internal/slots"},
 			{Name: "bootstrap", Package: "internal/bootstrap"},
 		},
 	}
@@ -78,6 +81,8 @@ func (GoHexagonalLowerer) Lower(sem *ir.SemanticIR, bp *BuildProfile, target Tar
 	for _, a := range sem.Actions {
 		depSet := make(map[string]bool)
 		var deps []string
+		slotDepSet := make(map[string]bool)
+		var slotDeps []string
 		emitsEvents := false
 		usesActor := false
 
@@ -86,6 +91,10 @@ func (GoHexagonalLowerer) Lower(sem *ir.SemanticIR, bp *BuildProfile, target Tar
 				if s.EntityName != "" && !depSet[s.EntityName] {
 					depSet[s.EntityName] = true
 					deps = append(deps, s.EntityName)
+				}
+				if s.Kind == ir.StepSlot && s.SlotName != "" && !slotDepSet[s.SlotName] {
+					slotDepSet[s.SlotName] = true
+					slotDeps = append(slotDeps, s.SlotName)
 				}
 				if s.Kind == ir.StepEmit {
 					emitsEvents = true
@@ -128,37 +137,61 @@ func (GoHexagonalLowerer) Lower(sem *ir.SemanticIR, bp *BuildProfile, target Tar
 			ActionName:  a.Name,
 			Params:      a.Params,
 			ReturnType:  a.ReturnType,
+			Traits:      a.Traits,
 			Steps:       a.Steps,
 			RepoDeps:    deps,
+			SlotDeps:    slotDeps,
 			EmitsEvents: emitsEvents,
 			UsesActor:   usesActor,
 		})
 
 		httpMethod := "POST"
 		httpPath := "/" + strings.ToLower(a.Name)
+		isInternal := false
+		isEventHandler := false
+		isCron := false
 		for _, tr := range a.Traits {
-			if tr.Name == "http" {
+			switch tr.Name {
+			case "http":
 				if m, ok := tr.Args["method"]; ok {
 					httpMethod = strings.ToUpper(m)
 				}
 				if p, ok := tr.Args["path"]; ok {
 					httpPath = p
 				}
+			case "internal":
+				isInternal = true
+			case "event_handler":
+				isEventHandler = true
+				evName, _ := getTraitsArg([]ir.TraitDecl{tr}, "event_handler")
+				arch.EventHandlers = append(arch.EventHandlers, EventHandlerIR{
+					ActionName: a.Name,
+					EventName:  evName,
+				})
+			case "cron":
+				isCron = true
+				sched, _ := getTraitsArg([]ir.TraitDecl{tr}, "cron")
+				arch.CronHandlers = append(arch.CronHandlers, CronHandlerIR{
+					ActionName: a.Name,
+					Schedule:   sched,
+				})
 			}
 		}
-		var pathParams []string
-		for _, seg := range strings.Split(httpPath, "/") {
-			if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
-				pathParams = append(pathParams, strings.TrimSuffix(strings.TrimPrefix(seg, "{"), "}"))
+		if !isInternal && !isEventHandler && !isCron {
+			var pathParams []string
+			for _, seg := range strings.Split(httpPath, "/") {
+				if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
+					pathParams = append(pathParams, strings.TrimSuffix(strings.TrimPrefix(seg, "{"), "}"))
+				}
 			}
+			arch.HTTPHandlers = append(arch.HTTPHandlers, HTTPHandlerIR{
+				ActionName: a.Name,
+				Method:     httpMethod,
+				Path:       httpPath,
+				PathParams: pathParams,
+				Params:     a.Params,
+			})
 		}
-		arch.HTTPHandlers = append(arch.HTTPHandlers, HTTPHandlerIR{
-			ActionName: a.Name,
-			Method:     httpMethod,
-			Path:       httpPath,
-			PathParams: pathParams,
-			Params:     a.Params,
-		})
 	}
 
 	for _, sc := range sem.Scenarios {

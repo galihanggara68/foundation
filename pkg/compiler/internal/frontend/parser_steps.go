@@ -107,6 +107,9 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 				Span:       t.span,
 			}, true
 		}
+		if next.kind == tokIdent && next.text == "slot" {
+			return p.parseSlotCallStep(varTok.text, t.span)
+		}
 		expr, ok := p.parseExpr()
 		if !ok {
 			return ir.StepDecl{}, false
@@ -389,6 +392,9 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 			Span:      t.span,
 		}, true
 
+	case "slot":
+		return p.parseSlotCallStep("", t.span)
+
 	case "return":
 		p.advance()
 		expr, ok := p.parseExpr()
@@ -411,6 +417,56 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 		p.advance()
 		return ir.StepDecl{}, false
 	}
+}
+
+func (p *parser) parseSlotCallStep(varName string, span ir.Span) (ir.StepDecl, bool) {
+	p.advance() // consume 'slot'
+	slotTok, ok := p.expect(tokIdent)
+	if !ok {
+		return ir.StepDecl{}, false
+	}
+	if _, ok := p.expect(tokDot); !ok {
+		return ir.StepDecl{}, false
+	}
+	mTok, ok := p.expect(tokIdent)
+	if !ok {
+		return ir.StepDecl{}, false
+	}
+	if _, ok := p.expect(tokLParen); !ok {
+		return ir.StepDecl{}, false
+	}
+	var args []ir.Expr
+	for p.cur().kind != tokRParen && p.cur().kind != tokEOF {
+		arg, ok := p.parseExpr()
+		if !ok {
+			return ir.StepDecl{}, false
+		}
+		args = append(args, arg)
+		if p.cur().kind == tokComma {
+			p.advance()
+		}
+	}
+	if _, ok := p.expect(tokRParen); !ok {
+		return ir.StepDecl{}, false
+	}
+	elseErr := ""
+	if p.cur().kind == tokIdent && p.cur().text == "else" {
+		p.advance()
+		errTok, ok := p.expect(tokIdent)
+		if !ok {
+			return ir.StepDecl{}, false
+		}
+		elseErr = errTok.text
+	}
+	return ir.StepDecl{
+		Kind:       ir.StepSlot,
+		VarName:    varName,
+		SlotName:   slotTok.text,
+		SlotMethod: mTok.text,
+		SlotArgs:   args,
+		ElseError:  elseErr,
+		Span:       span,
+	}, true
 }
 
 func (p *parser) parseFieldInitBlock() ([]ir.FieldInitDecl, bool) {

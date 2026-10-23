@@ -35,6 +35,9 @@ func WalkStepsAndExprs(steps []StepDecl, onStep func(StepDecl), onExpr func(Expr
 		for _, arg := range s.PolicyArgs {
 			WalkExpr(arg, onExpr)
 		}
+		for _, arg := range s.SlotArgs {
+			WalkExpr(arg, onExpr)
+		}
 		for _, fi := range s.Fields {
 			WalkExpr(fi.Value, onExpr)
 		}

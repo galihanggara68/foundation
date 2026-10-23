@@ -11,6 +11,7 @@ const (
 	StepRequire StepKind = "require"
 	StepGuard   StepKind = "guard"
 	StepEmit    StepKind = "emit"
+	StepSlot    StepKind = "slot"
 	StepIf      StepKind = "if"
 	StepMatch   StepKind = "match"
 	StepFor     StepKind = "for"
@@ -66,6 +67,9 @@ type StepDecl struct {
 	Kind       StepKind        `json:"kind"`
 	VarName    string          `json:"var_name,omitempty"`
 	EntityName string          `json:"entity_name,omitempty"`
+	SlotName   string          `json:"slot_name,omitempty"`
+	SlotMethod string          `json:"slot_method,omitempty"`
+	SlotArgs   []Expr          `json:"slot_args,omitempty"`
 	PolicyName string          `json:"policy_name,omitempty"`
 	PolicyArgs []Expr          `json:"policy_args,omitempty"`
 	EventName  string          `json:"event_name,omitempty"`

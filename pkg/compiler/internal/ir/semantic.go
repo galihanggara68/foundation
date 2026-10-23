@@ -10,6 +10,7 @@ type SemanticIR struct {
 	Errors    []ErrorDecl    `json:"errors,omitempty"`
 	Events    []EventDecl    `json:"events,omitempty"`
 	Policies  []PolicyDecl   `json:"policies,omitempty"`
+	Slots     []SlotDecl     `json:"slots,omitempty"`
 	Actions   []ActionDecl   `json:"actions,omitempty"`
 	Scenarios []ScenarioDecl `json:"scenarios,omitempty"`
 }
@@ -22,8 +23,33 @@ func (s *SemanticIR) Canonicalize() {
 	sort.SliceStable(s.Errors, func(i, j int) bool { return s.Errors[i].Name < s.Errors[j].Name })
 	sort.SliceStable(s.Events, func(i, j int) bool { return s.Events[i].Name < s.Events[j].Name })
 	sort.SliceStable(s.Policies, func(i, j int) bool { return s.Policies[i].Name < s.Policies[j].Name })
+	sort.SliceStable(s.Slots, func(i, j int) bool { return s.Slots[i].Name < s.Slots[j].Name })
 	sort.SliceStable(s.Actions, func(i, j int) bool { return s.Actions[i].Name < s.Actions[j].Name })
 	sort.SliceStable(s.Scenarios, func(i, j int) bool { return s.Scenarios[i].Name < s.Scenarios[j].Name })
+}
+
+type SlotMethodDecl struct {
+	Name       string      `json:"name"`
+	Params     []ParamDecl `json:"params"`
+	ReturnType string      `json:"return_type,omitempty"`
+	Throws     []string    `json:"throws,omitempty"`
+	Traits     []TraitDecl `json:"traits,omitempty"`
+	Span       Span        `json:"span"`
+}
+
+type SlotDecl struct {
+	Name    string           `json:"name"`
+	Methods []SlotMethodDecl `json:"methods"`
+	Span    Span             `json:"span"`
+}
+
+type GivenSlotDecl struct {
+	SlotName    string `json:"slot_name"`
+	MethodName  string `json:"method_name"`
+	Args        []Expr `json:"args,omitempty"`
+	ReturnExpr  *Expr  `json:"return_expr,omitempty"`
+	ThrowsError string `json:"throws_error,omitempty"`
+	Span        Span   `json:"span"`
 }
 
 type EnumDecl struct {
@@ -48,6 +74,7 @@ type PolicyDecl struct {
 type FieldDecl struct {
 	Name       string      `json:"name"`
 	Type       string      `json:"type"`
+	TypeParams string      `json:"type_params,omitempty"`
 	Optional   bool        `json:"optional,omitempty"`
 	DefaultVal string      `json:"default_val,omitempty"`
 	Traits     []TraitDecl `json:"traits,omitempty"`
@@ -69,6 +96,7 @@ type ValueDecl struct {
 type EntityDecl struct {
 	Name   string      `json:"name"`
 	Fields []FieldDecl `json:"fields"`
+	Traits []TraitDecl `json:"traits,omitempty"`
 	Span   Span        `json:"span"`
 }
 
@@ -118,6 +146,7 @@ type ExpectDecl struct {
 type ScenarioDecl struct {
 	Name       string          `json:"name"`
 	Givens     []GivenSeedDecl `json:"givens,omitempty"`
+	GivenSlots []GivenSlotDecl `json:"given_slots,omitempty"`
 	WhenAction string          `json:"when_action"`
 	WhenArgs   []Expr          `json:"when_args,omitempty"`
 	Expects    []ExpectDecl    `json:"expects"`

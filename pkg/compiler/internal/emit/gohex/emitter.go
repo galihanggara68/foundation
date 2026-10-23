@@ -37,6 +37,14 @@ require github.com/go-chi/chi/v5 v5.3.0
 github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
 `)
 
+	if archIR.Storage.SchemaSQL != "" {
+		files["schema.sql"] = []byte(archIR.Storage.SchemaSQL)
+	}
+	for _, mig := range archIR.Storage.Migrations {
+		files[fmt.Sprintf("migrations/%s.up.sql", mig.Name)] = []byte(mig.UpSQL)
+		files[fmt.Sprintf("migrations/%s.down.sql", mig.Name)] = []byte(mig.DownSQL)
+	}
+
 	if len(archIR.DomainEnums) > 0 {
 		enumsCode, err := formatGo("internal/domain/enums.go", emitGoDomainEnums(archIR))
 		if err != nil {
@@ -91,6 +99,37 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 		files[relPath] = code
 	}
 
+	for _, sl := range archIR.Slots {
+		portPath := fmt.Sprintf("internal/ports/%s_slot.go", strings.ToLower(sl.Name))
+		portCode, err := formatGo(portPath, emitGoSlotPort(archIR.Module, sl))
+		if err != nil {
+			return nil, nil, []ir.Diagnostic{errDiag(portPath, err)}
+		}
+		files[portPath] = portCode
+
+		stubPath := fmt.Sprintf("internal/slots/%s_stub.go", strings.ToLower(sl.Name))
+		stubCode, err := formatGo(stubPath, emitGoSlotStub(archIR.Module, sl))
+		if err != nil {
+			return nil, nil, []ir.Diagnostic{errDiag(stubPath, err)}
+		}
+		stubs[stubPath] = stubCode
+
+		fakePath := fmt.Sprintf("internal/adapters/memory/%s_slot.go", strings.ToLower(sl.Name))
+		fakeCode, err := formatGo(fakePath, emitGoMemorySlotFake(archIR.Module, sl))
+		if err != nil {
+			return nil, nil, []ir.Diagnostic{errDiag(fakePath, err)}
+		}
+		files[fakePath] = fakeCode
+	}
+
+	if len(archIR.Slots) > 0 {
+		contractsCode, err := formatGo("contracts_test.go", emitGoContractsTest(archIR))
+		if err != nil {
+			return nil, nil, []ir.Diagnostic{errDiag("contracts_test.go", err)}
+		}
+		files["contracts_test.go"] = contractsCode
+	}
+
 	if len(archIR.DomainEvents) > 0 {
 		evPortCode, err := formatGo("internal/ports/event_publisher.go", emitGoEventPublisherPort())
 		if err != nil {
@@ -98,6 +137,12 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 		}
 		files["internal/ports/event_publisher.go"] = evPortCode
 	}
+
+	txPortCode, err := formatGo("internal/ports/transaction_manager.go", emitGoTransactionManagerPort())
+	if err != nil {
+		return nil, nil, []ir.Diagnostic{errDiag("internal/ports/transaction_manager.go", err)}
+	}
+	files["internal/ports/transaction_manager.go"] = txPortCode
 
 	for _, uc := range archIR.UseCases {
 		relPath := fmt.Sprintf("internal/usecases/%s_usecase.go", strings.ToLower(uc.ActionName))
@@ -115,7 +160,26 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 			return nil, nil, []ir.Diagnostic{errDiag(relPath, err)}
 		}
 		files[relPath] = code
+
+		pgPath := fmt.Sprintf("internal/adapters/postgres/%s_repository.go", strings.ToLower(p.EntityName))
+		pgCode, err := formatGo(pgPath, emitGoSinglePostgresRepo(archIR, p))
+		if err != nil {
+			return nil, nil, []ir.Diagnostic{errDiag(pgPath, err)}
+		}
+		files[pgPath] = pgCode
 	}
+
+	txMemCode, err := formatGo("internal/adapters/memory/transaction_manager.go", emitGoMemoryTransactionManager())
+	if err != nil {
+		return nil, nil, []ir.Diagnostic{errDiag("internal/adapters/memory/transaction_manager.go", err)}
+	}
+	files["internal/adapters/memory/transaction_manager.go"] = txMemCode
+
+	txPgCode, err := formatGo("internal/adapters/postgres/transaction_manager.go", emitGoPostgresTxManager())
+	if err != nil {
+		return nil, nil, []ir.Diagnostic{errDiag("internal/adapters/postgres/transaction_manager.go", err)}
+	}
+	files["internal/adapters/postgres/transaction_manager.go"] = txPgCode
 
 	if len(archIR.DomainEvents) > 0 {
 		evMemCode, err := formatGo("internal/adapters/memory/event_publisher.go", emitGoMemoryEventPublisher())

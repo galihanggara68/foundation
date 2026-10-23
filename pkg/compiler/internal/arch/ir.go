@@ -21,6 +21,20 @@ const (
 	RepoMethodDelete RepoMethodKind = "delete"
 )
 
+type MigrationFileIR struct {
+	Number  int    `json:"number"`
+	Name    string `json:"name"`
+	UpSQL   string `json:"up_sql"`
+	DownSQL string `json:"down_sql"`
+}
+
+type StoragePlanIR struct {
+	Dialect    string            `json:"dialect"`
+	Mode       string            `json:"mode"`
+	SchemaSQL  string            `json:"schema_sql,omitempty"`
+	Migrations []MigrationFileIR `json:"migrations,omitempty"`
+}
+
 // ArchitectureIR represents the lowered structural topology for a single target.
 // It is completely self-contained and never embeds a raw *ir.SemanticIR pointer.
 type ArchitectureIR struct {
@@ -31,6 +45,7 @@ type ArchitectureIR struct {
 	HTTP           string             `json:"http"`
 	Module         string             `json:"module"`
 	OutDir         string             `json:"out_dir"`
+	Storage        StoragePlanIR      `json:"storage"`
 	Layers         []ArchLayer        `json:"layers"`
 	DomainEnums    []ir.EnumDecl      `json:"domain_enums,omitempty"`
 	DomainValues   []ir.ValueDecl     `json:"domain_values,omitempty"`
@@ -38,10 +53,23 @@ type ArchitectureIR struct {
 	DomainErrors   []ir.ErrorDecl     `json:"domain_errors,omitempty"`
 	DomainEvents   []ir.EventDecl     `json:"domain_events,omitempty"`
 	DomainPolicies []ir.PolicyDecl    `json:"domain_policies,omitempty"`
+	Slots          []ir.SlotDecl      `json:"slots,omitempty"`
 	Ports          []RepositoryPortIR `json:"ports"`
 	UseCases       []UseCaseIR        `json:"use_cases"`
 	HTTPHandlers   []HTTPHandlerIR    `json:"http_handlers"`
+	EventHandlers  []EventHandlerIR   `json:"event_handlers,omitempty"`
+	CronHandlers   []CronHandlerIR    `json:"cron_handlers,omitempty"`
 	Scenarios      []ir.ScenarioDecl  `json:"scenarios,omitempty"`
+}
+
+type EventHandlerIR struct {
+	ActionName string `json:"action_name"`
+	EventName  string `json:"event_name"`
+}
+
+type CronHandlerIR struct {
+	ActionName string `json:"action_name"`
+	Schedule   string `json:"schedule"`
 }
 
 type ArchLayer struct {
@@ -68,8 +96,10 @@ type UseCaseIR struct {
 	ActionName  string         `json:"action_name"`
 	Params      []ir.ParamDecl `json:"params"`
 	ReturnType  string         `json:"return_type"`
+	Traits      []ir.TraitDecl `json:"traits,omitempty"`
 	Steps       []ir.StepDecl  `json:"steps"`
 	RepoDeps    []string       `json:"repo_deps"`
+	SlotDeps    []string       `json:"slot_deps,omitempty"`
 	EmitsEvents bool           `json:"emits_events,omitempty"`
 	UsesActor   bool           `json:"uses_actor,omitempty"`
 }
@@ -110,6 +140,22 @@ func ExportIdent(s string) string {
 			sb.WriteString("SKU")
 		} else {
 			sb.WriteString(strings.ToUpper(p[:1]) + p[1:])
+		}
+	}
+	return sb.String()
+}
+
+// ToSnakeCase converts PascalCase or camelCase identifiers into deterministic snake_case.
+func ToSnakeCase(s string) string {
+	var sb strings.Builder
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				sb.WriteByte('_')
+			}
+			sb.WriteByte(byte(r + ('a' - 'A')))
+		} else {
+			sb.WriteRune(r)
 		}
 	}
 	return sb.String()

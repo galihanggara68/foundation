@@ -61,6 +61,30 @@ import (
 			sb.WriteString("\t})\n")
 		}
 
+		for _, gs := range sc.GivenSlots {
+			var stubArgs []string
+			for _, arg := range gs.Args {
+				stubArgs = append(stubArgs, emitGoExpr(arg, false))
+			}
+			if gs.ReturnExpr != nil {
+				retExpr := emitGoExpr(*gs.ReturnExpr, false)
+				if len(stubArgs) > 0 {
+					stubArgs = append(stubArgs, retExpr)
+					sb.WriteString(fmt.Sprintf("\tc.%sSlot.Stub%sReturn(%s)\n", gs.SlotName, gs.MethodName, strings.Join(stubArgs, ", ")))
+				} else {
+					sb.WriteString(fmt.Sprintf("\tc.%sSlot.Stub%sReturnAny(%s)\n", gs.SlotName, gs.MethodName, retExpr))
+				}
+			} else if gs.ThrowsError != "" {
+				errExpr := "domain.Err" + gs.ThrowsError
+				if len(stubArgs) > 0 {
+					stubArgs = append(stubArgs, errExpr)
+					sb.WriteString(fmt.Sprintf("\tc.%sSlot.Stub%sError(%s)\n", gs.SlotName, gs.MethodName, strings.Join(stubArgs, ", ")))
+				} else {
+					sb.WriteString(fmt.Sprintf("\tc.%sSlot.Stub%sErrorAny(%s)\n", gs.SlotName, gs.MethodName, errExpr))
+				}
+			}
+		}
+
 		var callArgs []string
 		callArgs = append(callArgs, "ctx")
 		for _, arg := range sc.WhenArgs {

@@ -39,6 +39,9 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 	for _, pol := range sem.Policies {
 		registerUniqueDecl(sym.policies, "policy", pol.Name, pol, pol.Span, &diags)
 	}
+	for _, sl := range sem.Slots {
+		registerUniqueDecl(sym.slots, "slot", sl.Name, sl, sl.Span, &diags)
+	}
 	for _, a := range sem.Actions {
 		registerUniqueDecl(sym.actions, "action", a.Name, a, a.Span, &diags)
 	}
@@ -76,6 +79,31 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 	}
 	for _, ev := range sem.Events {
 		validateFields(ev.Fields)
+	}
+	for _, sl := range sem.Slots {
+		for _, m := range sl.Methods {
+			for _, p := range m.Params {
+				if !sym.isKnownType(p.Type) {
+					diags = append(diags, ir.Diagnostic{
+						Code:     "FDN0202",
+						Severity: ir.SeverityError,
+						Message:  fmt.Sprintf("unknown parameter type %q in slot %s.%s", p.Type, sl.Name, m.Name),
+						Span:     p.Span,
+					})
+				}
+			}
+			if m.ReturnType != "" && !sym.isKnownType(m.ReturnType) {
+				diags = append(diags, ir.Diagnostic{
+					Code:     "FDN0202",
+					Severity: ir.SeverityError,
+					Message:  fmt.Sprintf("unknown return type %q in slot %s.%s", m.ReturnType, sl.Name, m.Name),
+					Span:     m.Span,
+				})
+			}
+			for _, th := range m.Throws {
+				validateErrorRef(th, fmt.Sprintf("slot %s.%s throws", sl.Name, m.Name), m.Span, sym, &diags)
+			}
+		}
 	}
 
 	for i := range sem.Policies {

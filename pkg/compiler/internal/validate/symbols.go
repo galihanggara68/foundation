@@ -40,6 +40,7 @@ type SymbolTable struct {
 	errors      map[string]ir.ErrorDecl
 	events      map[string]ir.EventDecl
 	policies    map[string]ir.PolicyDecl
+	slots       map[string]ir.SlotDecl
 	actions     map[string]ir.ActionDecl
 	actorFields map[string]ir.FieldDecl
 }
@@ -53,6 +54,7 @@ func NewSymbolTable() *SymbolTable {
 		errors:   make(map[string]ir.ErrorDecl),
 		events:   make(map[string]ir.EventDecl),
 		policies: make(map[string]ir.PolicyDecl),
+		slots:    make(map[string]ir.SlotDecl),
 		actions:  make(map[string]ir.ActionDecl),
 		actorFields: map[string]ir.FieldDecl{
 			"id":          {Name: "id", Type: "uuid"},
@@ -61,6 +63,19 @@ func NewSymbolTable() *SymbolTable {
 			"tenant_id":   {Name: "tenant_id", Type: "uuid"},
 		},
 	}
+}
+
+func (s *SymbolTable) findSlotMethod(slotName, methodName string) (ir.SlotDecl, ir.SlotMethodDecl, bool) {
+	sl, ok := s.slots[slotName]
+	if !ok {
+		return ir.SlotDecl{}, ir.SlotMethodDecl{}, false
+	}
+	for _, m := range sl.Methods {
+		if m.Name == methodName {
+			return sl, m, true
+		}
+	}
+	return sl, ir.SlotMethodDecl{}, false
 }
 
 func (s *SymbolTable) isKnownType(t string) bool {
@@ -77,6 +92,9 @@ func (s *SymbolTable) isKnownType(t string) bool {
 		return true
 	}
 	if _, ok := s.values[t]; ok {
+		return true
+	}
+	if _, ok := s.events[t]; ok {
 		return true
 	}
 	return false

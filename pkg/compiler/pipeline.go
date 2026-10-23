@@ -21,6 +21,7 @@ func defaultRegistry() *compilerRegistry {
 			validate.DeclarationPass{},
 			validate.ActionTypeCheckPass{},
 			validate.TerminationPass{},
+			validate.InvariantPass{},
 			validate.ScenarioTypeCheckPass{},
 		},
 		lowerers: map[arch.TargetKey]arch.PatternLowerer{

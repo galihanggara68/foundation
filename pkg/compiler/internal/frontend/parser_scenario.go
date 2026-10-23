@@ -34,6 +34,14 @@ func (p *parser) parseScenario() (ir.ScenarioDecl, bool) {
 		switch clause.text {
 		case "given":
 			p.advance()
+			if p.cur().kind == tokIdent && p.cur().text == "slot" {
+				gs, ok := p.parseGivenSlot(clause.span)
+				if !ok {
+					return ir.ScenarioDecl{}, false
+				}
+				scen.GivenSlots = append(scen.GivenSlots, gs)
+				continue
+			}
 			entTok, ok := p.expect(tokIdent)
 			if !ok {
 				return ir.ScenarioDecl{}, false
@@ -173,4 +181,67 @@ func (p *parser) parseScenario() (ir.ScenarioDecl, bool) {
 		return ir.ScenarioDecl{}, false
 	}
 	return scen, true
+}
+
+func (p *parser) parseGivenSlot(span ir.Span) (ir.GivenSlotDecl, bool) {
+	p.advance() // consume 'slot'
+	slotTok, ok := p.expect(tokIdent)
+	if !ok {
+		return ir.GivenSlotDecl{}, false
+	}
+	if _, ok := p.expect(tokDot); !ok {
+		return ir.GivenSlotDecl{}, false
+	}
+	mTok, ok := p.expect(tokIdent)
+	if !ok {
+		return ir.GivenSlotDecl{}, false
+	}
+	var args []ir.Expr
+	if p.cur().kind == tokLParen {
+		p.advance()
+		for p.cur().kind != tokRParen && p.cur().kind != tokEOF {
+			arg, ok := p.parseExpr()
+			if !ok {
+				return ir.GivenSlotDecl{}, false
+			}
+			args = append(args, arg)
+			if p.cur().kind == tokComma {
+				p.advance()
+			}
+		}
+		if _, ok := p.expect(tokRParen); !ok {
+			return ir.GivenSlotDecl{}, false
+		}
+	}
+	gs := ir.GivenSlotDecl{
+		SlotName:   slotTok.text,
+		MethodName: mTok.text,
+		Args:       args,
+		Span:       span,
+	}
+	outTok := p.cur()
+	if outTok.kind == tokIdent && outTok.text == "returns" {
+		p.advance()
+		retExpr, ok := p.parseExpr()
+		if !ok {
+			return ir.GivenSlotDecl{}, false
+		}
+		gs.ReturnExpr = &retExpr
+	} else if outTok.kind == tokIdent && outTok.text == "throws" {
+		p.advance()
+		errTok, ok := p.expect(tokIdent)
+		if !ok {
+			return ir.GivenSlotDecl{}, false
+		}
+		gs.ThrowsError = errTok.text
+	} else {
+		p.diags = append(p.diags, ir.Diagnostic{
+			Code:     "FDN0107",
+			Severity: ir.SeverityError,
+			Message:  fmt.Sprintf("expected 'returns' or 'throws' in slot stubbing, got %q", outTok.text),
+			Span:     outTok.span,
+		})
+		return ir.GivenSlotDecl{}, false
+	}
+	return gs, true
 }

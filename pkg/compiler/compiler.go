@@ -93,6 +93,7 @@ func Check(workspaceDir string) (*SemanticIR, []Diagnostic) {
 			sem.Errors = append(sem.Errors, fileIR.Errors...)
 			sem.Events = append(sem.Events, fileIR.Events...)
 			sem.Policies = append(sem.Policies, fileIR.Policies...)
+			sem.Slots = append(sem.Slots, fileIR.Slots...)
 			sem.Actions = append(sem.Actions, fileIR.Actions...)
 			sem.Scenarios = append(sem.Scenarios, fileIR.Scenarios...)
 		}
@@ -177,6 +178,11 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 		Profile:  bp,
 	}
 
+	storagePlan, nextLock, storageDiags := arch.BuildStoragePlan(workspaceDir, sem, bp, opts.Force)
+	if len(storageDiags) > 0 {
+		return nil, storageDiags
+	}
+
 	reg := defaultRegistry()
 
 	for _, target := range bp.Targets {
@@ -197,6 +203,9 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 		archIR, lowDiags := lowerer.Lower(sem, bp, target)
 		if len(lowDiags) > 0 {
 			return nil, lowDiags
+		}
+		if target.Kind == "backend" {
+			archIR.Storage = storagePlan
 		}
 		res.Architectures = append(res.Architectures, archIR)
 
@@ -219,6 +228,10 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 		if len(recDiags) > 0 {
 			return nil, recDiags
 		}
+	}
+
+	if lockDiags := arch.WriteLockFile(workspaceDir, nextLock); len(lockDiags) > 0 {
+		return nil, lockDiags
 	}
 
 	return res, nil

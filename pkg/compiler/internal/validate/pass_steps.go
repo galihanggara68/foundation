@@ -176,6 +176,9 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 			}
 		}
 
+	case ir.StepSlot:
+		validateSlotStep(s, scope, sym, diags)
+
 	case ir.StepReturn:
 		if s.Expr != nil {
 			sym.resolveEnumLiteral(s.Expr, a.ReturnType)
@@ -236,6 +239,60 @@ func validateEntityWhereClause(opName, entityName, whereField string, whereVal *
 		}
 	}
 	return ent, true
+}
+
+func validateSlotStep(s *ir.StepDecl, scope map[string]string, sym *SymbolTable, diags *[]ir.Diagnostic) {
+	sl, m, ok := sym.findSlotMethod(s.SlotName, s.SlotMethod)
+	if !ok {
+		if _, slotExists := sym.slots[s.SlotName]; !slotExists {
+			*diags = append(*diags, ir.Diagnostic{
+				Code:     "FDN0203",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("undeclared slot %q", s.SlotName),
+				Span:     s.Span,
+			})
+		} else {
+			*diags = append(*diags, ir.Diagnostic{
+				Code:     "FDN0204",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("slot %q has no method %q", sl.Name, s.SlotMethod),
+				Span:     s.Span,
+			})
+		}
+		return
+	}
+	validateSlotCallArgs(sl, m, s.SlotArgs, s.Span, scope, sym, diags)
+	if s.ElseError != "" {
+		validateErrorRef(s.ElseError, fmt.Sprintf("slot %s.%s else", sl.Name, m.Name), s.Span, sym, diags)
+	}
+	if s.VarName != "" && m.ReturnType != "" {
+		scope[s.VarName] = m.ReturnType
+	}
+}
+
+func validateSlotCallArgs(sl ir.SlotDecl, m ir.SlotMethodDecl, args []ir.Expr, span ir.Span, scope map[string]string, sym *SymbolTable, diags *[]ir.Diagnostic) {
+	if len(args) != len(m.Params) {
+		*diags = append(*diags, ir.Diagnostic{
+			Code:     "FDN0205",
+			Severity: ir.SeverityError,
+			Message:  fmt.Sprintf("slot %s.%s expects %d arguments, got %d", sl.Name, m.Name, len(m.Params), len(args)),
+			Span:     span,
+		})
+		return
+	}
+	for idx := range args {
+		expectedType := m.Params[idx].Type
+		sym.resolveEnumLiteral(&args[idx], expectedType)
+		argType, ok := inferExprType(&args[idx], scope, sym, diags)
+		if ok && !isAssignableType(expectedType, argType) {
+			*diags = append(*diags, ir.Diagnostic{
+				Code:     "FDN0205",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("argument %d to slot %s.%s has type %s, expected %s", idx+1, sl.Name, m.Name, argType, expectedType),
+				Span:     args[idx].Span,
+			})
+		}
+	}
 }
 
 func validateRequireStep(s *ir.StepDecl, scope map[string]string, sym *SymbolTable, diags *[]ir.Diagnostic) {

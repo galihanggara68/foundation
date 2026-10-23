@@ -54,6 +54,49 @@ func (p *InMemoryEventPublisher) ByType(eventType string) []any {
 `
 }
 
+func emitGoMemoryTransactionManager() string {
+	return `package memory
+
+import (
+	"context"
+	"sync"
+)
+
+type Snapshotter interface {
+	snapshot() func()
+}
+
+type InMemoryTransactionManager struct {
+	mu    sync.Mutex
+	repos []Snapshotter
+}
+
+func NewInMemoryTransactionManager(repos ...Snapshotter) *InMemoryTransactionManager {
+	return &InMemoryTransactionManager{repos: repos}
+}
+
+func (tm *InMemoryTransactionManager) WithinTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	tm.mu.Lock()
+	var restores []func()
+	for _, r := range tm.repos {
+		restores = append(restores, r.snapshot())
+	}
+	tm.mu.Unlock()
+
+	err := fn(ctx)
+	if err != nil {
+		tm.mu.Lock()
+		for _, restore := range restores {
+			restore()
+		}
+		tm.mu.Unlock()
+		return err
+	}
+	return nil
+}
+`
+}
+
 func emitGoSingleMemoryRepo(archIR *arch.ArchitectureIR, p arch.RepositoryPortIR) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf(`package memory
@@ -76,6 +119,7 @@ import (
 	sb.WriteString(fmt.Sprintf("type %s struct {\n\tmu sync.RWMutex\n\tentities []domain.%s\n\tseq int\n}\n\n", repoStruct, p.EntityName))
 	sb.WriteString(fmt.Sprintf("func New%s() *%s {\n\treturn &%s{}\n}\n\n", repoStruct, repoStruct, repoStruct))
 	sb.WriteString(fmt.Sprintf("func (r *%s) Seed(entity domain.%s) {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tr.entities = append(r.entities, entity)\n}\n\n", repoStruct, p.EntityName))
+	sb.WriteString(fmt.Sprintf("func (r *%s) snapshot() func() {\n\tr.mu.RLock()\n\tsaved := append([]domain.%s(nil), r.entities...)\n\tsavedSeq := r.seq\n\tr.mu.RUnlock()\n\treturn func() {\n\t\tr.mu.Lock()\n\t\tr.entities = saved\n\t\tr.seq = savedSeq\n\t\tr.mu.Unlock()\n\t}\n}\n\n", repoStruct, p.EntityName))
 
 	ent := entityMap[p.EntityName]
 	hasID := false
@@ -254,60 +298,130 @@ type Server struct {
 
 func emitGoBootstrap(archIR *arch.ArchitectureIR) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`package bootstrap
-
-import (
-	httpadapter "%s/internal/adapters/http"
-	"%s/internal/adapters/memory"
-	"%s/internal/usecases"
-)
-
-type Container struct {
-`, archIR.Module, archIR.Module, archIR.Module))
+	sb.WriteString("package bootstrap\n\nimport (\n\t\"database/sql\"\n")
+	sb.WriteString(fmt.Sprintf("\thttpadapter \"%s/internal/adapters/http\"\n", archIR.Module))
+	sb.WriteString(fmt.Sprintf("\t\"%s/internal/adapters/memory\"\n", archIR.Module))
+	sb.WriteString(fmt.Sprintf("\t\"%s/internal/adapters/postgres\"\n", archIR.Module))
+	sb.WriteString(fmt.Sprintf("\t\"%s/internal/ports\"\n", archIR.Module))
+	if len(archIR.Slots) > 0 {
+		sb.WriteString(fmt.Sprintf("\t\"%s/internal/slots\"\n", archIR.Module))
+	}
+	sb.WriteString(fmt.Sprintf("\t\"%s/internal/usecases\"\n", archIR.Module))
+	sb.WriteString(")\n\ntype Container struct {\n")
 
 	for _, p := range archIR.Ports {
 		sb.WriteString(fmt.Sprintf("\t%sRepo *memory.InMemory%sRepository\n", p.EntityName, p.EntityName))
 	}
+	for _, sl := range archIR.Slots {
+		sb.WriteString(fmt.Sprintf("\t%sSlot *memory.Fake%sSlot\n", sl.Name, sl.Name))
+	}
 	if len(archIR.DomainEvents) > 0 {
 		sb.WriteString("\tEvents *memory.InMemoryEventPublisher\n")
 	}
+	sb.WriteString("\tTxManager *memory.InMemoryTransactionManager\n")
+	for _, uc := range archIR.UseCases {
+		sb.WriteString(fmt.Sprintf("\t%s *usecases.%s\n", uc.ActionName, uc.Name))
+	}
+	sb.WriteString("\tHTTPServer *httpadapter.Server\n}\n\n")
+
+	sb.WriteString("type PostgresContainer struct {\n")
+	for _, p := range archIR.Ports {
+		sb.WriteString(fmt.Sprintf("\t%sRepo ports.%sRepository\n", p.EntityName, p.EntityName))
+	}
+	for _, sl := range archIR.Slots {
+		sb.WriteString(fmt.Sprintf("\t%sSlot ports.%sSlot\n", sl.Name, sl.Name))
+	}
+	if len(archIR.DomainEvents) > 0 {
+		sb.WriteString("\tEvents ports.EventPublisher\n")
+	}
+	sb.WriteString("\tTxManager ports.TransactionManager\n")
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("\t%s *usecases.%s\n", uc.ActionName, uc.Name))
 	}
 	sb.WriteString("\tHTTPServer *httpadapter.Server\n}\n\n")
 
 	sb.WriteString("func NewTestContainer() *Container {\n")
+	var snapRepos []string
 	for _, p := range archIR.Ports {
-		sb.WriteString(fmt.Sprintf("\t%sRepo := memory.NewInMemory%sRepository()\n", strings.ToLower(p.EntityName), p.EntityName))
+		rVar := strings.ToLower(p.EntityName) + "Repo"
+		sb.WriteString(fmt.Sprintf("\t%s := memory.NewInMemory%sRepository()\n", rVar, p.EntityName))
+		snapRepos = append(snapRepos, rVar)
+	}
+	for _, sl := range archIR.Slots {
+		sb.WriteString(fmt.Sprintf("\t%sSlot := memory.NewFake%sSlot(slots.New%sSlot())\n", strings.ToLower(sl.Name), sl.Name, sl.Name))
 	}
 	if len(archIR.DomainEvents) > 0 {
 		sb.WriteString("\tevents := memory.NewInMemoryEventPublisher()\n")
 	}
+	sb.WriteString(fmt.Sprintf("\ttxManager := memory.NewInMemoryTransactionManager(%s)\n\t_ = txManager\n", strings.Join(snapRepos, ", ")))
+	srvArgs := emitGoUseCaseWiring(&sb, archIR)
+	sb.WriteString(fmt.Sprintf("\tsrv := httpadapter.NewServer(%s)\n", strings.Join(srvArgs, ", ")))
+	sb.WriteString("\treturn &Container{\n")
+	emitGoContainerStructFields(&sb, archIR)
+	sb.WriteString("\t}\n}\n\n")
+	sb.WriteString(emitGoPostgresBootstrapFunc(archIR))
+
+	return sb.String()
+}
+
+func emitGoUseCaseWiring(sb *strings.Builder, archIR *arch.ArchitectureIR) []string {
 	var srvArgs []string
 	for _, uc := range archIR.UseCases {
 		var depArgs []string
 		for _, dep := range uc.RepoDeps {
 			depArgs = append(depArgs, strings.ToLower(dep)+"Repo")
 		}
+		for _, sDep := range uc.SlotDeps {
+			depArgs = append(depArgs, strings.ToLower(sDep)+"Slot")
+		}
 		if uc.EmitsEvents {
 			depArgs = append(depArgs, "events")
+		}
+		if _, isTx := hasUCTrait(uc, "transactional"); isTx {
+			depArgs = append(depArgs, "txManager")
 		}
 		varName := strings.ToLower(uc.ActionName) + "UC"
 		sb.WriteString(fmt.Sprintf("\t%s := usecases.New%s(%s)\n", varName, uc.Name, strings.Join(depArgs, ", ")))
 		srvArgs = append(srvArgs, varName)
 	}
-	sb.WriteString(fmt.Sprintf("\tsrv := httpadapter.NewServer(%s)\n", strings.Join(srvArgs, ", ")))
-	sb.WriteString("\treturn &Container{\n")
+	return srvArgs
+}
+
+func emitGoContainerStructFields(sb *strings.Builder, archIR *arch.ArchitectureIR) {
 	for _, p := range archIR.Ports {
 		sb.WriteString(fmt.Sprintf("\t\t%sRepo: %sRepo,\n", p.EntityName, strings.ToLower(p.EntityName)))
+	}
+	for _, sl := range archIR.Slots {
+		sb.WriteString(fmt.Sprintf("\t\t%sSlot: %sSlot,\n", sl.Name, strings.ToLower(sl.Name)))
 	}
 	if len(archIR.DomainEvents) > 0 {
 		sb.WriteString("\t\tEvents: events,\n")
 	}
+	sb.WriteString("\t\tTxManager: txManager,\n")
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.ActionName, strings.ToLower(uc.ActionName)+"UC"))
 	}
-	sb.WriteString("\t\tHTTPServer: srv,\n\t}\n}\n")
+	sb.WriteString("\t\tHTTPServer: srv,\n")
+}
 
+func emitGoPostgresBootstrapFunc(archIR *arch.ArchitectureIR) string {
+	var sb strings.Builder
+	sb.WriteString("func NewPostgresContainer(db *sql.DB) *PostgresContainer {\n")
+	for _, p := range archIR.Ports {
+		rVar := strings.ToLower(p.EntityName) + "Repo"
+		sb.WriteString(fmt.Sprintf("\t%s := postgres.NewPostgres%sRepository(db)\n\t_ = %s\n", rVar, p.EntityName, rVar))
+	}
+	for _, sl := range archIR.Slots {
+		sb.WriteString(fmt.Sprintf("\t%sSlot := slots.New%sSlot()\n\t_ = %sSlot\n", strings.ToLower(sl.Name), sl.Name, strings.ToLower(sl.Name)))
+	}
+	if len(archIR.DomainEvents) > 0 {
+		sb.WriteString("\tevents := memory.NewInMemoryEventPublisher()\n")
+	}
+	sb.WriteString("\ttxManager := postgres.NewPostgresTransactionManager(db)\n\t_ = txManager\n")
+	srvArgs := emitGoUseCaseWiring(&sb, archIR)
+	sb.WriteString(fmt.Sprintf("\tsrv := httpadapter.NewServer(%s)\n", strings.Join(srvArgs, ", ")))
+	sb.WriteString("\treturn &PostgresContainer{\n")
+	emitGoContainerStructFields(&sb, archIR)
+	sb.WriteString("\t}\n}\n")
 	return sb.String()
 }

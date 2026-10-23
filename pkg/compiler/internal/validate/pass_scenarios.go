@@ -33,6 +33,53 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 			validateFieldInitializers("entity", ent.Name, g.Fields, nil, sym, &diags)
 		}
 
+		for j := range sc.GivenSlots {
+			gs := &sc.GivenSlots[j]
+			sl, m, ok := sym.findSlotMethod(gs.SlotName, gs.MethodName)
+			if !ok {
+				diags = append(diags, ir.Diagnostic{
+					Code:     "FDN0203",
+					Severity: ir.SeverityError,
+					Message:  fmt.Sprintf("unknown slot method %s.%s in scenario given slot", gs.SlotName, gs.MethodName),
+					Span:     gs.Span,
+				})
+				continue
+			}
+			if len(gs.Args) > 0 {
+				validateSlotCallArgs(sl, m, gs.Args, gs.Span, nil, sym, &diags)
+			}
+			if gs.ReturnExpr != nil {
+				sym.resolveEnumLiteral(gs.ReturnExpr, m.ReturnType)
+				retType, ok := inferExprType(gs.ReturnExpr, nil, sym, &diags)
+				if ok && m.ReturnType != "" && !isAssignableType(m.ReturnType, retType) {
+					diags = append(diags, ir.Diagnostic{
+						Code:     "FDN0205",
+						Severity: ir.SeverityError,
+						Message:  fmt.Sprintf("slot %s.%s returns %s, got %s", sl.Name, m.Name, m.ReturnType, retType),
+						Span:     gs.ReturnExpr.Span,
+					})
+				}
+			}
+			if gs.ThrowsError != "" {
+				validateErrorRef(gs.ThrowsError, fmt.Sprintf("scenario given slot %s.%s throws", sl.Name, m.Name), gs.Span, sym, &diags)
+				inContract := false
+				for _, th := range m.Throws {
+					if th == gs.ThrowsError {
+						inContract = true
+						break
+					}
+				}
+				if !inContract {
+					diags = append(diags, ir.Diagnostic{
+						Code:     "FDN0206",
+						Severity: ir.SeverityError,
+						Message:  fmt.Sprintf("error %q is not declared in slot %s.%s throws contract", gs.ThrowsError, sl.Name, m.Name),
+						Span:     gs.Span,
+					})
+				}
+			}
+		}
+
 		act, ok := sym.actions[sc.WhenAction]
 		if !ok {
 			diags = append(diags, ir.Diagnostic{

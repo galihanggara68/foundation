@@ -60,8 +60,30 @@ type HTTPHandlerIR struct {
 	Params     []ParamDecl `json:"params,omitempty"`
 }
 
-// LowerArchitecture lowers the validated SemanticIR + TargetConfig into an ArchitectureIR.
+// LowerArchitecture lowers the validated SemanticIR + TargetConfig into an ArchitectureIR
+// by dispatching to the registered PatternLowerer strategy for the target.
 func LowerArchitecture(sem *SemanticIR, bp *BuildProfile, target TargetConfig) (*ArchitectureIR, []Diagnostic) {
+	reg := defaultRegistry()
+	key := TargetKey{
+		Kind:         target.Kind,
+		Language:     target.Language,
+		Architecture: target.Architecture,
+	}
+	lowerer, ok := reg.lowerers[key]
+	if !ok {
+		return nil, []Diagnostic{{
+			Code:     "FDN0300",
+			Severity: SeverityError,
+			Message:  fmt.Sprintf("unsupported target combination: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
+			Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+		}}
+	}
+	return lowerer.Lower(sem, bp, target)
+}
+
+type goHexagonalLowerer struct{}
+
+func (goHexagonalLowerer) Lower(sem *SemanticIR, bp *BuildProfile, target TargetConfig) (*ArchitectureIR, []Diagnostic) {
 	arch := &ArchitectureIR{
 		TargetName:     target.Name,
 		Kind:           target.Kind,
@@ -74,24 +96,14 @@ func LowerArchitecture(sem *SemanticIR, bp *BuildProfile, target TargetConfig) (
 		DomainEntities: sem.Entities,
 		DomainErrors:   sem.Errors,
 		Scenarios:      sem.Scenarios,
-	}
-
-	if target.Kind == "backend" && target.Language == "go" && target.Architecture == "hexagonal" {
-		arch.Layers = []ArchLayer{
+		Layers: []ArchLayer{
 			{Name: "domain", Package: "internal/domain"},
 			{Name: "ports", Package: "internal/ports"},
 			{Name: "usecases", Package: "internal/usecases"},
 			{Name: "adapters_http", Package: "internal/adapters/http"},
 			{Name: "adapters_memory", Package: "internal/adapters/memory"},
 			{Name: "bootstrap", Package: "internal/bootstrap"},
-		}
-	} else {
-		return nil, []Diagnostic{{
-			Code:     "FDN0300",
-			Severity: SeverityError,
-			Message:  fmt.Sprintf("unsupported target combination: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
-			Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-		}}
+		},
 	}
 
 	entityFields := make(map[string]map[string]string)

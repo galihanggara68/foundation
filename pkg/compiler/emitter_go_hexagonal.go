@@ -7,6 +7,16 @@ import (
 	"strings"
 )
 
+type goHexagonalEmitter struct{}
+
+func (goHexagonalEmitter) Emit(arch *ArchitectureIR) (Emission, []Diagnostic) {
+	tracked, stubs, diags := EmitGoHexagonal(arch)
+	return Emission{
+		TrackedFiles: tracked,
+		StubFiles:    stubs,
+	}, diags
+}
+
 // EmitGoHexagonal emits a complete Go Hexagonal Architecture workspace from the lowered ArchitectureIR.
 func EmitGoHexagonal(arch *ArchitectureIR) (map[string][]byte, map[string][]byte, []Diagnostic) {
 	files := make(map[string][]byte)

@@ -22,16 +22,73 @@ var validErrorKinds = map[string]bool{
 	"internal":     true,
 }
 
+// symbolTable indexes declared domain constructs for fast, DRY lookup across validation passes.
+type symbolTable struct {
+	entities map[string]EntityDecl
+	values   map[string]ValueDecl
+	errors   map[string]ErrorDecl
+	actions  map[string]ActionDecl
+}
+
+func newSymbolTable() *symbolTable {
+	return &symbolTable{
+		entities: make(map[string]EntityDecl),
+		values:   make(map[string]ValueDecl),
+		errors:   make(map[string]ErrorDecl),
+		actions:  make(map[string]ActionDecl),
+	}
+}
+
+func (s *symbolTable) isKnownType(t string) bool {
+	if scalarTypes[t] {
+		return true
+	}
+	if _, ok := s.entities[t]; ok {
+		return true
+	}
+	if _, ok := s.values[t]; ok {
+		return true
+	}
+	return false
+}
+
+func (s *symbolTable) fieldsOf(typeName string) map[string]FieldDecl {
+	m := make(map[string]FieldDecl)
+	if e, ok := s.entities[typeName]; ok {
+		for _, f := range e.Fields {
+			m[f.Name] = f
+		}
+	}
+	if v, ok := s.values[typeName]; ok {
+		for _, f := range v.Fields {
+			m[f.Name] = f
+		}
+	}
+	return m
+}
+
+func isAssignableType(expected, actual string) bool {
+	return expected == actual || (expected == "uuid" && actual == "string")
+}
+
 func validateIR(ir *SemanticIR) []Diagnostic {
+	sym := newSymbolTable()
+	reg := defaultRegistry()
+	var diags []Diagnostic
+	for _, pass := range reg.passes {
+		diags = append(diags, pass.Validate(ir, sym)...)
+	}
+	return diags
+}
+
+// declarationPass populates the symbolTable and validates top-level declarations, error kinds, and field types.
+type declarationPass struct{}
+
+func (declarationPass) Validate(ir *SemanticIR, sym *symbolTable) []Diagnostic {
 	var diags []Diagnostic
 
-	entities := make(map[string]EntityDecl)
-	values := make(map[string]ValueDecl)
-	errorsMap := make(map[string]ErrorDecl)
-	actions := make(map[string]ActionDecl)
-
 	for _, v := range ir.Values {
-		if _, exists := values[v.Name]; exists {
+		if _, exists := sym.values[v.Name]; exists {
 			diags = append(diags, Diagnostic{
 				Code:     "FDN0200",
 				Severity: SeverityError,
@@ -39,11 +96,11 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 				Span:     v.Span,
 			})
 		}
-		values[v.Name] = v
+		sym.values[v.Name] = v
 	}
 
 	for _, e := range ir.Entities {
-		if _, exists := entities[e.Name]; exists {
+		if _, exists := sym.entities[e.Name]; exists {
 			diags = append(diags, Diagnostic{
 				Code:     "FDN0200",
 				Severity: SeverityError,
@@ -51,7 +108,7 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 				Span:     e.Span,
 			})
 		}
-		entities[e.Name] = e
+		sym.entities[e.Name] = e
 	}
 
 	for _, errDecl := range ir.Errors {
@@ -63,25 +120,16 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 				Span:     errDecl.Span,
 			})
 		}
-		errorsMap[errDecl.Name] = errDecl
+		sym.errors[errDecl.Name] = errDecl
 	}
 
-	isKnownType := func(t string) bool {
-		if scalarTypes[t] {
-			return true
-		}
-		if _, ok := entities[t]; ok {
-			return true
-		}
-		if _, ok := values[t]; ok {
-			return true
-		}
-		return false
+	for _, a := range ir.Actions {
+		sym.actions[a.Name] = a
 	}
 
-	validateFields := func(fields []FieldDecl) {
+	validateFieldTypes := func(fields []FieldDecl) {
 		for _, f := range fields {
-			if !isKnownType(f.Type) {
+			if !sym.isKnownType(f.Type) {
 				diags = append(diags, Diagnostic{
 					Code:     "FDN0202",
 					Severity: SeverityError,
@@ -93,32 +141,25 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 	}
 
 	for _, v := range ir.Values {
-		validateFields(v.Fields)
+		validateFieldTypes(v.Fields)
 	}
 	for _, e := range ir.Entities {
-		validateFields(e.Fields)
+		validateFieldTypes(e.Fields)
 	}
 
-	fieldMap := func(typeName string) map[string]FieldDecl {
-		m := make(map[string]FieldDecl)
-		if e, ok := entities[typeName]; ok {
-			for _, f := range e.Fields {
-				m[f.Name] = f
-			}
-		}
-		if v, ok := values[typeName]; ok {
-			for _, f := range v.Fields {
-				m[f.Name] = f
-			}
-		}
-		return m
-	}
+	return diags
+}
+
+// actionTypeCheckPass validates Action parameters, return types, and Action Pipeline step types.
+type actionTypeCheckPass struct{}
+
+func (actionTypeCheckPass) Validate(ir *SemanticIR, sym *symbolTable) []Diagnostic {
+	var diags []Diagnostic
 
 	for _, a := range ir.Actions {
-		actions[a.Name] = a
 		scope := make(map[string]string)
 		for _, p := range a.Params {
-			if !isKnownType(p.Type) {
+			if !sym.isKnownType(p.Type) {
 				diags = append(diags, Diagnostic{
 					Code:     "FDN0202",
 					Severity: SeverityError,
@@ -128,7 +169,7 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 			}
 			scope[p.Name] = p.Type
 		}
-		if a.ReturnType != "" && !isKnownType(a.ReturnType) {
+		if a.ReturnType != "" && !sym.isKnownType(a.ReturnType) {
 			diags = append(diags, Diagnostic{
 				Code:     "FDN0202",
 				Severity: SeverityError,
@@ -138,120 +179,111 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 		}
 
 		for _, s := range a.Steps {
-			switch s.Kind {
-			case StepQuery:
-				ent, ok := entities[s.EntityName]
-				if !ok {
-					diags = append(diags, Diagnostic{
-						Code:     "FDN0203",
-						Severity: SeverityError,
-						Message:  fmt.Sprintf("unknown entity %q in query", s.EntityName),
-						Span:     s.Span,
-					})
-					continue
-				}
-				fields := fieldMap(ent.Name)
-				wf, fOk := fields[s.WhereField]
-				if !fOk {
-					diags = append(diags, Diagnostic{
-						Code:     "FDN0204",
-						Severity: SeverityError,
-						Message:  fmt.Sprintf("entity %q has no field %q", ent.Name, s.WhereField),
-						Span:     s.Span,
-					})
-				} else if s.WhereValue != nil {
-					valType, ok := inferExprType(*s.WhereValue, scope, fieldMap, &diags)
-					if ok && valType != wf.Type {
-						diags = append(diags, Diagnostic{
-							Code:     "FDN0205",
-							Severity: SeverityError,
-							Message:  fmt.Sprintf("type mismatch in query where clause: field %q is %s, got %s", s.WhereField, wf.Type, valType),
-							Span:     s.WhereValue.Span,
-						})
-					}
-				}
-				if s.ElseError == "" {
-					diags = append(diags, Diagnostic{
-						Code:     "FDN0206",
-						Severity: SeverityError,
-						Message:  "query one requires an 'else <Error>' clause",
-						Span:     s.Span,
-					})
-				} else if _, errOk := errorsMap[s.ElseError]; !errOk {
-					diags = append(diags, Diagnostic{
-						Code:     "FDN0206",
-						Severity: SeverityError,
-						Message:  fmt.Sprintf("undeclared error %q", s.ElseError),
-						Span:     s.Span,
-					})
-				}
-				scope[s.VarName] = ent.Name
+			validateActionStep(a, s, scope, sym, &diags)
+		}
+	}
 
-			case StepCreate:
-				ent, ok := entities[s.EntityName]
-				if !ok {
-					diags = append(diags, Diagnostic{
-						Code:     "FDN0203",
-						Severity: SeverityError,
-						Message:  fmt.Sprintf("unknown entity %q in create", s.EntityName),
-						Span:     s.Span,
-					})
-					continue
-				}
-				fields := fieldMap(ent.Name)
-				for _, fi := range s.Fields {
-					ef, fOk := fields[fi.Name]
-					if !fOk {
-						diags = append(diags, Diagnostic{
-							Code:     "FDN0204",
-							Severity: SeverityError,
-							Message:  fmt.Sprintf("entity %q has no field %q", ent.Name, fi.Name),
-							Span:     fi.Span,
-						})
-						continue
-					}
-					valType, ok := inferExprType(fi.Value, scope, fieldMap, &diags)
-					if ok && valType != ef.Type {
-						diags = append(diags, Diagnostic{
-							Code:     "FDN0205",
-							Severity: SeverityError,
-							Message:  fmt.Sprintf("type mismatch for field %q: expected %s, got %s", fi.Name, ef.Type, valType),
-							Span:     fi.Value.Span,
-						})
-					}
-				}
-				scope[s.VarName] = ent.Name
+	return diags
+}
 
-			case StepLet:
-				if s.Expr != nil {
-					t, ok := inferExprType(*s.Expr, scope, fieldMap, &diags)
-					if ok {
-						scope[s.VarName] = t
-					}
-				}
+func validateActionStep(a ActionDecl, s StepDecl, scope map[string]string, sym *symbolTable, diags *[]Diagnostic) {
+	switch s.Kind {
+	case StepQuery:
+		ent, ok := sym.entities[s.EntityName]
+		if !ok {
+			*diags = append(*diags, Diagnostic{
+				Code:     "FDN0203",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("unknown entity %q in query", s.EntityName),
+				Span:     s.Span,
+			})
+			return
+		}
+		fields := sym.fieldsOf(ent.Name)
+		wf, fOk := fields[s.WhereField]
+		if !fOk {
+			*diags = append(*diags, Diagnostic{
+				Code:     "FDN0204",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("entity %q has no field %q", ent.Name, s.WhereField),
+				Span:     s.Span,
+			})
+		} else if s.WhereValue != nil {
+			valType, ok := inferExprType(*s.WhereValue, scope, sym, diags)
+			if ok && !isAssignableType(wf.Type, valType) {
+				*diags = append(*diags, Diagnostic{
+					Code:     "FDN0205",
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("type mismatch in query where clause: field %q is %s, got %s", s.WhereField, wf.Type, valType),
+					Span:     s.WhereValue.Span,
+				})
+			}
+		}
+		if s.ElseError == "" {
+			*diags = append(*diags, Diagnostic{
+				Code:     "FDN0206",
+				Severity: SeverityError,
+				Message:  "query one requires an 'else <Error>' clause",
+				Span:     s.Span,
+			})
+		} else if _, errOk := sym.errors[s.ElseError]; !errOk {
+			*diags = append(*diags, Diagnostic{
+				Code:     "FDN0206",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("undeclared error %q", s.ElseError),
+				Span:     s.Span,
+			})
+		}
+		scope[s.VarName] = ent.Name
 
-			case StepReturn:
-				if s.Expr != nil {
-					t, ok := inferExprType(*s.Expr, scope, fieldMap, &diags)
-					if ok && a.ReturnType != "" && t != a.ReturnType {
-						diags = append(diags, Diagnostic{
-							Code:     "FDN0205",
-							Severity: SeverityError,
-							Message:  fmt.Sprintf("return type mismatch: action %q returns %s, got %s", a.Name, a.ReturnType, t),
-							Span:     s.Expr.Span,
-						})
-					}
-				}
+	case StepCreate:
+		ent, ok := sym.entities[s.EntityName]
+		if !ok {
+			*diags = append(*diags, Diagnostic{
+				Code:     "FDN0203",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("unknown entity %q in create", s.EntityName),
+				Span:     s.Span,
+			})
+			return
+		}
+		validateFieldInitializers("entity", ent.Name, s.Fields, scope, sym, diags)
+		scope[s.VarName] = ent.Name
+
+	case StepLet:
+		if s.Expr != nil {
+			if t, ok := inferExprType(*s.Expr, scope, sym, diags); ok {
+				scope[s.VarName] = t
+			}
+		}
+
+	case StepReturn:
+		if s.Expr != nil {
+			t, ok := inferExprType(*s.Expr, scope, sym, diags)
+			if ok && a.ReturnType != "" && !isAssignableType(a.ReturnType, t) {
+				*diags = append(*diags, Diagnostic{
+					Code:     "FDN0205",
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("return type mismatch: action %q returns %s, got %s", a.Name, a.ReturnType, t),
+					Span:     s.Expr.Span,
+				})
 			}
 		}
 	}
+}
+
+// scenarioTypeCheckPass validates Scenario given seeds, when action invocations, and expect assertions.
+type scenarioTypeCheckPass struct{}
+
+func (scenarioTypeCheckPass) Validate(ir *SemanticIR, sym *symbolTable) []Diagnostic {
+	var diags []Diagnostic
 
 	for _, sc := range ir.Scenarios {
 		for _, g := range sc.Givens {
 			if g.EntityName == "actor" {
 				continue
 			}
-			ent, ok := entities[g.EntityName]
+			ent, ok := sym.entities[g.EntityName]
 			if !ok {
 				diags = append(diags, Diagnostic{
 					Code:     "FDN0203",
@@ -261,30 +293,10 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 				})
 				continue
 			}
-			fields := fieldMap(ent.Name)
-			for _, fi := range g.Fields {
-				ef, fOk := fields[fi.Name]
-				if !fOk {
-					diags = append(diags, Diagnostic{
-						Code:     "FDN0204",
-						Severity: SeverityError,
-						Message:  fmt.Sprintf("entity %q has no field %q", ent.Name, fi.Name),
-						Span:     fi.Span,
-					})
-					continue
-				}
-				valType, ok := inferExprType(fi.Value, nil, fieldMap, &diags)
-				if ok && valType != ef.Type && !(ef.Type == "uuid" && valType == "string") {
-					diags = append(diags, Diagnostic{
-						Code:     "FDN0205",
-						Severity: SeverityError,
-						Message:  fmt.Sprintf("type mismatch for field %q in scenario given: expected %s, got %s", fi.Name, ef.Type, valType),
-						Span:     fi.Value.Span,
-					})
-				}
-			}
+			validateFieldInitializers("entity", ent.Name, g.Fields, nil, sym, &diags)
 		}
-		act, ok := actions[sc.WhenAction]
+
+		act, ok := sym.actions[sc.WhenAction]
 		if !ok {
 			diags = append(diags, Diagnostic{
 				Code:     "FDN0207",
@@ -294,6 +306,7 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 			})
 			continue
 		}
+
 		if len(sc.WhenArgs) != len(act.Params) {
 			diags = append(diags, Diagnostic{
 				Code:     "FDN0205",
@@ -303,9 +316,9 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 			})
 		} else {
 			for i, arg := range sc.WhenArgs {
-				argType, ok := inferExprType(arg, nil, fieldMap, &diags)
+				argType, ok := inferExprType(arg, nil, sym, &diags)
 				paramType := act.Params[i].Type
-				if ok && argType != paramType && !(paramType == "uuid" && argType == "string") {
+				if ok && !isAssignableType(paramType, argType) {
 					diags = append(diags, Diagnostic{
 						Code:     "FDN0205",
 						Severity: SeverityError,
@@ -315,12 +328,13 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 				}
 			}
 		}
+
 		expectScope := map[string]string{
 			"result": act.ReturnType,
 		}
 		for _, ex := range sc.Expects {
 			if ex.ErrorRaised != "" {
-				if _, errOk := errorsMap[ex.ErrorRaised]; !errOk {
+				if _, errOk := sym.errors[ex.ErrorRaised]; !errOk {
 					diags = append(diags, Diagnostic{
 						Code:     "FDN0206",
 						Severity: SeverityError,
@@ -330,9 +344,9 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 				}
 				continue
 			}
-			lt, lok := inferExprType(ex.Left, expectScope, fieldMap, &diags)
-			rt, rok := inferExprType(ex.Right, expectScope, fieldMap, &diags)
-			if lok && rok && lt != rt && !(lt == "uuid" && rt == "string") {
+			lt, lok := inferExprType(ex.Left, expectScope, sym, &diags)
+			rt, rok := inferExprType(ex.Right, expectScope, sym, &diags)
+			if lok && rok && !isAssignableType(lt, rt) {
 				diags = append(diags, Diagnostic{
 					Code:     "FDN0205",
 					Severity: SeverityError,
@@ -346,7 +360,32 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 	return diags
 }
 
-func inferExprType(e Expr, scope map[string]string, fieldMap func(string) map[string]FieldDecl, diags *[]Diagnostic) (string, bool) {
+func validateFieldInitializers(kindLabel, typeName string, inits []FieldInitDecl, scope map[string]string, sym *symbolTable, diags *[]Diagnostic) {
+	fields := sym.fieldsOf(typeName)
+	for _, fi := range inits {
+		f, fOk := fields[fi.Name]
+		if !fOk {
+			*diags = append(*diags, Diagnostic{
+				Code:     "FDN0204",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("%s %q has no field %q", kindLabel, typeName, fi.Name),
+				Span:     fi.Span,
+			})
+			continue
+		}
+		valType, ok := inferExprType(fi.Value, scope, sym, diags)
+		if ok && !isAssignableType(f.Type, valType) {
+			*diags = append(*diags, Diagnostic{
+				Code:     "FDN0205",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("type mismatch for field %q: expected %s, got %s", fi.Name, f.Type, valType),
+				Span:     fi.Value.Span,
+			})
+		}
+	}
+}
+
+func inferExprType(e Expr, scope map[string]string, sym *symbolTable, diags *[]Diagnostic) (string, bool) {
 	switch e.Kind {
 	case ExprString:
 		return "string", true
@@ -379,7 +418,7 @@ func inferExprType(e Expr, scope map[string]string, fieldMap func(string) map[st
 			})
 			return "", false
 		}
-		fields := fieldMap(targetType)
+		fields := sym.fieldsOf(targetType)
 		f, fOk := fields[e.Field]
 		if !fOk {
 			*diags = append(*diags, Diagnostic{
@@ -395,8 +434,8 @@ func inferExprType(e Expr, scope map[string]string, fieldMap func(string) map[st
 		if e.Left == nil || e.Right == nil {
 			return "", false
 		}
-		lt, lok := inferExprType(*e.Left, scope, fieldMap, diags)
-		rt, rok := inferExprType(*e.Right, scope, fieldMap, diags)
+		lt, lok := inferExprType(*e.Left, scope, sym, diags)
+		rt, rok := inferExprType(*e.Right, scope, sym, diags)
 		if !lok || !rok {
 			return "", false
 		}
@@ -417,7 +456,7 @@ func inferExprType(e Expr, scope map[string]string, fieldMap func(string) map[st
 		})
 		return "", false
 	case ExprConstruct:
-		fields := fieldMap(e.TypeName)
+		fields := sym.fieldsOf(e.TypeName)
 		if len(fields) == 0 {
 			*diags = append(*diags, Diagnostic{
 				Code:     "FDN0202",
@@ -427,27 +466,7 @@ func inferExprType(e Expr, scope map[string]string, fieldMap func(string) map[st
 			})
 			return "", false
 		}
-		for _, fi := range e.Fields {
-			f, fOk := fields[fi.Name]
-			if !fOk {
-				*diags = append(*diags, Diagnostic{
-					Code:     "FDN0204",
-					Severity: SeverityError,
-					Message:  fmt.Sprintf("type %q has no field %q", e.TypeName, fi.Name),
-					Span:     fi.Span,
-				})
-				continue
-			}
-			vt, vok := inferExprType(fi.Value, scope, fieldMap, diags)
-			if vok && vt != f.Type && !(f.Type == "uuid" && vt == "string") {
-				*diags = append(*diags, Diagnostic{
-					Code:     "FDN0205",
-					Severity: SeverityError,
-					Message:  fmt.Sprintf("type mismatch for field %q: expected %s, got %s", fi.Name, f.Type, vt),
-					Span:     fi.Value.Span,
-				})
-			}
-		}
+		validateFieldInitializers("type", e.TypeName, e.Fields, scope, sym, diags)
 		return e.TypeName, true
 	default:
 		return "", false

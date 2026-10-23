@@ -300,6 +300,8 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 		Profile:  bp,
 	}
 
+	reg := defaultRegistry()
+
 	for _, target := range bp.Targets {
 		arch, lowDiags := LowerArchitecture(sem, bp, target)
 		if len(lowDiags) > 0 {
@@ -307,16 +309,29 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 		}
 		res.Architectures = append(res.Architectures, arch)
 
-		if target.Kind == "backend" && target.Language == "go" && target.Architecture == "hexagonal" {
-			tracked, stubs, emitDiags := EmitGoHexagonal(arch)
-			if len(emitDiags) > 0 {
-				return nil, emitDiags
-			}
-			outDir := filepath.Join(workspaceDir, filepath.FromSlash(target.OutDir))
-			recDiags := ReconcileManifest(outDir, tracked, stubs, opts.Force)
-			if len(recDiags) > 0 {
-				return nil, recDiags
-			}
+		key := TargetKey{
+			Kind:         target.Kind,
+			Language:     target.Language,
+			Architecture: target.Architecture,
+		}
+		emitter, ok := reg.emitters[key]
+		if !ok {
+			return nil, []Diagnostic{{
+				Code:     "FDN0300",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("no emitter registered for target: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
+				Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			}}
+		}
+
+		emission, emitDiags := emitter.Emit(arch)
+		if len(emitDiags) > 0 {
+			return nil, emitDiags
+		}
+		outDir := filepath.Join(workspaceDir, filepath.FromSlash(target.OutDir))
+		recDiags := ReconcileManifest(outDir, emission.TrackedFiles, emission.StubFiles, opts.Force)
+		if len(recDiags) > 0 {
+			return nil, recDiags
 		}
 	}
 

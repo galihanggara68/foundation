@@ -244,11 +244,7 @@ func (l *lexer) tokenize() ([]token, []Diagnostic) {
 				tokens = append(tokens, token{kind: tokNumber, text: sb.String(), span: span})
 			} else if unicode.IsLetter(r) || r == '_' {
 				var sb strings.Builder
-				for unicode.IsLetter(l.peek()) || unicode.IsDigit(l.peek()) || l.peek() == '_' || l.peek() == '/' || l.peek() == '-' {
-					// Wait: only allow '/' or '-' inside paths? Paths in @http(path: "/v1/books") are strings, while GET/POST are idents.
-					if l.peek() == '/' || l.peek() == '-' {
-						break
-					}
+				for unicode.IsLetter(l.peek()) || unicode.IsDigit(l.peek()) || l.peek() == '_' {
 					sb.WriteRune(l.next())
 				}
 				tokens = append(tokens, token{kind: tokIdent, text: sb.String(), span: span})
@@ -407,50 +403,39 @@ func (p *parser) parseBlueprint() *SemanticIR {
 	return ir
 }
 
-func (p *parser) parseValue() (ValueDecl, bool) {
-	kw := p.advance() // value
+func (p *parser) parseNamedStruct() (string, []FieldDecl, Span, bool) {
+	kw := p.advance()
 	nameTok, ok := p.expect(tokIdent)
 	if !ok {
-		return ValueDecl{}, false
+		return "", nil, Span{}, false
 	}
 	if _, ok := p.expect(tokLBrace); !ok {
-		return ValueDecl{}, false
+		return "", nil, Span{}, false
 	}
 	fields, ok := p.parseFieldList()
 	if !ok {
-		return ValueDecl{}, false
+		return "", nil, Span{}, false
 	}
 	if _, ok := p.expect(tokRBrace); !ok {
+		return "", nil, Span{}, false
+	}
+	return nameTok.text, fields, kw.span, true
+}
+
+func (p *parser) parseValue() (ValueDecl, bool) {
+	name, fields, span, ok := p.parseNamedStruct()
+	if !ok {
 		return ValueDecl{}, false
 	}
-	return ValueDecl{
-		Name:   nameTok.text,
-		Fields: fields,
-		Span:   kw.span,
-	}, true
+	return ValueDecl{Name: name, Fields: fields, Span: span}, true
 }
 
 func (p *parser) parseEntity() (EntityDecl, bool) {
-	kw := p.advance() // entity
-	nameTok, ok := p.expect(tokIdent)
+	name, fields, span, ok := p.parseNamedStruct()
 	if !ok {
 		return EntityDecl{}, false
 	}
-	if _, ok := p.expect(tokLBrace); !ok {
-		return EntityDecl{}, false
-	}
-	fields, ok := p.parseFieldList()
-	if !ok {
-		return EntityDecl{}, false
-	}
-	if _, ok := p.expect(tokRBrace); !ok {
-		return EntityDecl{}, false
-	}
-	return EntityDecl{
-		Name:   nameTok.text,
-		Fields: fields,
-		Span:   kw.span,
-	}, true
+	return EntityDecl{Name: name, Fields: fields, Span: span}, true
 }
 
 func (p *parser) parseFieldList() ([]FieldDecl, bool) {

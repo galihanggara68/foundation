@@ -79,8 +79,8 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 		return false
 	}
 
-	for _, v := range ir.Values {
-		for _, f := range v.Fields {
+	validateFields := func(fields []FieldDecl) {
+		for _, f := range fields {
 			if !isKnownType(f.Type) {
 				diags = append(diags, Diagnostic{
 					Code:     "FDN0202",
@@ -92,17 +92,11 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 		}
 	}
 
+	for _, v := range ir.Values {
+		validateFields(v.Fields)
+	}
 	for _, e := range ir.Entities {
-		for _, f := range e.Fields {
-			if !isKnownType(f.Type) {
-				diags = append(diags, Diagnostic{
-					Code:     "FDN0202",
-					Severity: SeverityError,
-					Message:  fmt.Sprintf("unknown type %q for field %q", f.Type, f.Name),
-					Span:     f.Span,
-				})
-			}
-		}
+		validateFields(e.Fields)
 	}
 
 	fieldMap := func(typeName string) map[string]FieldDecl {
@@ -176,15 +170,20 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 						})
 					}
 				}
-				if s.ElseError != "" {
-					if _, errOk := errorsMap[s.ElseError]; !errOk {
-						diags = append(diags, Diagnostic{
-							Code:     "FDN0206",
-							Severity: SeverityError,
-							Message:  fmt.Sprintf("undeclared error %q", s.ElseError),
-							Span:     s.Span,
-						})
-					}
+				if s.ElseError == "" {
+					diags = append(diags, Diagnostic{
+						Code:     "FDN0206",
+						Severity: SeverityError,
+						Message:  "query one requires an 'else <Error>' clause",
+						Span:     s.Span,
+					})
+				} else if _, errOk := errorsMap[s.ElseError]; !errOk {
+					diags = append(diags, Diagnostic{
+						Code:     "FDN0206",
+						Severity: SeverityError,
+						Message:  fmt.Sprintf("undeclared error %q", s.ElseError),
+						Span:     s.Span,
+					})
 				}
 				scope[s.VarName] = ent.Name
 
@@ -252,22 +251,95 @@ func validateIR(ir *SemanticIR) []Diagnostic {
 			if g.EntityName == "actor" {
 				continue
 			}
-			if _, ok := entities[g.EntityName]; !ok {
+			ent, ok := entities[g.EntityName]
+			if !ok {
 				diags = append(diags, Diagnostic{
 					Code:     "FDN0203",
 					Severity: SeverityError,
 					Message:  fmt.Sprintf("unknown entity %q in scenario given", g.EntityName),
 					Span:     g.Span,
 				})
+				continue
+			}
+			fields := fieldMap(ent.Name)
+			for _, fi := range g.Fields {
+				ef, fOk := fields[fi.Name]
+				if !fOk {
+					diags = append(diags, Diagnostic{
+						Code:     "FDN0204",
+						Severity: SeverityError,
+						Message:  fmt.Sprintf("entity %q has no field %q", ent.Name, fi.Name),
+						Span:     fi.Span,
+					})
+					continue
+				}
+				valType, ok := inferExprType(fi.Value, nil, fieldMap, &diags)
+				if ok && valType != ef.Type && !(ef.Type == "uuid" && valType == "string") {
+					diags = append(diags, Diagnostic{
+						Code:     "FDN0205",
+						Severity: SeverityError,
+						Message:  fmt.Sprintf("type mismatch for field %q in scenario given: expected %s, got %s", fi.Name, ef.Type, valType),
+						Span:     fi.Value.Span,
+					})
+				}
 			}
 		}
-		if _, ok := actions[sc.WhenAction]; !ok {
+		act, ok := actions[sc.WhenAction]
+		if !ok {
 			diags = append(diags, Diagnostic{
 				Code:     "FDN0207",
 				Severity: SeverityError,
 				Message:  fmt.Sprintf("unknown action %q in scenario when", sc.WhenAction),
 				Span:     sc.Span,
 			})
+			continue
+		}
+		if len(sc.WhenArgs) != len(act.Params) {
+			diags = append(diags, Diagnostic{
+				Code:     "FDN0205",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("action %q expects %d arguments, got %d", act.Name, len(act.Params), len(sc.WhenArgs)),
+				Span:     sc.Span,
+			})
+		} else {
+			for i, arg := range sc.WhenArgs {
+				argType, ok := inferExprType(arg, nil, fieldMap, &diags)
+				paramType := act.Params[i].Type
+				if ok && argType != paramType && !(paramType == "uuid" && argType == "string") {
+					diags = append(diags, Diagnostic{
+						Code:     "FDN0205",
+						Severity: SeverityError,
+						Message:  fmt.Sprintf("argument %d to %q has type %s, expected %s", i+1, act.Name, argType, paramType),
+						Span:     arg.Span,
+					})
+				}
+			}
+		}
+		expectScope := map[string]string{
+			"result": act.ReturnType,
+		}
+		for _, ex := range sc.Expects {
+			if ex.ErrorRaised != "" {
+				if _, errOk := errorsMap[ex.ErrorRaised]; !errOk {
+					diags = append(diags, Diagnostic{
+						Code:     "FDN0206",
+						Severity: SeverityError,
+						Message:  fmt.Sprintf("undeclared error %q in scenario expect", ex.ErrorRaised),
+						Span:     ex.Span,
+					})
+				}
+				continue
+			}
+			lt, lok := inferExprType(ex.Left, expectScope, fieldMap, &diags)
+			rt, rok := inferExprType(ex.Right, expectScope, fieldMap, &diags)
+			if lok && rok && lt != rt && !(lt == "uuid" && rt == "string") {
+				diags = append(diags, Diagnostic{
+					Code:     "FDN0205",
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("scenario expect type mismatch: %s vs %s", lt, rt),
+					Span:     ex.Span,
+				})
+			}
 		}
 	}
 
@@ -345,6 +417,37 @@ func inferExprType(e Expr, scope map[string]string, fieldMap func(string) map[st
 		})
 		return "", false
 	case ExprConstruct:
+		fields := fieldMap(e.TypeName)
+		if len(fields) == 0 {
+			*diags = append(*diags, Diagnostic{
+				Code:     "FDN0202",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("unknown type %q in struct construction", e.TypeName),
+				Span:     e.Span,
+			})
+			return "", false
+		}
+		for _, fi := range e.Fields {
+			f, fOk := fields[fi.Name]
+			if !fOk {
+				*diags = append(*diags, Diagnostic{
+					Code:     "FDN0204",
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("type %q has no field %q", e.TypeName, fi.Name),
+					Span:     fi.Span,
+				})
+				continue
+			}
+			vt, vok := inferExprType(fi.Value, scope, fieldMap, diags)
+			if vok && vt != f.Type && !(f.Type == "uuid" && vt == "string") {
+				*diags = append(*diags, Diagnostic{
+					Code:     "FDN0205",
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("type mismatch for field %q: expected %s, got %s", fi.Name, f.Type, vt),
+					Span:     fi.Value.Span,
+				})
+			}
+		}
 		return e.TypeName, true
 	default:
 		return "", false

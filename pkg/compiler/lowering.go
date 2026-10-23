@@ -7,18 +7,21 @@ import (
 
 // ArchitectureIR represents the lowered structural topology for a single target.
 type ArchitectureIR struct {
-	TargetName  string              `json:"target_name"`
-	Kind        string              `json:"kind"`
-	Language    string              `json:"language"`
-	Pattern     string              `json:"pattern"`
-	HTTP        string              `json:"http"`
-	Module      string              `json:"module"`
-	OutDir      string              `json:"out_dir"`
-	Layers      []ArchLayer         `json:"layers"`
-	Ports       []RepositoryPortIR  `json:"ports"`
-	UseCases    []UseCaseIR         `json:"use_cases"`
-	HTTPHandlers []HTTPHandlerIR    `json:"http_handlers"`
-	Semantic    *SemanticIR         `json:"semantic"`
+	TargetName     string              `json:"target_name"`
+	Kind           string              `json:"kind"`
+	Language       string              `json:"language"`
+	Pattern        string              `json:"pattern"`
+	HTTP           string              `json:"http"`
+	Module         string              `json:"module"`
+	OutDir         string              `json:"out_dir"`
+	Layers         []ArchLayer         `json:"layers"`
+	DomainValues   []ValueDecl         `json:"domain_values,omitempty"`
+	DomainEntities []EntityDecl        `json:"domain_entities,omitempty"`
+	DomainErrors   []ErrorDecl         `json:"domain_errors,omitempty"`
+	Ports          []RepositoryPortIR  `json:"ports"`
+	UseCases       []UseCaseIR         `json:"use_cases"`
+	HTTPHandlers   []HTTPHandlerIR     `json:"http_handlers"`
+	Scenarios      []ScenarioDecl      `json:"scenarios,omitempty"`
 }
 
 type ArchLayer struct {
@@ -41,29 +44,36 @@ type RepositoryPortIR struct {
 }
 
 type UseCaseIR struct {
-	Name       string     `json:"name"`
-	Action     ActionDecl `json:"action"`
-	RepoDeps   []string   `json:"repo_deps"`
+	Name       string      `json:"name"`
+	ActionName string      `json:"action_name"`
+	Params     []ParamDecl `json:"params"`
+	ReturnType string      `json:"return_type"`
+	Steps      []StepDecl  `json:"steps"`
+	RepoDeps   []string    `json:"repo_deps"`
 }
 
 type HTTPHandlerIR struct {
-	ActionName string   `json:"action_name"`
-	Method     string   `json:"method"`
-	Path       string   `json:"path"`
-	PathParams []string `json:"path_params,omitempty"`
+	ActionName string      `json:"action_name"`
+	Method     string      `json:"method"`
+	Path       string      `json:"path"`
+	PathParams []string    `json:"path_params,omitempty"`
+	Params     []ParamDecl `json:"params,omitempty"`
 }
 
 // LowerArchitecture lowers the validated SemanticIR + TargetConfig into an ArchitectureIR.
 func LowerArchitecture(sem *SemanticIR, bp *BuildProfile, target TargetConfig) (*ArchitectureIR, []Diagnostic) {
 	arch := &ArchitectureIR{
-		TargetName: target.Name,
-		Kind:       target.Kind,
-		Language:   target.Language,
-		Pattern:    target.Architecture,
-		HTTP:       target.HTTP,
-		Module:     bp.Project.Module,
-		OutDir:     target.OutDir,
-		Semantic:   sem,
+		TargetName:     target.Name,
+		Kind:           target.Kind,
+		Language:       target.Language,
+		Pattern:        target.Architecture,
+		HTTP:           target.HTTP,
+		Module:         bp.Project.Module,
+		OutDir:         target.OutDir,
+		DomainValues:   sem.Values,
+		DomainEntities: sem.Entities,
+		DomainErrors:   sem.Errors,
+		Scenarios:      sem.Scenarios,
 	}
 
 	if target.Kind == "backend" && target.Language == "go" && target.Architecture == "hexagonal" {
@@ -142,9 +152,12 @@ func LowerArchitecture(sem *SemanticIR, bp *BuildProfile, target TargetConfig) (
 			}
 		}
 		arch.UseCases = append(arch.UseCases, UseCaseIR{
-			Name:     a.Name + "UseCase",
-			Action:   a,
-			RepoDeps: deps,
+			Name:       a.Name + "UseCase",
+			ActionName: a.Name,
+			Params:     a.Params,
+			ReturnType: a.ReturnType,
+			Steps:      a.Steps,
+			RepoDeps:   deps,
 		})
 
 		// Extract HTTP route from @http trait or convention
@@ -171,6 +184,7 @@ func LowerArchitecture(sem *SemanticIR, bp *BuildProfile, target TargetConfig) (
 			Method:     httpMethod,
 			Path:       httpPath,
 			PathParams: pathParams,
+			Params:     a.Params,
 		})
 	}
 

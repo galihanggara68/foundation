@@ -23,7 +23,7 @@ require github.com/go-chi/chi/v5 v5.3.0
 github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
 `)
 
-	for _, e := range arch.Semantic.Entities {
+	for _, e := range arch.DomainEntities {
 		relPath := fmt.Sprintf("internal/domain/%s_entity.go", strings.ToLower(e.Name))
 		code, err := formatGo(relPath, emitGoSingleEntity(e))
 		if err != nil {
@@ -32,7 +32,7 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 		files[relPath] = code
 	}
 
-	if len(arch.Semantic.Values) > 0 {
+	if len(arch.DomainValues) > 0 {
 		domainValues, err := formatGo("internal/domain/values.go", emitGoDomainValues(arch))
 		if err != nil {
 			return nil, nil, []Diagnostic{errDiag("internal/domain/values.go", err)}
@@ -56,7 +56,7 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 	}
 
 	for _, uc := range arch.UseCases {
-		relPath := fmt.Sprintf("internal/usecases/%s_usecase.go", strings.ToLower(uc.Action.Name))
+		relPath := fmt.Sprintf("internal/usecases/%s_usecase.go", strings.ToLower(uc.ActionName))
 		code, err := formatGo(relPath, emitGoSingleUseCase(arch.Module, uc))
 		if err != nil {
 			return nil, nil, []Diagnostic{errDiag(relPath, err)}
@@ -129,29 +129,27 @@ func goType(fdnType string, inDomainPkg bool) string {
 	}
 }
 
-func emitGoSingleEntity(e EntityDecl) string {
+func emitGoStructDef(name string, fields []FieldDecl) string {
 	var sb strings.Builder
-	sb.WriteString("package domain\n\n")
-	sb.WriteString(fmt.Sprintf("type %s struct {\n", e.Name))
-	for _, f := range e.Fields {
+	sb.WriteString(fmt.Sprintf("type %s struct {\n", name))
+	for _, f := range fields {
 		sb.WriteString(fmt.Sprintf("\t%s %s `json:%q`\n", exportIdent(f.Name), goType(f.Type, true), f.Name))
 	}
 	sb.WriteString("}\n")
 	return sb.String()
 }
 
+func emitGoSingleEntity(e EntityDecl) string {
+	return "package domain\n\n" + emitGoStructDef(e.Name, e.Fields)
+}
+
 func emitGoDomainValues(arch *ArchitectureIR) string {
 	var sb strings.Builder
 	sb.WriteString("package domain\n\n")
-
-	for _, v := range arch.Semantic.Values {
-		sb.WriteString(fmt.Sprintf("type %s struct {\n", v.Name))
-		for _, f := range v.Fields {
-			sb.WriteString(fmt.Sprintf("\t%s %s `json:%q`\n", exportIdent(f.Name), goType(f.Type, true), f.Name))
-		}
-		sb.WriteString("}\n\n")
+	for _, v := range arch.DomainValues {
+		sb.WriteString(emitGoStructDef(v.Name, v.Fields))
+		sb.WriteString("\n")
 	}
-
 	return sb.String()
 }
 
@@ -170,7 +168,7 @@ func (e *DomainError) Error() string {
 }
 
 `)
-	for _, errDecl := range arch.Semantic.Errors {
+	for _, errDecl := range arch.DomainErrors {
 		sb.WriteString(fmt.Sprintf("var Err%s = &DomainError{\n\tCode: %q,\n\tKind: %q,\n\tMessage: %q,\n}\n\n",
 			errDecl.Name, errDecl.Name, errDecl.Kind, errDecl.Message))
 	}
@@ -214,7 +212,6 @@ import (
 
 `, module, module))
 
-	a := uc.Action
 	sb.WriteString(fmt.Sprintf("type %s struct {\n", uc.Name))
 	for _, dep := range uc.RepoDeps {
 		sb.WriteString(fmt.Sprintf("\t%sRepo ports.%sRepository\n", dep, dep))
@@ -233,14 +230,14 @@ import (
 
 	var execParams []string
 	execParams = append(execParams, "ctx context.Context")
-	for _, p := range a.Params {
+	for _, p := range uc.Params {
 		execParams = append(execParams, fmt.Sprintf("%s %s", p.Name, goType(p.Type, false)))
 	}
-	retType := goType(a.ReturnType, false)
+	retType := goType(uc.ReturnType, false)
 	sb.WriteString(fmt.Sprintf("func (uc *%s) Execute(%s) (%s, error) {\n", uc.Name, strings.Join(execParams, ", "), retType))
 	sb.WriteString(fmt.Sprintf("\tvar zero %s\n\t_ = zero\n", retType))
 
-	for _, s := range a.Steps {
+	for _, s := range uc.Steps {
 		switch s.Kind {
 		case StepLet:
 			if s.Expr != nil {
@@ -314,14 +311,14 @@ import (
 `, arch.Module))
 
 	entityMap := make(map[string]EntityDecl)
-	for _, e := range arch.Semantic.Entities {
+	for _, e := range arch.DomainEntities {
 		entityMap[e.Name] = e
 	}
 
 	repoStruct := "InMemory" + p.EntityName + "Repository"
-	sb.WriteString(fmt.Sprintf("type %s struct {\n\tmu sync.RWMutex\n\trecords []domain.%s\n\tseq int\n}\n\n", repoStruct, p.EntityName))
+	sb.WriteString(fmt.Sprintf("type %s struct {\n\tmu sync.RWMutex\n\tentities []domain.%s\n\tseq int\n}\n\n", repoStruct, p.EntityName))
 	sb.WriteString(fmt.Sprintf("func New%s() *%s {\n\treturn &%s{}\n}\n\n", repoStruct, repoStruct, repoStruct))
-	sb.WriteString(fmt.Sprintf("func (r *%s) Seed(entity domain.%s) {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tr.records = append(r.records, entity)\n}\n\n", repoStruct, p.EntityName))
+	sb.WriteString(fmt.Sprintf("func (r *%s) Seed(entity domain.%s) {\n\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tr.entities = append(r.entities, entity)\n}\n\n", repoStruct, p.EntityName))
 
 	ent := entityMap[p.EntityName]
 	hasID := false
@@ -340,13 +337,13 @@ import (
 			} else {
 				sb.WriteString("\t_ = fmt.Sprintf\n")
 			}
-			sb.WriteString("\tr.records = append(r.records, entity)\n\treturn entity, nil\n}\n\n")
+			sb.WriteString("\tr.entities = append(r.entities, entity)\n\treturn entity, nil\n}\n\n")
 		} else {
 			fieldExport := exportIdent(m.WhereField)
 			sb.WriteString(fmt.Sprintf("func (r *%s) %s(_ context.Context, %s %s) (*domain.%s, error) {\n",
 				repoStruct, m.Name, m.WhereField, goType(m.WhereType, false), p.EntityName))
 			sb.WriteString("\tr.mu.RLock()\n\tdefer r.mu.RUnlock()\n")
-			sb.WriteString("\tfor _, item := range r.records {\n")
+			sb.WriteString("\tfor _, item := range r.entities {\n")
 			sb.WriteString(fmt.Sprintf("\t\tif item.%s == %s {\n\t\t\tcopyItem := item\n\t\t\treturn &copyItem, nil\n\t\t}\n", fieldExport, m.WhereField))
 			sb.WriteString("\t}\n\treturn nil, nil\n}\n\n")
 		}
@@ -374,26 +371,21 @@ type Server struct {
 `, arch.Module, arch.Module))
 
 	for _, uc := range arch.UseCases {
-		sb.WriteString(fmt.Sprintf("\t%s *usecases.%s\n", uc.Action.Name, uc.Name))
+		sb.WriteString(fmt.Sprintf("\t%s *usecases.%s\n", uc.ActionName, uc.Name))
 	}
 	sb.WriteString("}\n\n")
 
 	var ctorArgs []string
 	for _, uc := range arch.UseCases {
-		ctorArgs = append(ctorArgs, fmt.Sprintf("%s *usecases.%s", strings.ToLower(uc.Action.Name), uc.Name))
+		ctorArgs = append(ctorArgs, fmt.Sprintf("%s *usecases.%s", strings.ToLower(uc.ActionName), uc.Name))
 	}
 	sb.WriteString(fmt.Sprintf("func NewServer(%s) *Server {\n\ts := &Server{\n\t\trouter: chi.NewRouter(),\n", strings.Join(ctorArgs, ", ")))
 	for _, uc := range arch.UseCases {
-		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.Action.Name, strings.ToLower(uc.Action.Name)))
+		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.ActionName, strings.ToLower(uc.ActionName)))
 	}
 	sb.WriteString("\t}\n\ts.routes()\n\treturn s\n}\n\n")
 
 	sb.WriteString("func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {\n\ts.router.ServeHTTP(w, r)\n}\n\n")
-
-	actionMap := make(map[string]ActionDecl)
-	for _, a := range arch.Semantic.Actions {
-		actionMap[a.Name] = a
-	}
 
 	sb.WriteString("func (s *Server) routes() {\n")
 	for _, h := range arch.HTTPHandlers {
@@ -413,7 +405,6 @@ type Server struct {
 	sb.WriteString("}\n\n")
 
 	for _, h := range arch.HTTPHandlers {
-		a := actionMap[h.ActionName]
 		sb.WriteString(fmt.Sprintf("func (s *Server) handle%s(w http.ResponseWriter, r *http.Request) {\n", h.ActionName))
 		var callArgs []string
 		callArgs = append(callArgs, "r.Context()")
@@ -423,7 +414,7 @@ type Server struct {
 			pathParamSet[pp] = true
 		}
 
-		for _, p := range a.Params {
+		for _, p := range h.Params {
 			if pathParamSet[p.Name] {
 				sb.WriteString(fmt.Sprintf("\t%s := chi.URLParam(r, %q)\n", p.Name, p.Name))
 				callArgs = append(callArgs, p.Name)
@@ -489,7 +480,7 @@ type Container struct {
 		sb.WriteString(fmt.Sprintf("\t%sRepo *memory.InMemory%sRepository\n", p.EntityName, p.EntityName))
 	}
 	for _, uc := range arch.UseCases {
-		sb.WriteString(fmt.Sprintf("\t%s *usecases.%s\n", uc.Action.Name, uc.Name))
+		sb.WriteString(fmt.Sprintf("\t%s *usecases.%s\n", uc.ActionName, uc.Name))
 	}
 	sb.WriteString("\tHTTPServer *httpadapter.Server\n}\n\n")
 
@@ -503,7 +494,7 @@ type Container struct {
 		for _, dep := range uc.RepoDeps {
 			depArgs = append(depArgs, strings.ToLower(dep)+"Repo")
 		}
-		varName := strings.ToLower(uc.Action.Name) + "UC"
+		varName := strings.ToLower(uc.ActionName) + "UC"
 		sb.WriteString(fmt.Sprintf("\t%s := usecases.New%s(%s)\n", varName, uc.Name, strings.Join(depArgs, ", ")))
 		srvArgs = append(srvArgs, varName)
 	}
@@ -513,7 +504,7 @@ type Container struct {
 		sb.WriteString(fmt.Sprintf("\t\t%sRepo: %sRepo,\n", p.EntityName, strings.ToLower(p.EntityName)))
 	}
 	for _, uc := range arch.UseCases {
-		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.Action.Name, strings.ToLower(uc.Action.Name)+"UC"))
+		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.ActionName, strings.ToLower(uc.ActionName)+"UC"))
 	}
 	sb.WriteString("\t\tHTTPServer: srv,\n\t}\n}\n")
 
@@ -554,7 +545,7 @@ import (
 
 `, arch.Module, arch.Module))
 
-	for _, sc := range arch.Semantic.Scenarios {
+	for _, sc := range arch.Scenarios {
 		fnName := sanitizeTestFuncName(sc.Name)
 		sb.WriteString(fmt.Sprintf("func %s(t *testing.T) {\n", fnName))
 		sb.WriteString("\tctx := context.Background()\n")
@@ -615,8 +606,8 @@ import (
 	}
 `)
 
-	if len(arch.Semantic.Scenarios) > 0 && len(arch.HTTPHandlers) > 0 {
-		sc := arch.Semantic.Scenarios[0]
+	if len(arch.Scenarios) > 0 && len(arch.HTTPHandlers) > 0 {
+		sc := arch.Scenarios[0]
 		var handler *HTTPHandlerIR
 		for i := range arch.HTTPHandlers {
 			if arch.HTTPHandlers[i].ActionName == sc.WhenAction {

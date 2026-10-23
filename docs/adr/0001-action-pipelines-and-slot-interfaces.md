@@ -1,0 +1,3 @@
+# Constrained Action Pipelines with Generated Slot Interfaces
+
+Foundation expresses application logic through constrained, declarative Action Pipelines rather than a Turing-complete general-purpose language, and isolates custom imperative logic behind generated native interfaces (**Slots**). A general-purpose transpiler fails across languages with incompatible memory and concurrency models (e.g., Rust vs. Go vs. TypeScript), while mixing handwritten code into generated files via protected comment regions is brittle and breaks deterministic regeneration. Emitting strict native interfaces for the remaining 10% of custom logic guarantees that generated files can be completely wiped and deterministically regenerated at any time.

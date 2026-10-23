@@ -41,6 +41,7 @@ func defaultRegistry() *compilerRegistry {
 		passes: []ValidationPass{
 			declarationPass{},
 			actionTypeCheckPass{},
+			terminationPass{},
 			scenarioTypeCheckPass{},
 		},
 		lowerers: map[TargetKey]PatternLowerer{

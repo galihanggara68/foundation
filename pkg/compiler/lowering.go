@@ -5,23 +5,36 @@ import (
 	"strings"
 )
 
+// RepoMethodKind identifies the operation type of a lowered repository port method.
+type RepoMethodKind string
+
+const (
+	RepoMethodCreate RepoMethodKind = "create"
+	RepoMethodFind   RepoMethodKind = "find"
+	RepoMethodUpdate RepoMethodKind = "update"
+	RepoMethodDelete RepoMethodKind = "delete"
+)
+
 // ArchitectureIR represents the lowered structural topology for a single target.
 type ArchitectureIR struct {
-	TargetName     string              `json:"target_name"`
-	Kind           string              `json:"kind"`
-	Language       string              `json:"language"`
-	Pattern        string              `json:"pattern"`
-	HTTP           string              `json:"http"`
-	Module         string              `json:"module"`
-	OutDir         string              `json:"out_dir"`
-	Layers         []ArchLayer         `json:"layers"`
-	DomainValues   []ValueDecl         `json:"domain_values,omitempty"`
-	DomainEntities []EntityDecl        `json:"domain_entities,omitempty"`
-	DomainErrors   []ErrorDecl         `json:"domain_errors,omitempty"`
-	Ports          []RepositoryPortIR  `json:"ports"`
-	UseCases       []UseCaseIR         `json:"use_cases"`
-	HTTPHandlers   []HTTPHandlerIR     `json:"http_handlers"`
-	Scenarios      []ScenarioDecl      `json:"scenarios,omitempty"`
+	TargetName     string             `json:"target_name"`
+	Kind           string             `json:"kind"`
+	Language       string             `json:"language"`
+	Pattern        string             `json:"pattern"`
+	HTTP           string             `json:"http"`
+	Module         string             `json:"module"`
+	OutDir         string             `json:"out_dir"`
+	Layers         []ArchLayer        `json:"layers"`
+	DomainEnums    []EnumDecl         `json:"domain_enums,omitempty"`
+	DomainValues   []ValueDecl        `json:"domain_values,omitempty"`
+	DomainEntities []EntityDecl       `json:"domain_entities,omitempty"`
+	DomainErrors   []ErrorDecl        `json:"domain_errors,omitempty"`
+	DomainEvents   []EventDecl        `json:"domain_events,omitempty"`
+	DomainPolicies []PolicyDecl       `json:"domain_policies,omitempty"`
+	Ports          []RepositoryPortIR `json:"ports"`
+	UseCases       []UseCaseIR        `json:"use_cases"`
+	HTTPHandlers   []HTTPHandlerIR    `json:"http_handlers"`
+	Scenarios      []ScenarioDecl     `json:"scenarios,omitempty"`
 }
 
 type ArchLayer struct {
@@ -30,11 +43,11 @@ type ArchLayer struct {
 }
 
 type RepositoryMethodIR struct {
-	Name       string `json:"name"`
-	EntityName string `json:"entity_name"`
-	WhereField string `json:"where_field,omitempty"`
-	WhereType  string `json:"where_type,omitempty"`
-	IsCreate   bool   `json:"is_create,omitempty"`
+	Kind       RepoMethodKind `json:"kind"`
+	Name       string         `json:"name"`
+	EntityName string         `json:"entity_name"`
+	WhereField string         `json:"where_field,omitempty"`
+	WhereType  string         `json:"where_type,omitempty"`
 }
 
 type RepositoryPortIR struct {
@@ -44,12 +57,14 @@ type RepositoryPortIR struct {
 }
 
 type UseCaseIR struct {
-	Name       string      `json:"name"`
-	ActionName string      `json:"action_name"`
-	Params     []ParamDecl `json:"params"`
-	ReturnType string      `json:"return_type"`
-	Steps      []StepDecl  `json:"steps"`
-	RepoDeps   []string    `json:"repo_deps"`
+	Name        string      `json:"name"`
+	ActionName  string      `json:"action_name"`
+	Params      []ParamDecl `json:"params"`
+	ReturnType  string      `json:"return_type"`
+	Steps       []StepDecl  `json:"steps"`
+	RepoDeps    []string    `json:"repo_deps"`
+	EmitsEvents bool        `json:"emits_events,omitempty"`
+	UsesActor   bool        `json:"uses_actor,omitempty"`
 }
 
 type HTTPHandlerIR struct {
@@ -92,9 +107,12 @@ func (goHexagonalLowerer) Lower(sem *SemanticIR, bp *BuildProfile, target Target
 		HTTP:           target.HTTP,
 		Module:         bp.Project.Module,
 		OutDir:         target.OutDir,
+		DomainEnums:    sem.Enums,
 		DomainValues:   sem.Values,
 		DomainEntities: sem.Entities,
 		DomainErrors:   sem.Errors,
+		DomainEvents:   sem.Events,
+		DomainPolicies: sem.Policies,
 		Scenarios:      sem.Scenarios,
 		Layers: []ArchLayer{
 			{Name: "domain", Package: "internal/domain"},
@@ -115,7 +133,6 @@ func (goHexagonalLowerer) Lower(sem *SemanticIR, bp *BuildProfile, target Target
 		entityFields[e.Name] = fm
 	}
 
-	// Build repository ports for each entity
 	portMap := make(map[string]*RepositoryPortIR)
 	var portOrder []string
 	for _, e := range sem.Entities {
@@ -124,9 +141,9 @@ func (goHexagonalLowerer) Lower(sem *SemanticIR, bp *BuildProfile, target Target
 			EntityName:    e.Name,
 			Methods: []RepositoryMethodIR{
 				{
+					Kind:       RepoMethodCreate,
 					Name:       "Create",
 					EntityName: e.Name,
-					IsCreate:   true,
 				},
 			},
 		}
@@ -134,45 +151,78 @@ func (goHexagonalLowerer) Lower(sem *SemanticIR, bp *BuildProfile, target Target
 		portOrder = append(portOrder, e.Name)
 	}
 
-	seenQueryMethod := make(map[string]bool)
+	seenPortMethod := make(map[string]bool)
+	addPortMethod := func(m RepositoryMethodIR) {
+		p := portMap[m.EntityName]
+		if p == nil {
+			return
+		}
+		key := m.EntityName + "." + m.Name
+		if !seenPortMethod[key] {
+			seenPortMethod[key] = true
+			p.Methods = append(p.Methods, m)
+		}
+	}
+
 	for _, a := range sem.Actions {
 		depSet := make(map[string]bool)
 		var deps []string
-		for _, s := range a.Steps {
-			if s.EntityName != "" {
-				if !depSet[s.EntityName] {
+		emitsEvents := false
+		usesActor := false
+
+		walkStepsAndExprs(a.Steps,
+			func(s StepDecl) {
+				if s.EntityName != "" && !depSet[s.EntityName] {
 					depSet[s.EntityName] = true
 					deps = append(deps, s.EntityName)
 				}
-			}
-			if s.Kind == StepQuery {
-				p := portMap[s.EntityName]
-				if p != nil {
-					mName := "FindBy" + exportIdent(s.WhereField)
-					key := s.EntityName + "." + mName
-					if !seenQueryMethod[key] {
-						seenQueryMethod[key] = true
-						wType := entityFields[s.EntityName][s.WhereField]
-						p.Methods = append(p.Methods, RepositoryMethodIR{
-							Name:       mName,
+				if s.Kind == StepEmit {
+					emitsEvents = true
+				}
+				if s.Kind == StepQuery || s.Kind == StepUpdate {
+					addPortMethod(RepositoryMethodIR{
+						Kind:       RepoMethodFind,
+						Name:       "FindBy" + exportIdent(s.WhereField),
+						EntityName: s.EntityName,
+						WhereField: s.WhereField,
+						WhereType:  entityFields[s.EntityName][s.WhereField],
+					})
+					if s.Kind == StepUpdate {
+						addPortMethod(RepositoryMethodIR{
+							Kind:       RepoMethodUpdate,
+							Name:       "Update",
 							EntityName: s.EntityName,
-							WhereField: s.WhereField,
-							WhereType:  wType,
 						})
 					}
 				}
-			}
-		}
+				if s.Kind == StepDelete {
+					addPortMethod(RepositoryMethodIR{
+						Kind:       RepoMethodDelete,
+						Name:       "DeleteBy" + exportIdent(s.WhereField),
+						EntityName: s.EntityName,
+						WhereField: s.WhereField,
+						WhereType:  entityFields[s.EntityName][s.WhereField],
+					})
+				}
+			},
+			func(e Expr) {
+				if (e.Kind == ExprIdent && e.Value == "actor") || (e.Kind == ExprField && e.Target == "actor") {
+					usesActor = true
+				}
+			},
+		)
+
 		arch.UseCases = append(arch.UseCases, UseCaseIR{
-			Name:       a.Name + "UseCase",
-			ActionName: a.Name,
-			Params:     a.Params,
-			ReturnType: a.ReturnType,
-			Steps:      a.Steps,
-			RepoDeps:   deps,
+			Name:        a.Name + "UseCase",
+			ActionName:  a.Name,
+			Params:      a.Params,
+			ReturnType:  a.ReturnType,
+			Steps:       a.Steps,
+			RepoDeps:    deps,
+			EmitsEvents: emitsEvents,
+			UsesActor:   usesActor,
 		})
 
-		// Extract HTTP route from @http trait or convention
 		httpMethod := "POST"
 		httpPath := "/" + strings.ToLower(a.Name)
 		for _, tr := range a.Traits {
@@ -198,6 +248,20 @@ func (goHexagonalLowerer) Lower(sem *SemanticIR, bp *BuildProfile, target Target
 			PathParams: pathParams,
 			Params:     a.Params,
 		})
+	}
+
+	for _, sc := range sem.Scenarios {
+		for _, ex := range sc.Expects {
+			if ex.StoredEntity != "" {
+				addPortMethod(RepositoryMethodIR{
+					Kind:       RepoMethodFind,
+					Name:       "FindBy" + exportIdent(ex.WhereField),
+					EntityName: ex.StoredEntity,
+					WhereField: ex.WhereField,
+					WhereType:  entityFields[ex.StoredEntity][ex.WhereField],
+				})
+			}
+		}
 	}
 
 	for _, name := range portOrder {

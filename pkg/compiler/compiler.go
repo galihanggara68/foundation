@@ -38,11 +38,33 @@ type Diagnostic struct {
 
 // SemanticIR represents the validated, architecture-agnostic domain representation.
 type SemanticIR struct {
+	Enums     []EnumDecl     `json:"enums,omitempty"`
 	Values    []ValueDecl    `json:"values,omitempty"`
 	Entities  []EntityDecl   `json:"entities,omitempty"`
 	Errors    []ErrorDecl    `json:"errors,omitempty"`
+	Events    []EventDecl    `json:"events,omitempty"`
+	Policies  []PolicyDecl   `json:"policies,omitempty"`
 	Actions   []ActionDecl   `json:"actions,omitempty"`
 	Scenarios []ScenarioDecl `json:"scenarios,omitempty"`
+}
+
+type EnumDecl struct {
+	Name     string   `json:"name"`
+	Variants []string `json:"variants"`
+	Span     Span     `json:"span"`
+}
+
+type EventDecl struct {
+	Name   string      `json:"name"`
+	Fields []FieldDecl `json:"fields"`
+	Span   Span        `json:"span"`
+}
+
+type PolicyDecl struct {
+	Name   string      `json:"name"`
+	Params []ParamDecl `json:"params"`
+	Body   Expr        `json:"body"`
+	Span   Span        `json:"span"`
 }
 
 type FieldDecl struct {
@@ -97,10 +119,19 @@ type ActionDecl struct {
 type StepKind string
 
 const (
-	StepLet    StepKind = "let"
-	StepQuery  StepKind = "query"
-	StepCreate StepKind = "create"
-	StepReturn StepKind = "return"
+	StepLet     StepKind = "let"
+	StepQuery   StepKind = "query"
+	StepCreate  StepKind = "create"
+	StepUpdate  StepKind = "update"
+	StepDelete  StepKind = "delete"
+	StepRequire StepKind = "require"
+	StepGuard   StepKind = "guard"
+	StepEmit    StepKind = "emit"
+	StepIf      StepKind = "if"
+	StepMatch   StepKind = "match"
+	StepFor     StepKind = "for"
+	StepWhile   StepKind = "while"
+	StepReturn  StepKind = "return"
 )
 
 type ExprKind string
@@ -115,19 +146,24 @@ const (
 	ExprEnumLit    ExprKind = "enum_lit"
 	ExprBinary     ExprKind = "binary"
 	ExprConstruct  ExprKind = "construct"
+	ExprList       ExprKind = "list"
+	ExprCombinator ExprKind = "combinator"
+	ExprCall       ExprKind = "call"
 )
 
 type Expr struct {
-	Kind      ExprKind        `json:"kind"`
-	Value     string          `json:"value,omitempty"`
-	Target    string          `json:"target,omitempty"`
-	Field     string          `json:"field,omitempty"`
-	Op        string          `json:"op,omitempty"`
-	Left      *Expr           `json:"left,omitempty"`
-	Right     *Expr           `json:"right,omitempty"`
-	TypeName  string          `json:"type_name,omitempty"`
-	Fields    []FieldInitDecl `json:"fields,omitempty"`
-	Span      Span            `json:"span"`
+	Kind         ExprKind        `json:"kind"`
+	Value        string          `json:"value,omitempty"`
+	Target       string          `json:"target,omitempty"`
+	Field        string          `json:"field,omitempty"`
+	Op           string          `json:"op,omitempty"`
+	Left         *Expr           `json:"left,omitempty"`
+	Right        *Expr           `json:"right,omitempty"`
+	TypeName     string          `json:"type_name,omitempty"`
+	Fields       []FieldInitDecl `json:"fields,omitempty"`
+	Items        []Expr          `json:"items,omitempty"`
+	InferredType string          `json:"inferred_type,omitempty"`
+	Span         Span            `json:"span"`
 }
 
 type FieldInitDecl struct {
@@ -136,15 +172,28 @@ type FieldInitDecl struct {
 	Span  Span   `json:"span"`
 }
 
+type MatchArmDecl struct {
+	Variant string     `json:"variant"`
+	Steps   []StepDecl `json:"steps"`
+	Span    Span       `json:"span"`
+}
+
 type StepDecl struct {
 	Kind       StepKind        `json:"kind"`
 	VarName    string          `json:"var_name,omitempty"`
 	EntityName string          `json:"entity_name,omitempty"`
+	PolicyName string          `json:"policy_name,omitempty"`
+	PolicyArgs []Expr          `json:"policy_args,omitempty"`
+	EventName  string          `json:"event_name,omitempty"`
 	WhereField string          `json:"where_field,omitempty"`
 	WhereValue *Expr           `json:"where_value,omitempty"`
 	ElseError  string          `json:"else_error,omitempty"`
 	Fields     []FieldInitDecl `json:"fields,omitempty"`
 	Expr       *Expr           `json:"expr,omitempty"`
+	IterVar    string          `json:"iter_var,omitempty"`
+	ThenSteps  []StepDecl      `json:"then_steps,omitempty"`
+	ElseSteps  []StepDecl      `json:"else_steps,omitempty"`
+	MatchArms  []MatchArmDecl  `json:"match_arms,omitempty"`
 	Span       Span            `json:"span"`
 }
 
@@ -155,11 +204,61 @@ type GivenSeedDecl struct {
 }
 
 type ExpectDecl struct {
-	Left        Expr   `json:"left"`
-	Op          string `json:"op"`
-	Right       Expr   `json:"right"`
-	ErrorRaised string `json:"error_raised,omitempty"`
-	Span        Span   `json:"span"`
+	Left          Expr            `json:"left"`
+	Op            string          `json:"op"`
+	Right         Expr            `json:"right"`
+	ErrorRaised   string          `json:"error_raised,omitempty"`
+	EmittedEvent  string          `json:"emitted_event,omitempty"`
+	EmittedFields []FieldInitDecl `json:"emitted_fields,omitempty"`
+	StoredEntity  string          `json:"stored_entity,omitempty"`
+	WhereField    string          `json:"where_field,omitempty"`
+	WhereValue    *Expr           `json:"where_value,omitempty"`
+	StoredFields  []FieldInitDecl `json:"stored_fields,omitempty"`
+	NotStored     bool            `json:"not_stored,omitempty"`
+	Span          Span            `json:"span"`
+}
+
+func walkExpr(e Expr, onExpr func(Expr)) {
+	if onExpr != nil {
+		onExpr(e)
+	}
+	if e.Left != nil {
+		walkExpr(*e.Left, onExpr)
+	}
+	if e.Right != nil {
+		walkExpr(*e.Right, onExpr)
+	}
+	for _, fi := range e.Fields {
+		walkExpr(fi.Value, onExpr)
+	}
+	for _, it := range e.Items {
+		walkExpr(it, onExpr)
+	}
+}
+
+func walkStepsAndExprs(steps []StepDecl, onStep func(StepDecl), onExpr func(Expr)) {
+	for _, s := range steps {
+		if onStep != nil {
+			onStep(s)
+		}
+		if s.Expr != nil {
+			walkExpr(*s.Expr, onExpr)
+		}
+		if s.WhereValue != nil {
+			walkExpr(*s.WhereValue, onExpr)
+		}
+		for _, arg := range s.PolicyArgs {
+			walkExpr(arg, onExpr)
+		}
+		for _, fi := range s.Fields {
+			walkExpr(fi.Value, onExpr)
+		}
+		walkStepsAndExprs(s.ThenSteps, onStep, onExpr)
+		walkStepsAndExprs(s.ElseSteps, onStep, onExpr)
+		for _, arm := range s.MatchArms {
+			walkStepsAndExprs(arm.Steps, onStep, onExpr)
+		}
+	}
 }
 
 type ScenarioDecl struct {
@@ -211,12 +310,30 @@ func Check(workspaceDir string) (*SemanticIR, []Diagnostic) {
 		}
 		rel = filepath.ToSlash(rel)
 
-		fileIR, fileDiags := parseFile(rel, string(src))
+		var fileIR *SemanticIR
+		var fileDiags []Diagnostic
+		if strings.HasSuffix(rel, ".fdn.json") {
+			fileIR = &SemanticIR{}
+			if uErr := json.Unmarshal(src, fileIR); uErr != nil {
+				fileDiags = append(fileDiags, Diagnostic{
+					Code:     "FDN0006",
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("failed to parse SemanticIR JSON: %v", uErr),
+					Span:     Span{File: rel, Line: 1, Column: 1},
+				})
+				fileIR = nil
+			}
+		} else {
+			fileIR, fileDiags = parseFile(rel, string(src))
+		}
 		diags = append(diags, fileDiags...)
 		if fileIR != nil {
+			ir.Enums = append(ir.Enums, fileIR.Enums...)
 			ir.Values = append(ir.Values, fileIR.Values...)
 			ir.Entities = append(ir.Entities, fileIR.Entities...)
 			ir.Errors = append(ir.Errors, fileIR.Errors...)
+			ir.Events = append(ir.Events, fileIR.Events...)
+			ir.Policies = append(ir.Policies, fileIR.Policies...)
 			ir.Actions = append(ir.Actions, fileIR.Actions...)
 			ir.Scenarios = append(ir.Scenarios, fileIR.Scenarios...)
 		}
@@ -231,7 +348,19 @@ func Check(workspaceDir string) (*SemanticIR, []Diagnostic) {
 		return nil, valDiags
 	}
 
+	canonicalizeSemanticIR(ir)
 	return ir, nil
+}
+
+func canonicalizeSemanticIR(ir *SemanticIR) {
+	sort.SliceStable(ir.Enums, func(i, j int) bool { return ir.Enums[i].Name < ir.Enums[j].Name })
+	sort.SliceStable(ir.Values, func(i, j int) bool { return ir.Values[i].Name < ir.Values[j].Name })
+	sort.SliceStable(ir.Entities, func(i, j int) bool { return ir.Entities[i].Name < ir.Entities[j].Name })
+	sort.SliceStable(ir.Errors, func(i, j int) bool { return ir.Errors[i].Name < ir.Errors[j].Name })
+	sort.SliceStable(ir.Events, func(i, j int) bool { return ir.Events[i].Name < ir.Events[j].Name })
+	sort.SliceStable(ir.Policies, func(i, j int) bool { return ir.Policies[i].Name < ir.Policies[j].Name })
+	sort.SliceStable(ir.Actions, func(i, j int) bool { return ir.Actions[i].Name < ir.Actions[j].Name })
+	sort.SliceStable(ir.Scenarios, func(i, j int) bool { return ir.Scenarios[i].Name < ir.Scenarios[j].Name })
 }
 
 func findFDNFiles(dir string) ([]string, error) {
@@ -243,7 +372,7 @@ func findFDNFiles(dir string) ([]string, error) {
 		if d.IsDir() && strings.HasPrefix(d.Name(), ".") && path != dir {
 			return filepath.SkipDir
 		}
-		if !d.IsDir() && strings.HasSuffix(d.Name(), ".fdn") {
+		if !d.IsDir() && (strings.HasSuffix(d.Name(), ".fdn") || strings.HasSuffix(d.Name(), ".fdn.json")) {
 			out = append(out, path)
 		}
 		return nil

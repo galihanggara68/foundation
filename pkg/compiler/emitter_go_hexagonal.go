@@ -33,28 +33,50 @@ require github.com/go-chi/chi/v5 v5.3.0
 github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
 `)
 
+	if len(arch.DomainEnums) > 0 {
+		enumsCode, err := formatGo("internal/domain/enums.go", emitGoDomainEnums(arch))
+		if err != nil {
+			return nil, nil, []Diagnostic{errDiag("internal/domain/enums.go", err)}
+		}
+		files["internal/domain/enums.go"] = enumsCode
+	}
+
 	for _, e := range arch.DomainEntities {
 		relPath := fmt.Sprintf("internal/domain/%s_entity.go", strings.ToLower(e.Name))
-		code, err := formatGo(relPath, emitGoSingleEntity(e))
+		code, err := formatGo(relPath, "package domain\n\n"+emitGoStructDef(e.Name, e.Fields))
 		if err != nil {
 			return nil, nil, []Diagnostic{errDiag(relPath, err)}
 		}
 		files[relPath] = code
 	}
 
-	if len(arch.DomainValues) > 0 {
-		domainValues, err := formatGo("internal/domain/values.go", emitGoDomainValues(arch))
-		if err != nil {
-			return nil, nil, []Diagnostic{errDiag("internal/domain/values.go", err)}
-		}
-		files["internal/domain/values.go"] = domainValues
+	domainValues, err := formatGo("internal/domain/values.go", emitGoDomainValues(arch))
+	if err != nil {
+		return nil, nil, []Diagnostic{errDiag("internal/domain/values.go", err)}
 	}
+	files["internal/domain/values.go"] = domainValues
 
 	domainErrors, err := formatGo("internal/domain/errors.go", emitGoDomainErrors(arch))
 	if err != nil {
 		return nil, nil, []Diagnostic{errDiag("internal/domain/errors.go", err)}
 	}
 	files["internal/domain/errors.go"] = domainErrors
+
+	if len(arch.DomainEvents) > 0 {
+		eventsCode, err := formatGo("internal/domain/events.go", emitGoDomainEvents(arch))
+		if err != nil {
+			return nil, nil, []Diagnostic{errDiag("internal/domain/events.go", err)}
+		}
+		files["internal/domain/events.go"] = eventsCode
+	}
+
+	if len(arch.DomainPolicies) > 0 {
+		policiesCode, err := formatGo("internal/domain/policies.go", emitGoDomainPolicies(arch))
+		if err != nil {
+			return nil, nil, []Diagnostic{errDiag("internal/domain/policies.go", err)}
+		}
+		files["internal/domain/policies.go"] = policiesCode
+	}
 
 	for _, p := range arch.Ports {
 		relPath := fmt.Sprintf("internal/ports/%s_repository.go", strings.ToLower(p.EntityName))
@@ -63,6 +85,14 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 			return nil, nil, []Diagnostic{errDiag(relPath, err)}
 		}
 		files[relPath] = code
+	}
+
+	if len(arch.DomainEvents) > 0 {
+		evPortCode, err := formatGo("internal/ports/event_publisher.go", emitGoEventPublisherPort())
+		if err != nil {
+			return nil, nil, []Diagnostic{errDiag("internal/ports/event_publisher.go", err)}
+		}
+		files["internal/ports/event_publisher.go"] = evPortCode
 	}
 
 	for _, uc := range arch.UseCases {
@@ -81,6 +111,14 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 			return nil, nil, []Diagnostic{errDiag(relPath, err)}
 		}
 		files[relPath] = code
+	}
+
+	if len(arch.DomainEvents) > 0 {
+		evMemCode, err := formatGo("internal/adapters/memory/event_publisher.go", emitGoMemoryEventPublisher())
+		if err != nil {
+			return nil, nil, []Diagnostic{errDiag("internal/adapters/memory/event_publisher.go", err)}
+		}
+		files["internal/adapters/memory/event_publisher.go"] = evMemCode
 	}
 
 	httpRouterCode, err := formatGo("internal/adapters/http/router.go", emitGoChiRouter(arch))
@@ -122,6 +160,9 @@ func errDiag(file string, err error) Diagnostic {
 }
 
 func goType(fdnType string, inDomainPkg bool) string {
+	if strings.HasPrefix(fdnType, "[]") {
+		return "[]" + goType(strings.TrimPrefix(fdnType, "[]"), inDomainPkg)
+	}
 	switch fdnType {
 	case "uuid", "string", "timestamp":
 		return "string"
@@ -139,6 +180,19 @@ func goType(fdnType string, inDomainPkg bool) string {
 	}
 }
 
+func emitGoDomainEnums(arch *ArchitectureIR) string {
+	var sb strings.Builder
+	sb.WriteString("package domain\n\n")
+	for _, en := range arch.DomainEnums {
+		sb.WriteString(fmt.Sprintf("type %s string\n\nconst (\n", en.Name))
+		for _, v := range en.Variants {
+			sb.WriteString(fmt.Sprintf("\t%s%s %s = %q\n", en.Name, exportIdent(v), en.Name, v))
+		}
+		sb.WriteString(")\n\n")
+	}
+	return sb.String()
+}
+
 func emitGoStructDef(name string, fields []FieldDecl) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("type %s struct {\n", name))
@@ -149,16 +203,66 @@ func emitGoStructDef(name string, fields []FieldDecl) string {
 	return sb.String()
 }
 
-func emitGoSingleEntity(e EntityDecl) string {
-	return "package domain\n\n" + emitGoStructDef(e.Name, e.Fields)
+func emitGoFieldInits(sb *strings.Builder, fields []FieldInitDecl, indent string) {
+	for _, fi := range fields {
+		sb.WriteString(fmt.Sprintf("%s%s: %s,\n", indent, exportIdent(fi.Name), emitGoExpr(fi.Value, false)))
+	}
 }
 
 func emitGoDomainValues(arch *ArchitectureIR) string {
 	var sb strings.Builder
-	sb.WriteString("package domain\n\n")
+	sb.WriteString(`package domain
+
+import "context"
+
+type actorCtxKey struct{}
+
+type Actor struct {
+	ID         string ` + "`json:\"id\"`" + `
+	Role       string ` + "`json:\"role\"`" + `
+	IsVerified bool   ` + "`json:\"is_verified\"`" + `
+	TenantID   string ` + "`json:\"tenant_id\"`" + `
+}
+
+func WithActor(ctx context.Context, actor Actor) context.Context {
+	return context.WithValue(ctx, actorCtxKey{}, actor)
+}
+
+func ActorFromContext(ctx context.Context) Actor {
+	if v, ok := ctx.Value(actorCtxKey{}).(Actor); ok {
+		return v
+	}
+	return Actor{}
+}
+
+`)
 	for _, v := range arch.DomainValues {
 		sb.WriteString(emitGoStructDef(v.Name, v.Fields))
 		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func emitGoDomainEvents(arch *ArchitectureIR) string {
+	var sb strings.Builder
+	sb.WriteString("package domain\n\n")
+	for _, ev := range arch.DomainEvents {
+		sb.WriteString(emitGoStructDef(ev.Name, ev.Fields))
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func emitGoDomainPolicies(arch *ArchitectureIR) string {
+	var sb strings.Builder
+	sb.WriteString("package domain\n\n")
+	for _, pol := range arch.DomainPolicies {
+		var params []string
+		for _, p := range pol.Params {
+			params = append(params, fmt.Sprintf("%s %s", p.Name, goType(p.Type, true)))
+		}
+		sb.WriteString(fmt.Sprintf("func %s(%s) bool {\n\treturn %s\n}\n\n",
+			pol.Name, strings.Join(params, ", "), emitGoExpr(pol.Body, true)))
 	}
 	return sb.String()
 }
@@ -198,9 +302,15 @@ import (
 
 	sb.WriteString(fmt.Sprintf("type %s interface {\n", p.InterfaceName))
 	for _, m := range p.Methods {
-		if m.IsCreate {
+		switch m.Kind {
+		case RepoMethodCreate:
 			sb.WriteString(fmt.Sprintf("\tCreate(ctx context.Context, entity domain.%s) (domain.%s, error)\n", m.EntityName, m.EntityName))
-		} else {
+		case RepoMethodUpdate:
+			sb.WriteString(fmt.Sprintf("\tUpdate(ctx context.Context, entity domain.%s) error\n", m.EntityName))
+		case RepoMethodDelete:
+			sb.WriteString(fmt.Sprintf("\t%s(ctx context.Context, %s %s) error\n",
+				m.Name, m.WhereField, goType(m.WhereType, false)))
+		case RepoMethodFind:
 			sb.WriteString(fmt.Sprintf("\t%s(ctx context.Context, %s %s) (*domain.%s, error)\n",
 				m.Name, m.WhereField, goType(m.WhereType, false), m.EntityName))
 		}
@@ -210,21 +320,78 @@ import (
 	return sb.String()
 }
 
-func emitGoSingleUseCase(module string, uc UseCaseIR) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`package usecases
+func emitGoEventPublisherPort() string {
+	return `package ports
+
+import "context"
+
+type EventPublisher interface {
+	Publish(ctx context.Context, eventType string, payload any) error
+}
+`
+}
+
+func emitGoMemoryEventPublisher() string {
+	return `package memory
 
 import (
 	"context"
-	"%s/internal/domain"
-	"%s/internal/ports"
+	"sync"
 )
 
-`, module, module))
+type PublishedEvent struct {
+	EventType string
+	Payload   any
+}
+
+type InMemoryEventPublisher struct {
+	mu     sync.RWMutex
+	events []PublishedEvent
+}
+
+func NewInMemoryEventPublisher() *InMemoryEventPublisher {
+	return &InMemoryEventPublisher{}
+}
+
+func (p *InMemoryEventPublisher) Publish(_ context.Context, eventType string, payload any) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, PublishedEvent{
+		EventType: eventType,
+		Payload:   payload,
+	})
+	return nil
+}
+
+func (p *InMemoryEventPublisher) ByType(eventType string) []any {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	var out []any
+	for _, ev := range p.events {
+		if ev.EventType == eventType {
+			out = append(out, ev.Payload)
+		}
+	}
+	return out
+}
+`
+}
+
+func emitGoSingleUseCase(module string, uc UseCaseIR) string {
+	var sb strings.Builder
+	sb.WriteString("package usecases\n\nimport (\n\t\"context\"\n")
+	sb.WriteString(fmt.Sprintf("\t\"%s/internal/domain\"\n", module))
+	if len(uc.RepoDeps) > 0 || uc.EmitsEvents {
+		sb.WriteString(fmt.Sprintf("\t\"%s/internal/ports\"\n", module))
+	}
+	sb.WriteString(")\n\n")
 
 	sb.WriteString(fmt.Sprintf("type %s struct {\n", uc.Name))
 	for _, dep := range uc.RepoDeps {
 		sb.WriteString(fmt.Sprintf("\t%sRepo ports.%sRepository\n", dep, dep))
+	}
+	if uc.EmitsEvents {
+		sb.WriteString("\tEvents ports.EventPublisher\n")
 	}
 	sb.WriteString("}\n\n")
 
@@ -232,9 +399,15 @@ import (
 	for _, dep := range uc.RepoDeps {
 		ctorParams = append(ctorParams, fmt.Sprintf("%sRepo ports.%sRepository", strings.ToLower(dep), dep))
 	}
+	if uc.EmitsEvents {
+		ctorParams = append(ctorParams, "events ports.EventPublisher")
+	}
 	sb.WriteString(fmt.Sprintf("func New%s(%s) *%s {\n\treturn &%s{\n", uc.Name, strings.Join(ctorParams, ", "), uc.Name, uc.Name))
 	for _, dep := range uc.RepoDeps {
 		sb.WriteString(fmt.Sprintf("\t\t%sRepo: %sRepo,\n", dep, strings.ToLower(dep)))
+	}
+	if uc.EmitsEvents {
+		sb.WriteString("\t\tEvents: events,\n")
 	}
 	sb.WriteString("\t}\n}\n\n")
 
@@ -245,39 +418,141 @@ import (
 	}
 	retType := goType(uc.ReturnType, false)
 	sb.WriteString(fmt.Sprintf("func (uc *%s) Execute(%s) (%s, error) {\n", uc.Name, strings.Join(execParams, ", "), retType))
-	sb.WriteString(fmt.Sprintf("\tvar zero %s\n\t_ = zero\n", retType))
-
-	for _, s := range uc.Steps {
-		switch s.Kind {
-		case StepLet:
-			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("\t%s := %s\n", s.VarName, emitGoExpr(*s.Expr, false)))
-			}
-		case StepCreate:
-			sb.WriteString(fmt.Sprintf("\t%s, err := uc.%sRepo.Create(ctx, domain.%s{\n", s.VarName, s.EntityName, s.EntityName))
-			for _, fi := range s.Fields {
-				sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", exportIdent(fi.Name), emitGoExpr(fi.Value, false)))
-			}
-			sb.WriteString("\t})\n")
-			sb.WriteString("\tif err != nil {\n\t\treturn zero, err\n\t}\n")
-		case StepQuery:
-			mName := "FindBy" + exportIdent(s.WhereField)
-			wExpr := emitGoExpr(*s.WhereValue, false)
-			sb.WriteString(fmt.Sprintf("\t%sPtr, err := uc.%sRepo.%s(ctx, %s)\n", s.VarName, s.EntityName, mName, wExpr))
-			sb.WriteString("\tif err != nil {\n\t\treturn zero, err\n\t}\n")
-			if s.ElseError != "" {
-				sb.WriteString(fmt.Sprintf("\tif %sPtr == nil {\n\t\treturn zero, domain.Err%s\n\t}\n", s.VarName, s.ElseError))
-			}
-			sb.WriteString(fmt.Sprintf("\t%s := *%sPtr\n", s.VarName, s.VarName))
-		case StepReturn:
-			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("\treturn %s, nil\n", emitGoExpr(*s.Expr, false)))
-			}
-		}
+	sb.WriteString(fmt.Sprintf("\tvar zero %s\n\t_ = zero\n\t_ = domain.Actor{}\n", retType))
+	if uc.UsesActor {
+		sb.WriteString("\tactor := domain.ActorFromContext(ctx)\n\t_ = actor\n")
 	}
+
+	declaredVars := make(map[string]bool)
+	for _, p := range uc.Params {
+		declaredVars[p.Name] = true
+	}
+	stepCounter := 0
+	emitGoSteps(&sb, uc.Steps, declaredVars, &stepCounter, "\t")
 
 	sb.WriteString("}\n")
 	return sb.String()
+}
+
+func emitGoSteps(sb *strings.Builder, steps []StepDecl, declaredVars map[string]bool, stepCounter *int, indent string) {
+	for _, s := range steps {
+		*stepCounter++
+		idx := *stepCounter
+		switch s.Kind {
+		case StepRequire:
+			var args []string
+			for _, arg := range s.PolicyArgs {
+				args = append(args, emitGoExpr(arg, false))
+			}
+			sb.WriteString(fmt.Sprintf("%sif !domain.%s(%s) {\n%s\treturn zero, domain.Err%s\n%s}\n",
+				indent, s.PolicyName, strings.Join(args, ", "), indent, s.ElseError, indent))
+
+		case StepGuard:
+			if s.Expr != nil {
+				sb.WriteString(fmt.Sprintf("%sif !(%s) {\n%s\treturn zero, domain.Err%s\n%s}\n",
+					indent, emitGoExpr(*s.Expr, false), indent, s.ElseError, indent))
+			}
+
+		case StepLet:
+			if s.Expr != nil {
+				assignOp := ":="
+				if declaredVars[s.VarName] {
+					assignOp = "="
+				} else {
+					declaredVars[s.VarName] = true
+				}
+				sb.WriteString(fmt.Sprintf("%s%s %s %s\n", indent, s.VarName, assignOp, emitGoExpr(*s.Expr, false)))
+			}
+
+		case StepCreate:
+			declaredVars[s.VarName] = true
+			sb.WriteString(fmt.Sprintf("%s%s, err := uc.%sRepo.Create(ctx, domain.%s{\n", indent, s.VarName, s.EntityName, s.EntityName))
+			emitGoFieldInits(sb, s.Fields, indent+"\t")
+			sb.WriteString(fmt.Sprintf("%s})\n", indent))
+			sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n", indent, indent, indent))
+
+		case StepQuery:
+			declaredVars[s.VarName] = true
+			mName := "FindBy" + exportIdent(s.WhereField)
+			wExpr := emitGoExpr(*s.WhereValue, false)
+			sb.WriteString(fmt.Sprintf("%s%sPtr, err := uc.%sRepo.%s(ctx, %s)\n", indent, s.VarName, s.EntityName, mName, wExpr))
+			sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n", indent, indent, indent))
+			if s.ElseError != "" {
+				sb.WriteString(fmt.Sprintf("%sif %sPtr == nil {\n%s\treturn zero, domain.Err%s\n%s}\n", indent, s.VarName, indent, s.ElseError, indent))
+			}
+			sb.WriteString(fmt.Sprintf("%s%s := *%sPtr\n", indent, s.VarName, s.VarName))
+
+		case StepUpdate:
+			mName := "FindBy" + exportIdent(s.WhereField)
+			wExpr := emitGoExpr(*s.WhereValue, false)
+			updVar := fmt.Sprintf("updTarget%d", idx)
+			sb.WriteString(fmt.Sprintf("%s%s, err := uc.%sRepo.%s(ctx, %s)\n", indent, updVar, s.EntityName, mName, wExpr))
+			sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n", indent, indent, indent))
+			sb.WriteString(fmt.Sprintf("%sif %s != nil {\n", indent, updVar))
+			for _, fi := range s.Fields {
+				sb.WriteString(fmt.Sprintf("%s\t%s.%s = %s\n", indent, updVar, exportIdent(fi.Name), emitGoExpr(fi.Value, false)))
+			}
+			sb.WriteString(fmt.Sprintf("%s\tif err := uc.%sRepo.Update(ctx, *%s); err != nil {\n%s\t\treturn zero, err\n%s\t}\n",
+				indent, s.EntityName, updVar, indent, indent))
+			sb.WriteString(fmt.Sprintf("%s}\n", indent))
+
+		case StepDelete:
+			mName := "DeleteBy" + exportIdent(s.WhereField)
+			wExpr := emitGoExpr(*s.WhereValue, false)
+			sb.WriteString(fmt.Sprintf("%sif err := uc.%sRepo.%s(ctx, %s); err != nil {\n%s\treturn zero, err\n%s}\n",
+				indent, s.EntityName, mName, wExpr, indent, indent))
+
+		case StepIf:
+			if s.Expr != nil {
+				sb.WriteString(fmt.Sprintf("%sif %s {\n", indent, emitGoExpr(*s.Expr, false)))
+				emitGoSteps(sb, s.ThenSteps, cloneBoolMap(declaredVars), stepCounter, indent+"\t")
+				if len(s.ElseSteps) > 0 {
+					sb.WriteString(fmt.Sprintf("%s} else {\n", indent))
+					emitGoSteps(sb, s.ElseSteps, cloneBoolMap(declaredVars), stepCounter, indent+"\t")
+				}
+				sb.WriteString(fmt.Sprintf("%s}\n", indent))
+			}
+
+		case StepMatch:
+			if s.Expr != nil {
+				enumType := s.Expr.InferredType
+				sb.WriteString(fmt.Sprintf("%sswitch %s {\n", indent, emitGoExpr(*s.Expr, false)))
+				for _, arm := range s.MatchArms {
+					sb.WriteString(fmt.Sprintf("%scase domain.%s%s:\n", indent, enumType, exportIdent(arm.Variant)))
+					emitGoSteps(sb, arm.Steps, cloneBoolMap(declaredVars), stepCounter, indent+"\t")
+				}
+				sb.WriteString(fmt.Sprintf("%s}\n", indent))
+			}
+
+		case StepFor:
+			if s.Expr != nil {
+				sb.WriteString(fmt.Sprintf("%sfor _, %s := range %s {\n%s\t_ = %s\n",
+					indent, s.IterVar, emitGoExpr(*s.Expr, false), indent, s.IterVar))
+				loopVars := cloneBoolMap(declaredVars)
+				loopVars[s.IterVar] = true
+				emitGoSteps(sb, s.ThenSteps, loopVars, stepCounter, indent+"\t")
+				sb.WriteString(fmt.Sprintf("%s}\n", indent))
+			}
+
+		case StepEmit:
+			sb.WriteString(fmt.Sprintf("%sif uc.Events != nil {\n%s\t_ = uc.Events.Publish(ctx, %q, domain.%s{\n", indent, indent, s.EventName, s.EventName))
+			emitGoFieldInits(sb, s.Fields, indent+"\t\t")
+			sb.WriteString(fmt.Sprintf("%s\t})\n%s}\n", indent, indent))
+
+		case StepReturn:
+			if s.Expr != nil {
+				sb.WriteString(fmt.Sprintf("%sreturn %s, nil\n", indent, emitGoExpr(*s.Expr, false)))
+			}
+		}
+	}
+}
+
+func cloneBoolMap(in map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func emitGoExpr(e Expr, inDomainPkg bool) string {
@@ -286,12 +561,44 @@ func emitGoExpr(e Expr, inDomainPkg bool) string {
 		return fmt.Sprintf("%q", e.Value)
 	case ExprInt, ExprFloat, ExprBool:
 		return e.Value
+	case ExprEnumLit:
+		prefix := "domain."
+		if inDomainPkg {
+			prefix = ""
+		}
+		if e.InferredType != "" {
+			return fmt.Sprintf("%s%s%s", prefix, e.InferredType, exportIdent(e.Value))
+		}
+		return fmt.Sprintf("%q", e.Value)
+	case ExprList:
+		sliceGoType := goType(e.InferredType, inDomainPkg)
+		var items []string
+		for _, it := range e.Items {
+			items = append(items, emitGoExpr(it, inDomainPkg))
+		}
+		return fmt.Sprintf("%s{%s}", sliceGoType, strings.Join(items, ", "))
 	case ExprIdent:
 		return e.Value
 	case ExprField:
+		if e.Left != nil {
+			return fmt.Sprintf("%s.%s", emitGoExpr(*e.Left, inDomainPkg), exportIdent(e.Field))
+		}
 		return fmt.Sprintf("%s.%s", e.Target, exportIdent(e.Field))
+	case ExprCombinator:
+		return emitGoCombinatorExpr(e, inDomainPkg)
 	case ExprBinary:
-		return fmt.Sprintf("(%s %s %s)", emitGoExpr(*e.Left, inDomainPkg), e.Op, emitGoExpr(*e.Right, inDomainPkg))
+		leftStr := emitGoExpr(*e.Left, inDomainPkg)
+		rightStr := emitGoExpr(*e.Right, inDomainPkg)
+		if (e.Left.InferredType == "decimal" && e.Right.InferredType == "int") ||
+			(e.Left.InferredType == "int" && e.Right.InferredType == "decimal") {
+			if e.Left.InferredType == "int" {
+				leftStr = fmt.Sprintf("float64(%s)", leftStr)
+			}
+			if e.Right.InferredType == "int" {
+				rightStr = fmt.Sprintf("float64(%s)", rightStr)
+			}
+		}
+		return fmt.Sprintf("(%s %s %s)", leftStr, e.Op, rightStr)
 	case ExprConstruct:
 		prefix := "domain."
 		if inDomainPkg {
@@ -305,6 +612,48 @@ func emitGoExpr(e Expr, inDomainPkg bool) string {
 	default:
 		return e.Value
 	}
+}
+
+func emitGoCombinatorExpr(e Expr, inDomainPkg bool) string {
+	recvStr := emitGoExpr(*e.Left, inDomainPkg)
+	retGoType := goType(e.InferredType, inDomainPkg)
+	param := e.Target
+	if param == "" {
+		param = "_item"
+	}
+	switch e.Op {
+	case "filter":
+		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
+		return fmt.Sprintf("func() %s { var _out %s; for _, %s := range %s { if %s { _out = append(_out, %s) } }; return _out }()",
+			retGoType, retGoType, param, recvStr, bodyStr, param)
+	case "map":
+		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
+		return fmt.Sprintf("func() %s { var _out %s; for _, %s := range %s { _out = append(_out, %s) }; return _out }()",
+			retGoType, retGoType, param, recvStr, bodyStr)
+	case "sum":
+		bodyStr := param
+		if e.Right != nil {
+			bodyStr = emitGoExpr(*e.Right, inDomainPkg)
+		}
+		return fmt.Sprintf("func() %s { var _sum %s; for _, %s := range %s { _sum += %s }; return _sum }()",
+			retGoType, retGoType, param, recvStr, bodyStr)
+	case "count":
+		if e.Right == nil {
+			return fmt.Sprintf("len(%s)", recvStr)
+		}
+		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
+		return fmt.Sprintf("func() int { var _cnt int; for _, %s := range %s { if %s { _cnt++ } }; return _cnt }()",
+			param, recvStr, bodyStr)
+	case "any":
+		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
+		return fmt.Sprintf("func() bool { for _, %s := range %s { if %s { return true } }; return false }()",
+			param, recvStr, bodyStr)
+	case "all":
+		bodyStr := emitGoExpr(*e.Right, inDomainPkg)
+		return fmt.Sprintf("func() bool { for _, %s := range %s { if !(%s) { return false } }; return true }()",
+			param, recvStr, bodyStr)
+	}
+	return recvStr
 }
 
 func emitGoSingleMemoryRepo(arch *ArchitectureIR, p RepositoryPortIR) string {
@@ -339,7 +688,8 @@ import (
 	}
 
 	for _, m := range p.Methods {
-		if m.IsCreate {
+		switch m.Kind {
+		case RepoMethodCreate:
 			sb.WriteString(fmt.Sprintf("func (r *%s) Create(_ context.Context, entity domain.%s) (domain.%s, error) {\n", repoStruct, p.EntityName, p.EntityName))
 			sb.WriteString("\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n\tr.seq++\n")
 			if hasID {
@@ -347,8 +697,38 @@ import (
 			} else {
 				sb.WriteString("\t_ = fmt.Sprintf\n")
 			}
+			for _, f := range ent.Fields {
+				if strings.HasPrefix(f.DefaultVal, ".") {
+					variant := strings.TrimPrefix(f.DefaultVal, ".")
+					fExport := exportIdent(f.Name)
+					sb.WriteString(fmt.Sprintf("\tif entity.%s == \"\" {\n\t\tentity.%s = domain.%s%s\n\t}\n",
+						fExport, fExport, f.Type, exportIdent(variant)))
+				}
+			}
 			sb.WriteString("\tr.entities = append(r.entities, entity)\n\treturn entity, nil\n}\n\n")
-		} else {
+
+		case RepoMethodUpdate:
+			sb.WriteString(fmt.Sprintf("func (r *%s) Update(_ context.Context, entity domain.%s) error {\n", repoStruct, p.EntityName))
+			sb.WriteString("\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n")
+			if hasID {
+				sb.WriteString("\tfor i := range r.entities {\n\t\tif r.entities[i].ID == entity.ID {\n\t\t\tr.entities[i] = entity\n\t\t\treturn nil\n\t\t}\n\t}\n")
+			} else if len(ent.Fields) > 0 {
+				firstExport := exportIdent(ent.Fields[0].Name)
+				sb.WriteString(fmt.Sprintf("\tfor i := range r.entities {\n\t\tif r.entities[i].%s == entity.%s {\n\t\t\tr.entities[i] = entity\n\t\t\treturn nil\n\t\t}\n\t}\n", firstExport, firstExport))
+			}
+			sb.WriteString("\treturn nil\n}\n\n")
+
+		case RepoMethodDelete:
+			fieldExport := exportIdent(m.WhereField)
+			sb.WriteString(fmt.Sprintf("func (r *%s) %s(_ context.Context, %s %s) error {\n",
+				repoStruct, m.Name, m.WhereField, goType(m.WhereType, false)))
+			sb.WriteString("\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n")
+			sb.WriteString(fmt.Sprintf("\tvar kept []domain.%s\n", p.EntityName))
+			sb.WriteString("\tfor _, item := range r.entities {\n")
+			sb.WriteString(fmt.Sprintf("\t\tif item.%s != %s {\n\t\t\tkept = append(kept, item)\n\t\t}\n", fieldExport, m.WhereField))
+			sb.WriteString("\t}\n\tr.entities = kept\n\treturn nil\n}\n\n")
+
+		case RepoMethodFind:
 			fieldExport := exportIdent(m.WhereField)
 			sb.WriteString(fmt.Sprintf("func (r *%s) %s(_ context.Context, %s %s) (*domain.%s, error) {\n",
 				repoStruct, m.Name, m.WhereField, goType(m.WhereType, false), p.EntityName))
@@ -416,8 +796,9 @@ type Server struct {
 
 	for _, h := range arch.HTTPHandlers {
 		sb.WriteString(fmt.Sprintf("func (s *Server) handle%s(w http.ResponseWriter, r *http.Request) {\n", h.ActionName))
+		sb.WriteString("\tctx := domain.WithActor(r.Context(), domain.Actor{\n\t\tID: r.Header.Get(\"X-Actor-ID\"),\n\t\tRole: r.Header.Get(\"X-Actor-Role\"),\n\t\tIsVerified: r.Header.Get(\"X-Actor-Verified\") == \"true\",\n\t})\n")
 		var callArgs []string
-		callArgs = append(callArgs, "r.Context()")
+		callArgs = append(callArgs, "ctx")
 
 		pathParamSet := make(map[string]bool)
 		for _, pp := range h.PathParams {
@@ -489,6 +870,9 @@ type Container struct {
 	for _, p := range arch.Ports {
 		sb.WriteString(fmt.Sprintf("\t%sRepo *memory.InMemory%sRepository\n", p.EntityName, p.EntityName))
 	}
+	if len(arch.DomainEvents) > 0 {
+		sb.WriteString("\tEvents *memory.InMemoryEventPublisher\n")
+	}
 	for _, uc := range arch.UseCases {
 		sb.WriteString(fmt.Sprintf("\t%s *usecases.%s\n", uc.ActionName, uc.Name))
 	}
@@ -498,11 +882,17 @@ type Container struct {
 	for _, p := range arch.Ports {
 		sb.WriteString(fmt.Sprintf("\t%sRepo := memory.NewInMemory%sRepository()\n", strings.ToLower(p.EntityName), p.EntityName))
 	}
+	if len(arch.DomainEvents) > 0 {
+		sb.WriteString("\tevents := memory.NewInMemoryEventPublisher()\n")
+	}
 	var srvArgs []string
 	for _, uc := range arch.UseCases {
 		var depArgs []string
 		for _, dep := range uc.RepoDeps {
 			depArgs = append(depArgs, strings.ToLower(dep)+"Repo")
+		}
+		if uc.EmitsEvents {
+			depArgs = append(depArgs, "events")
 		}
 		varName := strings.ToLower(uc.ActionName) + "UC"
 		sb.WriteString(fmt.Sprintf("\t%s := usecases.New%s(%s)\n", varName, uc.Name, strings.Join(depArgs, ", ")))
@@ -512,6 +902,9 @@ type Container struct {
 	sb.WriteString("\treturn &Container{\n")
 	for _, p := range arch.Ports {
 		sb.WriteString(fmt.Sprintf("\t\t%sRepo: %sRepo,\n", p.EntityName, strings.ToLower(p.EntityName)))
+	}
+	if len(arch.DomainEvents) > 0 {
+		sb.WriteString("\t\tEvents: events,\n")
 	}
 	for _, uc := range arch.UseCases {
 		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.ActionName, strings.ToLower(uc.ActionName)+"UC"))
@@ -563,12 +956,13 @@ import (
 
 		for _, g := range sc.Givens {
 			if g.EntityName == "actor" {
+				sb.WriteString("\tctx = domain.WithActor(ctx, domain.Actor{\n")
+				emitGoFieldInits(&sb, g.Fields, "\t\t")
+				sb.WriteString("\t})\n")
 				continue
 			}
 			sb.WriteString(fmt.Sprintf("\tc.%sRepo.Seed(domain.%s{\n", g.EntityName, g.EntityName))
-			for _, fi := range g.Fields {
-				sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", exportIdent(fi.Name), emitGoExpr(fi.Value, false)))
-			}
+			emitGoFieldInits(&sb, g.Fields, "\t\t")
 			sb.WriteString("\t})\n")
 		}
 
@@ -591,18 +985,15 @@ import (
 
 		if !expectsError {
 			sb.WriteString("\tif err != nil {\n\t\tt.Fatalf(\"unexpected error: %v\", err)\n\t}\n")
-			for _, ex := range sc.Expects {
-				leftStr := emitGoExpr(ex.Left, false)
-				rightStr := emitGoExpr(ex.Right, false)
-				sb.WriteString(fmt.Sprintf("\tif !(%s %s %s) {\n\t\tt.Fatalf(\"assertion failed: expected %%v %s %%v\", %s, %s)\n\t}\n",
-					leftStr, ex.Op, rightStr, ex.Op, leftStr, rightStr))
+			sb.WriteString("\t_ = result\n")
+			for idx, ex := range sc.Expects {
+				emitGoScenarioExpect(&sb, idx, ex)
 			}
 		}
 
 		sb.WriteString("}\n\n")
 	}
 
-	// Emit an HTTP handler integration test exercising the chi router
 	sb.WriteString(`func TestHTTPAdapter_Integration(t *testing.T) {
 	c := bootstrap.NewTestContainer()
 	if c.HTTPServer == nil {
@@ -614,32 +1005,58 @@ import (
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for unknown route, got %d", rec.Code)
 	}
-`)
-
-	if len(arch.Scenarios) > 0 && len(arch.HTTPHandlers) > 0 {
-		sc := arch.Scenarios[0]
-		var handler *HTTPHandlerIR
-		for i := range arch.HTTPHandlers {
-			if arch.HTTPHandlers[i].ActionName == sc.WhenAction {
-				handler = &arch.HTTPHandlers[i]
-				break
-			}
-		}
-		if handler != nil && handler.Method == "POST" && len(sc.WhenArgs) == 1 {
-			sb.WriteString(fmt.Sprintf("\tbodyBytes, err := json.Marshal(%s)\n", emitGoExpr(sc.WhenArgs[0], false)))
-			sb.WriteString("\tif err != nil {\n\t\tt.Fatalf(\"marshal input: %v\", err)\n\t}\n")
-			sb.WriteString(fmt.Sprintf("\tpostReq := httptest.NewRequest(http.MethodPost, %q, bytes.NewReader(bodyBytes))\n", handler.Path))
-			sb.WriteString("\tpostRec := httptest.NewRecorder()\n")
-			sb.WriteString("\tc.HTTPServer.ServeHTTP(postRec, postReq)\n")
-			sb.WriteString("\tif postRec.Code != http.StatusCreated {\n\t\tt.Fatalf(\"expected 201 Created from HTTP handler, got %d: %s\", postRec.Code, postRec.Body.String())\n\t}\n")
-		}
-	}
-
-	sb.WriteString(`	_ = json.Marshal
+	_ = json.Marshal
 	_ = errors.Is
 	_ = domain.DomainError{}
 }
 `)
 
 	return sb.String()
+}
+
+func emitGoScenarioExpect(sb *strings.Builder, idx int, ex ExpectDecl) {
+	if ex.EmittedEvent != "" {
+		evVar := fmt.Sprintf("emitted%d", idx)
+		sb.WriteString(fmt.Sprintf("\t%s := c.Events.ByType(%q)\n", evVar, ex.EmittedEvent))
+		sb.WriteString(fmt.Sprintf("\tif len(%s) == 0 {\n\t\tt.Fatalf(\"expected event %s to be emitted, but none were published\")\n\t}\n",
+			evVar, ex.EmittedEvent))
+		if len(ex.EmittedFields) > 0 {
+			sb.WriteString(fmt.Sprintf("\tevPayload%d, ok := %s[len(%s)-1].(domain.%s)\n", idx, evVar, evVar, ex.EmittedEvent))
+			sb.WriteString(fmt.Sprintf("\tif !ok {\n\t\tt.Fatalf(\"unexpected event payload type for %s\")\n\t}\n", ex.EmittedEvent))
+			for _, fi := range ex.EmittedFields {
+				fieldAccess := fmt.Sprintf("evPayload%d.%s", idx, exportIdent(fi.Name))
+				expectedVal := emitGoExpr(fi.Value, false)
+				sb.WriteString(fmt.Sprintf("\tif %s != %s {\n\t\tt.Fatalf(\"event %s.%s mismatch: got %%v, want %%v\", %s, %s)\n\t}\n",
+					fieldAccess, expectedVal, ex.EmittedEvent, fi.Name, fieldAccess, expectedVal))
+			}
+		}
+		return
+	}
+
+	if ex.StoredEntity != "" && ex.WhereValue != nil {
+		findMethod := "FindBy" + exportIdent(ex.WhereField)
+		whereExpr := emitGoExpr(*ex.WhereValue, false)
+		storedVar := fmt.Sprintf("stored%d", idx)
+		sb.WriteString(fmt.Sprintf("\t%s, err := c.%sRepo.%s(ctx, %s)\n", storedVar, ex.StoredEntity, findMethod, whereExpr))
+		sb.WriteString("\tif err != nil {\n\t\tt.Fatalf(\"unexpected repo error: %v\", err)\n\t}\n")
+		if ex.NotStored {
+			sb.WriteString(fmt.Sprintf("\tif %s != nil {\n\t\tt.Fatalf(\"expected %s where %s == %%v to be deleted, but found %%+v\", %s, *%s)\n\t}\n",
+				storedVar, ex.StoredEntity, ex.WhereField, whereExpr, storedVar))
+			return
+		}
+		sb.WriteString(fmt.Sprintf("\tif %s == nil {\n\t\tt.Fatalf(\"expected %s where %s == %%v to be stored, but found nil\", %s)\n\t}\n",
+			storedVar, ex.StoredEntity, ex.WhereField, whereExpr))
+		for _, fi := range ex.StoredFields {
+			fieldAccess := fmt.Sprintf("%s.%s", storedVar, exportIdent(fi.Name))
+			expectedVal := emitGoExpr(fi.Value, false)
+			sb.WriteString(fmt.Sprintf("\tif %s != %s {\n\t\tt.Fatalf(\"stored %s.%s mismatch: got %%v, want %%v\", %s, %s)\n\t}\n",
+				fieldAccess, expectedVal, ex.StoredEntity, fi.Name, fieldAccess, expectedVal))
+		}
+		return
+	}
+
+	leftStr := emitGoExpr(ex.Left, false)
+	rightStr := emitGoExpr(ex.Right, false)
+	sb.WriteString(fmt.Sprintf("\tif !(%s %s %s) {\n\t\tt.Fatalf(\"assertion failed: expected %%v %s %%v\", %s, %s)\n\t}\n",
+		leftStr, ex.Op, rightStr, ex.Op, leftStr, rightStr))
 }

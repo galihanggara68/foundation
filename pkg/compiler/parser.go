@@ -15,6 +15,8 @@ const (
 	tokNumber    tokenKind = "NUMBER"
 	tokLBrace    tokenKind = "{"
 	tokRBrace    tokenKind = "}"
+	tokLBracket  tokenKind = "["
+	tokRBracket  tokenKind = "]"
 	tokLParen    tokenKind = "("
 	tokRParen    tokenKind = ")"
 	tokColon     tokenKind = ":"
@@ -23,6 +25,7 @@ const (
 	tokAt        tokenKind = "@"
 	tokQMark     tokenKind = "?"
 	tokAssign    tokenKind = "="
+	tokFatArrow  tokenKind = "=>"
 	tokEq        tokenKind = "=="
 	tokNeq       tokenKind = "!="
 	tokGte       tokenKind = ">="
@@ -110,6 +113,12 @@ func (l *lexer) tokenize() ([]token, []Diagnostic) {
 		case '}':
 			l.next()
 			tokens = append(tokens, token{kind: tokRBrace, text: "}", span: span})
+		case '[':
+			l.next()
+			tokens = append(tokens, token{kind: tokLBracket, text: "[", span: span})
+		case ']':
+			l.next()
+			tokens = append(tokens, token{kind: tokRBracket, text: "]", span: span})
 		case '(':
 			l.next()
 			tokens = append(tokens, token{kind: tokLParen, text: "(", span: span})
@@ -153,6 +162,9 @@ func (l *lexer) tokenize() ([]token, []Diagnostic) {
 			if l.peek() == '=' {
 				l.next()
 				tokens = append(tokens, token{kind: tokEq, text: "==", span: span})
+			} else if l.peek() == '>' {
+				l.next()
+				tokens = append(tokens, token{kind: tokFatArrow, text: "=>", span: span})
 			} else {
 				tokens = append(tokens, token{kind: tokAssign, text: "=", span: span})
 			}
@@ -370,6 +382,10 @@ func (p *parser) parseBlueprint() *SemanticIR {
 			continue
 		}
 		switch t.text {
+		case "enum":
+			if e, ok := p.parseEnum(); ok {
+				ir.Enums = append(ir.Enums, e)
+			}
 		case "value":
 			if v, ok := p.parseValue(); ok {
 				ir.Values = append(ir.Values, v)
@@ -381,6 +397,14 @@ func (p *parser) parseBlueprint() *SemanticIR {
 		case "error":
 			if e, ok := p.parseError(); ok {
 				ir.Errors = append(ir.Errors, e)
+			}
+		case "event":
+			if ev, ok := p.parseEvent(); ok {
+				ir.Events = append(ir.Events, ev)
+			}
+		case "policy":
+			if pol, ok := p.parsePolicy(); ok {
+				ir.Policies = append(ir.Policies, pol)
 			}
 		case "action":
 			if a, ok := p.parseAction(); ok {
@@ -401,6 +425,96 @@ func (p *parser) parseBlueprint() *SemanticIR {
 		}
 	}
 	return ir
+}
+
+func (p *parser) parseEnum() (EnumDecl, bool) {
+	kw := p.advance() // enum
+	nameTok, ok := p.expect(tokIdent)
+	if !ok {
+		return EnumDecl{}, false
+	}
+	if _, ok := p.expect(tokLBrace); !ok {
+		return EnumDecl{}, false
+	}
+	var variants []string
+	for p.cur().kind != tokRBrace && p.cur().kind != tokEOF {
+		vTok, ok := p.expect(tokIdent)
+		if !ok {
+			return EnumDecl{}, false
+		}
+		variants = append(variants, vTok.text)
+		if p.cur().kind == tokComma {
+			p.advance()
+		}
+	}
+	if _, ok := p.expect(tokRBrace); !ok {
+		return EnumDecl{}, false
+	}
+	return EnumDecl{
+		Name:     nameTok.text,
+		Variants: variants,
+		Span:     kw.span,
+	}, true
+}
+
+func (p *parser) parseEvent() (EventDecl, bool) {
+	name, fields, span, ok := p.parseNamedStruct()
+	if !ok {
+		return EventDecl{}, false
+	}
+	return EventDecl{Name: name, Fields: fields, Span: span}, true
+}
+
+func (p *parser) parsePolicy() (PolicyDecl, bool) {
+	kw := p.advance() // policy
+	nameTok, ok := p.expect(tokIdent)
+	if !ok {
+		return PolicyDecl{}, false
+	}
+	if _, ok := p.expect(tokLParen); !ok {
+		return PolicyDecl{}, false
+	}
+	var params []ParamDecl
+	for p.cur().kind != tokRParen && p.cur().kind != tokEOF {
+		pName, ok := p.expect(tokIdent)
+		if !ok {
+			return PolicyDecl{}, false
+		}
+		if _, ok := p.expect(tokColon); !ok {
+			return PolicyDecl{}, false
+		}
+		pType, ok := p.expect(tokIdent)
+		if !ok {
+			return PolicyDecl{}, false
+		}
+		params = append(params, ParamDecl{
+			Name: pName.text,
+			Type: pType.text,
+			Span: pName.span,
+		})
+		if p.cur().kind == tokComma {
+			p.advance()
+		}
+	}
+	if _, ok := p.expect(tokRParen); !ok {
+		return PolicyDecl{}, false
+	}
+	if _, ok := p.expect(tokLBrace); !ok {
+		return PolicyDecl{}, false
+	}
+	body, ok := p.parseExpr()
+	if !ok {
+		return PolicyDecl{}, false
+	}
+	if _, ok := p.expect(tokRBrace); !ok {
+		return PolicyDecl{}, false
+	}
+	return PolicyDecl{
+		Name:   nameTok.text,
+		Params: params,
+		Body:   body,
+		Span:   kw.span,
+	}, true
 }
 
 func (p *parser) parseNamedStruct() (string, []FieldDecl, Span, bool) {
@@ -438,6 +552,34 @@ func (p *parser) parseEntity() (EntityDecl, bool) {
 	return EntityDecl{Name: name, Fields: fields, Span: span}, true
 }
 
+func (p *parser) parseTypeName() (string, bool) {
+	if p.cur().kind == tokLBracket {
+		p.advance()
+		if _, ok := p.expect(tokRBracket); !ok {
+			return "", false
+		}
+		elemType, ok := p.expect(tokIdent)
+		if !ok {
+			return "", false
+		}
+		return "[]" + elemType.text, true
+	}
+	fType, ok := p.expect(tokIdent)
+	if !ok {
+		return "", false
+	}
+	typeStr := fType.text
+	// Support parameterized types like decimal(10, 2)
+	if p.cur().kind == tokLParen {
+		p.advance()
+		for p.cur().kind != tokRParen && p.cur().kind != tokEOF {
+			p.advance()
+		}
+		p.expect(tokRParen)
+	}
+	return typeStr, true
+}
+
 func (p *parser) parseFieldList() ([]FieldDecl, bool) {
 	var fields []FieldDecl
 	for p.cur().kind != tokRBrace && p.cur().kind != tokEOF {
@@ -448,18 +590,9 @@ func (p *parser) parseFieldList() ([]FieldDecl, bool) {
 		if _, ok := p.expect(tokColon); !ok {
 			return nil, false
 		}
-		fType, ok := p.expect(tokIdent)
+		typeStr, ok := p.parseTypeName()
 		if !ok {
 			return nil, false
-		}
-		typeStr := fType.text
-		// Support parameterized types like decimal(10, 2)
-		if p.cur().kind == tokLParen {
-			p.advance()
-			for p.cur().kind != tokRParen && p.cur().kind != tokEOF {
-				p.advance()
-			}
-			p.expect(tokRParen)
 		}
 		optional := false
 		if p.cur().kind == tokQMark {
@@ -622,13 +755,13 @@ func (p *parser) parseAction() (ActionDecl, bool) {
 		if _, ok := p.expect(tokColon); !ok {
 			return ActionDecl{}, false
 		}
-		pType, ok := p.expect(tokIdent)
+		pType, ok := p.parseTypeName()
 		if !ok {
 			return ActionDecl{}, false
 		}
 		params = append(params, ParamDecl{
 			Name: pName.text,
-			Type: pType.text,
+			Type: pType,
 			Span: pName.span,
 		})
 		if p.cur().kind == tokComma {
@@ -641,11 +774,11 @@ func (p *parser) parseAction() (ActionDecl, bool) {
 	retType := ""
 	if p.cur().kind == tokArrow {
 		p.advance()
-		rTok, ok := p.expect(tokIdent)
+		rType, ok := p.parseTypeName()
 		if !ok {
 			return ActionDecl{}, false
 		}
-		retType = rTok.text
+		retType = rType
 	}
 	var traits []TraitDecl
 	for p.cur().kind == tokAt {
@@ -655,18 +788,8 @@ func (p *parser) parseAction() (ActionDecl, bool) {
 		}
 		traits = append(traits, tr)
 	}
-	if _, ok := p.expect(tokLBrace); !ok {
-		return ActionDecl{}, false
-	}
-	var steps []StepDecl
-	for p.cur().kind != tokRBrace && p.cur().kind != tokEOF {
-		step, ok := p.parseStep()
-		if !ok {
-			return ActionDecl{}, false
-		}
-		steps = append(steps, step)
-	}
-	if _, ok := p.expect(tokRBrace); !ok {
+	steps, ok := p.parseStepBlock()
+	if !ok {
 		return ActionDecl{}, false
 	}
 	return ActionDecl{
@@ -677,6 +800,24 @@ func (p *parser) parseAction() (ActionDecl, bool) {
 		Steps:      steps,
 		Span:       kw.span,
 	}, true
+}
+
+func (p *parser) parseStepBlock() ([]StepDecl, bool) {
+	if _, ok := p.expect(tokLBrace); !ok {
+		return nil, false
+	}
+	var steps []StepDecl
+	for p.cur().kind != tokRBrace && p.cur().kind != tokEOF {
+		step, ok := p.parseStep()
+		if !ok {
+			return nil, false
+		}
+		steps = append(steps, step)
+	}
+	if _, ok := p.expect(tokRBrace); !ok {
+		return nil, false
+	}
+	return steps, true
 }
 
 func (p *parser) parseStep() (StepDecl, bool) {
@@ -773,6 +914,277 @@ func (p *parser) parseStep() (StepDecl, bool) {
 			Span:    t.span,
 		}, true
 
+	case "require":
+		p.advance()
+		polTok, ok := p.expect(tokIdent)
+		if !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expect(tokLParen); !ok {
+			return StepDecl{}, false
+		}
+		var args []Expr
+		for p.cur().kind != tokRParen && p.cur().kind != tokEOF {
+			arg, ok := p.parseExpr()
+			if !ok {
+				return StepDecl{}, false
+			}
+			args = append(args, arg)
+			if p.cur().kind == tokComma {
+				p.advance()
+			}
+		}
+		if _, ok := p.expect(tokRParen); !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expectIdentText("else"); !ok {
+			return StepDecl{}, false
+		}
+		errTok, ok := p.expect(tokIdent)
+		if !ok {
+			return StepDecl{}, false
+		}
+		return StepDecl{
+			Kind:       StepRequire,
+			PolicyName: polTok.text,
+			PolicyArgs: args,
+			ElseError:  errTok.text,
+			Span:       t.span,
+		}, true
+
+	case "guard":
+		p.advance()
+		condExpr, ok := p.parseExpr()
+		if !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expectIdentText("else"); !ok {
+			return StepDecl{}, false
+		}
+		errTok, ok := p.expect(tokIdent)
+		if !ok {
+			return StepDecl{}, false
+		}
+		return StepDecl{
+			Kind:      StepGuard,
+			Expr:      &condExpr,
+			ElseError: errTok.text,
+			Span:      t.span,
+		}, true
+
+	case "update":
+		p.advance()
+		entTok, ok := p.expect(tokIdent)
+		if !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expectIdentText("where"); !ok {
+			return StepDecl{}, false
+		}
+		fieldTok, ok := p.expect(tokIdent)
+		if !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expect(tokEq); !ok {
+			return StepDecl{}, false
+		}
+		whereVal, ok := p.parseExpr()
+		if !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expectIdentText("set"); !ok {
+			return StepDecl{}, false
+		}
+		fields, ok := p.parseFieldInitBlock()
+		if !ok {
+			return StepDecl{}, false
+		}
+		return StepDecl{
+			Kind:       StepUpdate,
+			EntityName: entTok.text,
+			WhereField: fieldTok.text,
+			WhereValue: &whereVal,
+			Fields:     fields,
+			Span:       t.span,
+		}, true
+
+	case "delete":
+		p.advance()
+		entTok, ok := p.expect(tokIdent)
+		if !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expectIdentText("where"); !ok {
+			return StepDecl{}, false
+		}
+		fieldTok, ok := p.expect(tokIdent)
+		if !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expect(tokEq); !ok {
+			return StepDecl{}, false
+		}
+		whereVal, ok := p.parseExpr()
+		if !ok {
+			return StepDecl{}, false
+		}
+		return StepDecl{
+			Kind:       StepDelete,
+			EntityName: entTok.text,
+			WhereField: fieldTok.text,
+			WhereValue: &whereVal,
+			Span:       t.span,
+		}, true
+
+	case "if":
+		p.advance()
+		cond, ok := p.parseExpr()
+		if !ok {
+			return StepDecl{}, false
+		}
+		thenSteps, ok := p.parseStepBlock()
+		if !ok {
+			return StepDecl{}, false
+		}
+		var elseSteps []StepDecl
+		if p.cur().kind == tokIdent && p.cur().text == "else" {
+			p.advance()
+			if p.cur().kind == tokIdent && p.cur().text == "if" {
+				nestedIf, ok := p.parseStep()
+				if !ok {
+					return StepDecl{}, false
+				}
+				elseSteps = []StepDecl{nestedIf}
+			} else {
+				var ok bool
+				elseSteps, ok = p.parseStepBlock()
+				if !ok {
+					return StepDecl{}, false
+				}
+			}
+		}
+		return StepDecl{
+			Kind:      StepIf,
+			Expr:      &cond,
+			ThenSteps: thenSteps,
+			ElseSteps: elseSteps,
+			Span:      t.span,
+		}, true
+
+	case "match":
+		p.advance()
+		targetExpr, ok := p.parseExpr()
+		if !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expect(tokLBrace); !ok {
+			return StepDecl{}, false
+		}
+		var arms []MatchArmDecl
+		for p.cur().kind != tokRBrace && p.cur().kind != tokEOF {
+			armSpan := p.cur().span
+			if _, ok := p.expect(tokDot); !ok {
+				return StepDecl{}, false
+			}
+			vTok, ok := p.expect(tokIdent)
+			if !ok {
+				return StepDecl{}, false
+			}
+			if _, ok := p.expect(tokFatArrow); !ok {
+				return StepDecl{}, false
+			}
+			var armSteps []StepDecl
+			if p.cur().kind == tokLBrace {
+				var sOk bool
+				armSteps, sOk = p.parseStepBlock()
+				if !sOk {
+					return StepDecl{}, false
+				}
+			} else {
+				single, sOk := p.parseStep()
+				if !sOk {
+					return StepDecl{}, false
+				}
+				armSteps = []StepDecl{single}
+			}
+			if p.cur().kind == tokComma {
+				p.advance()
+			}
+			arms = append(arms, MatchArmDecl{
+				Variant: vTok.text,
+				Steps:   armSteps,
+				Span:    armSpan,
+			})
+		}
+		if _, ok := p.expect(tokRBrace); !ok {
+			return StepDecl{}, false
+		}
+		return StepDecl{
+			Kind:      StepMatch,
+			Expr:      &targetExpr,
+			MatchArms: arms,
+			Span:      t.span,
+		}, true
+
+	case "for":
+		p.advance()
+		iterTok, ok := p.expect(tokIdent)
+		if !ok {
+			return StepDecl{}, false
+		}
+		if _, ok := p.expectIdentText("in"); !ok {
+			return StepDecl{}, false
+		}
+		collExpr, ok := p.parseExpr()
+		if !ok {
+			return StepDecl{}, false
+		}
+		bodySteps, ok := p.parseStepBlock()
+		if !ok {
+			return StepDecl{}, false
+		}
+		return StepDecl{
+			Kind:      StepFor,
+			IterVar:   iterTok.text,
+			Expr:      &collExpr,
+			ThenSteps: bodySteps,
+			Span:      t.span,
+		}, true
+
+	case "while":
+		p.advance()
+		condExpr, ok := p.parseExpr()
+		if !ok {
+			return StepDecl{}, false
+		}
+		bodySteps, ok := p.parseStepBlock()
+		if !ok {
+			return StepDecl{}, false
+		}
+		return StepDecl{
+			Kind:      StepWhile,
+			Expr:      &condExpr,
+			ThenSteps: bodySteps,
+			Span:      t.span,
+		}, true
+
+	case "emit":
+		p.advance()
+		evTok, ok := p.expect(tokIdent)
+		if !ok {
+			return StepDecl{}, false
+		}
+		fields, ok := p.parseFieldInitBlock()
+		if !ok {
+			return StepDecl{}, false
+		}
+		return StepDecl{
+			Kind:      StepEmit,
+			EventName: evTok.text,
+			Fields:    fields,
+			Span:      t.span,
+		}, true
+
 	case "return":
 		p.advance()
 		expr, ok := p.parseExpr()
@@ -830,34 +1242,113 @@ func (p *parser) parseFieldInitBlock() ([]FieldInitDecl, bool) {
 }
 
 func (p *parser) parseExpr() (Expr, bool) {
-	left, ok := p.parsePrimaryExpr()
+	return p.parseOrExpr()
+}
+
+func (p *parser) parseLeftAssocBinary(nextPrec func() (Expr, bool), matchOp func(tokenKind) bool) (Expr, bool) {
+	left, ok := nextPrec()
 	if !ok {
 		return Expr{}, false
 	}
-	for {
-		k := p.cur().kind
-		if k == tokPlus || k == tokMinus || k == tokStar || k == tokSlash ||
-			k == tokEq || k == tokNeq || k == tokGte || k == tokLte || k == tokGt || k == tokLt ||
-			k == tokAnd || k == tokOr {
-			opTok := p.advance()
-			right, ok := p.parsePrimaryExpr()
-			if !ok {
+	for matchOp(p.cur().kind) {
+		opTok := p.advance()
+		right, ok := nextPrec()
+		if !ok {
+			return Expr{}, false
+		}
+		lCopy, rCopy := left, right
+		left = Expr{Kind: ExprBinary, Op: opTok.text, Left: &lCopy, Right: &rCopy, Span: opTok.span}
+	}
+	return left, true
+}
+
+func (p *parser) parseOrExpr() (Expr, bool) {
+	return p.parseLeftAssocBinary(p.parseAndExpr, func(k tokenKind) bool { return k == tokOr })
+}
+
+func (p *parser) parseAndExpr() (Expr, bool) {
+	return p.parseLeftAssocBinary(p.parseCompareExpr, func(k tokenKind) bool { return k == tokAnd })
+}
+
+func (p *parser) parseCompareExpr() (Expr, bool) {
+	return p.parseLeftAssocBinary(p.parseAddExpr, func(k tokenKind) bool {
+		return k == tokEq || k == tokNeq || k == tokGte || k == tokLte || k == tokGt || k == tokLt
+	})
+}
+
+func (p *parser) parseAddExpr() (Expr, bool) {
+	return p.parseLeftAssocBinary(p.parseMulExpr, func(k tokenKind) bool { return k == tokPlus || k == tokMinus })
+}
+
+func (p *parser) parseMulExpr() (Expr, bool) {
+	return p.parseLeftAssocBinary(p.parsePostfixExpr, func(k tokenKind) bool { return k == tokStar || k == tokSlash })
+}
+
+func (p *parser) parsePostfixExpr() (Expr, bool) {
+	expr, ok := p.parsePrimaryExpr()
+	if !ok {
+		return Expr{}, false
+	}
+	for p.cur().kind == tokDot {
+		dotTok := p.advance()
+		memberTok, ok := p.expect(tokIdent)
+		if !ok {
+			return Expr{}, false
+		}
+		if p.cur().kind == tokLParen {
+			p.advance() // (
+			var paramName string
+			var bodyPtr *Expr
+			if p.cur().kind != tokRParen {
+				if p.cur().kind == tokIdent && p.peekOffset(1).kind == tokFatArrow {
+					paramTok := p.advance()
+					p.advance() // =>
+					bodyExpr, bOk := p.parseExpr()
+					if !bOk {
+						return Expr{}, false
+					}
+					paramName = paramTok.text
+					bodyPtr = &bodyExpr
+				} else {
+					argExpr, aOk := p.parseExpr()
+					if !aOk {
+						return Expr{}, false
+					}
+					bodyPtr = &argExpr
+				}
+			}
+			if _, ok := p.expect(tokRParen); !ok {
 				return Expr{}, false
 			}
-			lCopy := left
-			rCopy := right
-			left = Expr{
-				Kind:  ExprBinary,
-				Op:    opTok.text,
-				Left:  &lCopy,
-				Right: &rCopy,
-				Span:  opTok.span,
+			recvCopy := expr
+			expr = Expr{
+				Kind:   ExprCombinator,
+				Op:     memberTok.text,
+				Target: paramName,
+				Left:   &recvCopy,
+				Right:  bodyPtr,
+				Span:   dotTok.span,
 			}
 			continue
 		}
-		break
+		if expr.Kind == ExprIdent {
+			expr = Expr{
+				Kind:   ExprField,
+				Target: expr.Value,
+				Field:  memberTok.text,
+				Span:   expr.Span,
+			}
+		} else {
+			recvCopy := expr
+			expr = Expr{
+				Kind:  ExprField,
+				Left:  &recvCopy,
+				Field: memberTok.text,
+				Span:  dotTok.span,
+			}
+		}
 	}
-	return left, true
+	return expr, true
 }
 
 func (p *parser) parsePrimaryExpr() (Expr, bool) {
@@ -879,25 +1370,56 @@ func (p *parser) parsePrimaryExpr() (Expr, bool) {
 			return Expr{}, false
 		}
 		return Expr{Kind: ExprEnumLit, Value: idTok.text, Span: t.span}, true
+	case tokLBracket:
+		p.advance()
+		var items []Expr
+		for p.cur().kind != tokRBracket && p.cur().kind != tokEOF {
+			item, ok := p.parseExpr()
+			if !ok {
+				return Expr{}, false
+			}
+			items = append(items, item)
+			if p.cur().kind == tokComma {
+				p.advance()
+			}
+		}
+		if _, ok := p.expect(tokRBracket); !ok {
+			return Expr{}, false
+		}
+		return Expr{
+			Kind:  ExprList,
+			Items: items,
+			Span:  t.span,
+		}, true
 	case tokIdent:
 		p.advance()
 		if t.text == "true" || t.text == "false" {
 			return Expr{Kind: ExprBool, Value: t.text, Span: t.span}, true
 		}
-		if p.cur().kind == tokDot {
+		if p.cur().kind == tokLParen {
 			p.advance()
-			fieldTok, ok := p.expect(tokIdent)
-			if !ok {
+			var args []Expr
+			for p.cur().kind != tokRParen && p.cur().kind != tokEOF {
+				arg, ok := p.parseExpr()
+				if !ok {
+					return Expr{}, false
+				}
+				args = append(args, arg)
+				if p.cur().kind == tokComma {
+					p.advance()
+				}
+			}
+			if _, ok := p.expect(tokRParen); !ok {
 				return Expr{}, false
 			}
 			return Expr{
-				Kind:   ExprField,
-				Target: t.text,
-				Field:  fieldTok.text,
-				Span:   t.span,
+				Kind:  ExprCall,
+				Value: t.text,
+				Items: args,
+				Span:  t.span,
 			}, true
 		}
-		if p.cur().kind == tokLBrace {
+		if p.isStructLiteralStart() {
 			fields, ok := p.parseFieldInitBlock()
 			if !ok {
 				return Expr{}, false
@@ -920,6 +1442,17 @@ func (p *parser) parsePrimaryExpr() (Expr, bool) {
 		p.advance()
 		return Expr{}, false
 	}
+}
+
+func (p *parser) isStructLiteralStart() bool {
+	if p.cur().kind != tokLBrace {
+		return false
+	}
+	next := p.peekOffset(1)
+	if next.kind == tokRBrace {
+		return true
+	}
+	return next.kind == tokIdent && p.peekOffset(2).kind == tokColon
 }
 
 func (p *parser) parseScenario() (ScenarioDecl, bool) {
@@ -1000,12 +1533,71 @@ func (p *parser) parseScenario() (ScenarioDecl, bool) {
 				})
 				continue
 			}
-			left, ok := p.parsePrimaryExpr()
+			if p.cur().kind == tokIdent && p.cur().text == "emitted" {
+				p.advance()
+				evTok, ok := p.expect(tokIdent)
+				if !ok {
+					return ScenarioDecl{}, false
+				}
+				var fields []FieldInitDecl
+				if p.cur().kind == tokLBrace {
+					var fOk bool
+					fields, fOk = p.parseFieldInitBlock()
+					if !fOk {
+						return ScenarioDecl{}, false
+					}
+				}
+				scen.Expects = append(scen.Expects, ExpectDecl{
+					EmittedEvent:  evTok.text,
+					EmittedFields: fields,
+					Span:          clause.span,
+				})
+				continue
+			}
+			if p.cur().kind == tokIdent && (p.cur().text == "stored" || p.cur().text == "not_stored") {
+				notStored := p.advance().text == "not_stored"
+				entTok, ok := p.expect(tokIdent)
+				if !ok {
+					return ScenarioDecl{}, false
+				}
+				if _, ok := p.expectIdentText("where"); !ok {
+					return ScenarioDecl{}, false
+				}
+				wField, ok := p.expect(tokIdent)
+				if !ok {
+					return ScenarioDecl{}, false
+				}
+				if _, ok := p.expect(tokEq); !ok {
+					return ScenarioDecl{}, false
+				}
+				wVal, ok := p.parseExpr()
+				if !ok {
+					return ScenarioDecl{}, false
+				}
+				var storedFields []FieldInitDecl
+				if !notStored && p.cur().kind == tokLBrace {
+					var fOk bool
+					storedFields, fOk = p.parseFieldInitBlock()
+					if !fOk {
+						return ScenarioDecl{}, false
+					}
+				}
+				scen.Expects = append(scen.Expects, ExpectDecl{
+					StoredEntity: entTok.text,
+					WhereField:   wField.text,
+					WhereValue:   &wVal,
+					StoredFields: storedFields,
+					NotStored:    notStored,
+					Span:         clause.span,
+				})
+				continue
+			}
+			left, ok := p.parsePostfixExpr()
 			if !ok {
 				return ScenarioDecl{}, false
 			}
 			opTok := p.advance()
-			right, ok := p.parsePrimaryExpr()
+			right, ok := p.parseExpr()
 			if !ok {
 				return ScenarioDecl{}, false
 			}

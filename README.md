@@ -20,7 +20,8 @@
 6. [Detailed Build Profile Configuration (`foundation.build.yaml`)](#detailed-build-profile-configuration-foundationbuildyaml)
 7. [Filesystem Hygiene, Slot Stubs, & Schema Evolution](#filesystem-hygiene-slot-stubs--schema-evolution)
 8. [CLI Commands & Diagnostics Reference](#cli-commands--diagnostics-reference)
-9. [Architecture Decision Records & Project Standards](#architecture-decision-records--project-standards)
+9. [Current Limitations](#current-limitations)
+10. [Architecture Decision Records & Project Standards](#architecture-decision-records--project-standards)
 
 ---
 
@@ -658,13 +659,56 @@ dist/backend/
 └── contracts_test.go                         # Automated Slot Contract Test suite
 ```
 
+### TypeScript Clean Target Layout (`architecture: clean`)
+
+Compiling a TypeScript `clean` target requires **Node.js ≥ 22.6** (native TypeScript type stripping for `node --test`) and **npm** (dependency installation on first `foundation test`). Foundation emits:
+
+```
+dist/ts-backend/
+├── .foundation-manifest.json                 # SHA-256 registry of generated files
+├── package.json                              # express/pg dependencies + typescript devDependencies
+├── tsconfig.json                             # Strict NodeNext type-checking configuration
+├── schema.sql                                # Declarative PostgreSQL DDL
+├── migrations/
+│   ├── 0001_initial.up.sql
+│   └── 0001_initial.down.sql
+├── src/
+│   ├── entities/domain.ts                    # Zero-dependency Entities, Values, Enums, Errors, Events, Policies
+│   ├── usecases/
+│   │   ├── ports.ts                          # Repository, Slot, EventPublisher & TransactionManager interfaces
+│   │   └── <action>_usecase.ts               # Interactors: execute + tactical Trait decorators + pipeline
+│   ├── controllers/express_router.ts         # Express-shaped controllers (isolated behind router ports)
+│   ├── gateways/
+│   │   ├── memory_repositories.ts            # In-memory repositories, tx snapshots, & Slot fakes
+│   │   └── postgres_repositories.ts          # `pg`-backed repositories & TransactionManager
+│   ├── slots/                                # Create-if-missing Slot Stubs (excluded from manifest; safe to edit!)
+│   └── main/
+│       ├── container.ts                      # createTestContainer() & createPostgresContainer(db) DI wiring
+│       └── server.ts                         # Entry point: real express() app + pg.Pool + route registration
+└── test/
+    ├── scenarios.test.ts                     # Compiled Scenario test suite
+    └── contracts.test.ts                     # Automated Slot Contract Test suite
+```
+
+**Running the emitted backend**: `src/main/server.ts` constructs the real `express` application and `pg` connection pool, bridges them to the controller ports, and starts listening:
+
+```bash
+cd dist/ts-backend
+npm install
+DATABASE_URL=postgres://localhost:5432/commerce PORT=8080 node src/main/server.ts
+```
+
+`foundation test` performs the same `npm install` automatically when `node_modules` is missing (skipped once present), then runs `tsc --noEmit` followed by the generated Scenario and Contract suites.
+
+The identical `.fdn` Blueprint compiles to both the Go and TypeScript targets—switching `architecture` in `foundation.build.yaml` restructures the whole codebase while the manifest prunes the previous layout (including its now-empty directories) and preserves handwritten Slot Stubs.
+
 ---
 
 ## Filesystem Hygiene, Slot Stubs, & Schema Evolution
 
 1. **Manifest-Tracked Root Scaffolding (`.foundation-manifest.json`)**:
    - Every compiler-owned file is recorded with its SHA-256 hash in `.foundation-manifest.json` ([ADR 0005](./docs/adr/0005-manifest-tracked-root-scaffolding.md)).
-   - **Stale File Pruning**: If you remove or rename an `entity` or `action` in `.fdn`, `foundation build` automatically deletes its stale generated files on the next build.
+   - **Stale File Pruning**: If you remove or rename an `entity` or `action` in `.fdn`, `foundation build` automatically deletes its stale generated files (and any directories left empty) on the next build.
    - **Conflict Protection**: If a human accidentally modifies a manifest-tracked file, `foundation build` aborts with `FDN0402` instead of silently overwriting the edit (pass `--force` to overwrite).
 2. **Create-If-Missing Slot Stubs (`internal/slots/*_stub.go`)**:
    - Emitted only if the file does not yet exist on disk, and **never** added to `.foundation-manifest.json`.
@@ -686,7 +730,7 @@ Usage: foundation <check|build|ir|test> [--dir <path>] [--force]
 | `foundation check [--dir <path>]` | Parses `.fdn` and `.fdn.json` files, runs symbol resolution, type checking, termination checks, and static invariant analysis. Exits non-zero on error diagnostics. |
 | `foundation build [--dir <path>] [--force]` | Runs `check`, lowers the **Semantic IR** into **Architecture IR** and **Storage Plan**, reconciles `.foundation-manifest.json`, writes `foundation.lock.json`, and emits all target files. |
 | `foundation ir [--dir <path>]` | Outputs the canonical, deterministic JSON representation of the validated **Semantic IR** (`.fdn.json` compatible). |
-| `foundation test [--dir <path>]` | Executes the native test suites (`scenarios_test.go`, `contracts_test.go`) across all configured targets. |
+| `foundation test [--dir <path>]` | Executes every target's native test suite: `go test ./...` for Go targets; `tsc --noEmit` + `node --test` for TypeScript targets (npm dependencies are installed automatically on first run). |
 
 ### Compiler Diagnostic Codes
 
@@ -701,7 +745,65 @@ Usage: foundation <check|build|ir|test> [--dir <path>] [--force]
 | `FDN0400`–`FDN0402` | Manifest Reconciler | Filesystem write failure, corrupt `.foundation-manifest.json`, or manual edit conflict (`FDN0402`). |
 | `FDN0410`–`FDN0411` | Schema Evolution | Unhinted destructive table/column drop (`FDN0410`) or `foundation.lock.json` write error. |
 | `FDN0500` | Emitter | Target source formatting error. |
-| `FDN0600` | Test Runner | Generated target test suite failure. |
+| `FDN0600`–`FDN0601` | Test Runner | Generated target test suite failure (`FDN0600`) or no registered test runner for the target language (`FDN0601`). |
+
+---
+
+## Current Limitations
+
+Foundation is a deterministic compiler for a deliberately constrained domain language—not a general-purpose framework. The limitations below are split into **by-design constraints** (enforced trade-offs of the 90/10 rule) and **gaps** (not implemented yet). Read this section before choosing Foundation for a workload.
+
+### By-Design Blueprint Language Constraints
+
+- **No unbounded iteration or recursion**: `while` loops are rejected (`FDN0210`) and recursive action calls are rejected (`FDN0211`). Termination is guaranteed statically; arbitrary iteration algorithms are not expressible.
+- **No relational I/O inside `for` loops** (`FDN0214`): loops may only iterate over lists already in memory, blocking N+1 access patterns by construction.
+- **No external I/O inside transactions** (`FDN0213`): `@external` Slot calls are forbidden in `@transactional` actions, so database locks are never held across network calls.
+- **`match` must be exhaustive** (`FDN0212`) over enum variants.
+- **Single-field equality predicates only**: `query`, `update`, and `delete` take one `where <field> == <expr>` clause. There is no `AND`/`OR`, ordering, `LIMIT`/pagination, joins, or SQL aggregates—collection combinators (`.filter`, `.map`, `.sum`, ...) always run in process memory over input lists.
+- **Only `query one`**: there is no `query many` step, so actions cannot load entity collections from persistence—only a single row by a single field.
+- **Policies are side-effect-free boolean expressions** evaluated at action start; there is no per-step/row-level authorization.
+
+### Data & Storage Layer
+
+- **PostgreSQL only**; no other SQL dialect or NoSQL storage is modeled.
+- **`decimal` compiles to floating point** (`float64` in Go, `number` in TypeScript): emitted pipeline arithmetic is not fixed-precision. Currency-grade exactness must live in Slot code or in the database (`NUMERIC` columns are emitted correctly).
+- **`timestamp` compiles to a plain string** (`string` in Go): no date/time type, arithmetic, or comparison beyond string equality is available in the pipeline language.
+- **Full-row updates, no concurrency control**: emitted `update` writes every column with no optimistic locking, version checks, or conflict detection.
+- **`query one` returns an arbitrary first match** (in-memory: first in slice order; PostgreSQL: `LIMIT 1` with no `ORDER BY`).
+- **Migrations are SQL files only**: Foundation emits `migrations/NNNN_*.sql` but ships no migration runner—they must be applied with your own tooling.
+- **In-memory repositories mint synthetic sequential UUIDs** (`00000000-0000-0000-0000-<seq>`)—suitable for Scenario tests, not for production identity.
+
+### Tactical Trait Runtime Semantics
+
+- **`@idempotent` and `@cache` are per-process in-memory maps**: not distributed across instances, not persistent (reset on restart), no invalidation API, and unbounded growth in long-lived processes.
+- **`@retry` is fixed-delay linear retry**: no exponential backoff or jitter; the TypeScript emitter honors `attempts` but currently ignores `backoff`.
+- **`@outbox` is an in-memory buffer** flushed to the event publisher after the pipeline succeeds. It has the *shape* of the transactional outbox pattern but none of its durability guarantees—no database-backed outbox table, no at-least-once redelivery, no crash recovery.
+- **`@transactional` is single-level**: the in-memory manager snapshot/rolls back repository state; the Postgres manager issues plain `BEGIN`/`COMMIT`. Nested transactions are not supported, and `emit` publishes are not covered by Postgres transactions (only `@outbox` ordering is).
+
+### HTTP & Security
+
+- **No authentication**: the `Actor` context is taken verbatim from `X-Actor-ID`, `X-Actor-Role`, and `X-Actor-Verified` request headers. A trusted API gateway must authenticate callers and set (or strip) these headers—never expose generated servers directly.
+- **Authorization is whole-action only**: a single `require <policy>` check at pipeline start; no row-level or step-level rules.
+- **Bare HTTP servers**: no middleware, TLS, rate limiting, request-size limits, or timeouts are emitted.
+- **One body parameter per action**: each non-path action parameter is decoded independently from the request body, so actions with two or more body parameters are effectively unsupported—model them with a single input `value`.
+- **Fixed error→status mapping** over the six error kinds; no response envelope, header, or API-versioning customization.
+
+### Testing Boundaries
+
+- **Scenarios and Contract Tests run entirely against in-memory containers and Slot fakes**: Foundation never starts PostgreSQL or performs real HTTP round-trips in `foundation test`.
+- **Slot Contract Tests verify declared-throws conformance only**, calling each method with zero-value arguments and asserting no undeclared error escapes—functional correctness of your stub is up to your own tests.
+
+### Targets & Platform
+
+- **The Go target emits no runnable entry point**: `bootstrap.Container.HTTPServer` implements `http.Handler`, but no `main` package or `ListenAndServe` wiring is generated (the TypeScript target *does* emit `src/main/server.ts`). Wire the Go container into your own `cmd/` entry.
+- **`@event_handler` and `@cron` actions do not run**: they are validated and lowered into the Architecture IR, but no event bus or scheduler is emitted in any target.
+- **SDK Clients (`kind: sdk`) are not implemented yet** (tracked as issue #07); `foundation build` rejects the combination with `FDN0300`.
+- **TypeScript targets require Node.js ≥ 22.6** (native type stripping) and `npm`; the first `foundation test` runs `npm install`, which needs registry access on a cold cache. The local-compiler lookup assumes a Unix-like `node_modules/.bin`.
+
+### Generated Code Customization
+
+- **Tracked files are whole-file compiler-owned**: any hand edit aborts the build with `FDN0402` until `--force` discards it. The intended customization seam is Slot stubs and your own code *around* the emitted tree—not inside it.
+- **Fixed templates**: code style, package/file naming, and framework choices (chi, express, `database/sql`, `pg`) are not configurable via the Build Profile beyond `language`, `architecture`, and `http`.
 
 ---
 

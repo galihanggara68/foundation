@@ -1,11 +1,20 @@
-package compiler
+package arch
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
+
+// TargetKey uniquely identifies a compilation target strategy by kind, language, and architecture.
+type TargetKey struct {
+	Kind         string
+	Language     string
+	Architecture string
+}
 
 // BuildProfile represents the parsed foundation.build.yaml configuration.
 type BuildProfile struct {
@@ -34,15 +43,15 @@ type TargetConfig struct {
 }
 
 // LoadBuildProfile reads and parses foundation.build.yaml from workspaceDir.
-func LoadBuildProfile(workspaceDir string) (*BuildProfile, []Diagnostic) {
+func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 	path := filepath.Join(workspaceDir, "foundation.build.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, []Diagnostic{{
+		return nil, []ir.Diagnostic{{
 			Code:     "FDN0003",
-			Severity: SeverityError,
+			Severity: ir.SeverityError,
 			Message:  fmt.Sprintf("failed to read foundation.build.yaml: %v", err),
-			Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
 		}}
 	}
 
@@ -53,7 +62,6 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []Diagnostic) {
 
 	for i, rawLine := range lines {
 		lineNum := i + 1
-		// Strip comments
 		if idx := strings.Index(rawLine, "#"); idx >= 0 {
 			rawLine = rawLine[:idx]
 		}
@@ -156,11 +164,11 @@ func setTargetField(t *TargetConfig, k, v string) {
 	}
 }
 
-func yamlErr(line int, msg string) []Diagnostic {
-	return []Diagnostic{{
+func yamlErr(line int, msg string) []ir.Diagnostic {
+	return []ir.Diagnostic{{
 		Code:     "FDN0004",
-		Severity: SeverityError,
+		Severity: ir.SeverityError,
 		Message:  msg,
-		Span:     Span{File: "foundation.build.yaml", Line: line, Column: 1},
+		Span:     ir.Span{File: "foundation.build.yaml", Line: line, Column: 1},
 	}}
 }

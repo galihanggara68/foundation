@@ -1,0 +1,125 @@
+package ir
+
+import "sort"
+
+// SemanticIR represents the validated, architecture-agnostic domain representation.
+type SemanticIR struct {
+	Enums     []EnumDecl     `json:"enums,omitempty"`
+	Values    []ValueDecl    `json:"values,omitempty"`
+	Entities  []EntityDecl   `json:"entities,omitempty"`
+	Errors    []ErrorDecl    `json:"errors,omitempty"`
+	Events    []EventDecl    `json:"events,omitempty"`
+	Policies  []PolicyDecl   `json:"policies,omitempty"`
+	Actions   []ActionDecl   `json:"actions,omitempty"`
+	Scenarios []ScenarioDecl `json:"scenarios,omitempty"`
+}
+
+// Canonicalize sorts all top-level slices deterministically by name.
+func (s *SemanticIR) Canonicalize() {
+	sort.SliceStable(s.Enums, func(i, j int) bool { return s.Enums[i].Name < s.Enums[j].Name })
+	sort.SliceStable(s.Values, func(i, j int) bool { return s.Values[i].Name < s.Values[j].Name })
+	sort.SliceStable(s.Entities, func(i, j int) bool { return s.Entities[i].Name < s.Entities[j].Name })
+	sort.SliceStable(s.Errors, func(i, j int) bool { return s.Errors[i].Name < s.Errors[j].Name })
+	sort.SliceStable(s.Events, func(i, j int) bool { return s.Events[i].Name < s.Events[j].Name })
+	sort.SliceStable(s.Policies, func(i, j int) bool { return s.Policies[i].Name < s.Policies[j].Name })
+	sort.SliceStable(s.Actions, func(i, j int) bool { return s.Actions[i].Name < s.Actions[j].Name })
+	sort.SliceStable(s.Scenarios, func(i, j int) bool { return s.Scenarios[i].Name < s.Scenarios[j].Name })
+}
+
+type EnumDecl struct {
+	Name     string   `json:"name"`
+	Variants []string `json:"variants"`
+	Span     Span     `json:"span"`
+}
+
+type EventDecl struct {
+	Name   string      `json:"name"`
+	Fields []FieldDecl `json:"fields"`
+	Span   Span        `json:"span"`
+}
+
+type PolicyDecl struct {
+	Name   string      `json:"name"`
+	Params []ParamDecl `json:"params"`
+	Body   Expr        `json:"body"`
+	Span   Span        `json:"span"`
+}
+
+type FieldDecl struct {
+	Name       string      `json:"name"`
+	Type       string      `json:"type"`
+	Optional   bool        `json:"optional,omitempty"`
+	DefaultVal string      `json:"default_val,omitempty"`
+	Traits     []TraitDecl `json:"traits,omitempty"`
+	Span       Span        `json:"span"`
+}
+
+type TraitDecl struct {
+	Name string            `json:"name"`
+	Args map[string]string `json:"args,omitempty"`
+	Span Span              `json:"span"`
+}
+
+type ValueDecl struct {
+	Name   string      `json:"name"`
+	Fields []FieldDecl `json:"fields"`
+	Span   Span        `json:"span"`
+}
+
+type EntityDecl struct {
+	Name   string      `json:"name"`
+	Fields []FieldDecl `json:"fields"`
+	Span   Span        `json:"span"`
+}
+
+type ErrorDecl struct {
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	Message string `json:"message"`
+	Span    Span   `json:"span"`
+}
+
+type ParamDecl struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Span Span   `json:"span"`
+}
+
+type ActionDecl struct {
+	Name       string      `json:"name"`
+	Params     []ParamDecl `json:"params"`
+	ReturnType string      `json:"return_type"`
+	Traits     []TraitDecl `json:"traits,omitempty"`
+	Steps      []StepDecl  `json:"steps"`
+	Span       Span        `json:"span"`
+}
+
+type GivenSeedDecl struct {
+	EntityName string          `json:"entity_name"`
+	Fields     []FieldInitDecl `json:"fields"`
+	Span       Span            `json:"span"`
+}
+
+type ExpectDecl struct {
+	Left          Expr            `json:"left"`
+	Op            string          `json:"op"`
+	Right         Expr            `json:"right"`
+	ErrorRaised   string          `json:"error_raised,omitempty"`
+	EmittedEvent  string          `json:"emitted_event,omitempty"`
+	EmittedFields []FieldInitDecl `json:"emitted_fields,omitempty"`
+	StoredEntity  string          `json:"stored_entity,omitempty"`
+	WhereField    string          `json:"where_field,omitempty"`
+	WhereValue    *Expr           `json:"where_value,omitempty"`
+	StoredFields  []FieldInitDecl `json:"stored_fields,omitempty"`
+	NotStored     bool            `json:"not_stored,omitempty"`
+	Span          Span            `json:"span"`
+}
+
+type ScenarioDecl struct {
+	Name       string          `json:"name"`
+	Givens     []GivenSeedDecl `json:"givens,omitempty"`
+	WhenAction string          `json:"when_action"`
+	WhenArgs   []Expr          `json:"when_args,omitempty"`
+	Expects    []ExpectDecl    `json:"expects"`
+	Span       Span            `json:"span"`
+}

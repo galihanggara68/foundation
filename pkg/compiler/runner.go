@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 )
 
 // Test executes the native test suites inside every emitted target in foundation.build.yaml.
 func Test(workspaceDir string) []Diagnostic {
-	bp, diags := LoadBuildProfile(workspaceDir)
+	bp, diags := arch.LoadBuildProfile(workspaceDir)
 	if len(diags) > 0 {
 		return diags
 	}

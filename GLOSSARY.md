@@ -51,7 +51,7 @@ A built-in domain error indicating that a concurrent mutation has rendered the t
 _Avoid_: Race condition, concurrency error, stale data, mismatch
 
 **Keyset Cursor**:
-An opaque, deterministic pagination token representing the unique ordering key of the last item in a paginated read, used to retrieve the subsequent page without offset scanning.
+An opaque, deterministic pagination token representing the unique ordering key of the first or last item in a paginated read, used to navigate forward (`next_cursor`) or backward (`prev_cursor`) without offset scanning.
 _Avoid_: Page number, offset, seek token, continuation token
 
 

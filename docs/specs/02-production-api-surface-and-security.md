@@ -25,14 +25,17 @@ Deliver the Production API Surface & Security milestone (Phases 3 and 4) across 
    - An optional custom `actor <Name> { ... }` block in `.fdn` Blueprints declaring domain-specific claims and tenant identifiers (`tenant_id`, `organization_id`, `tier`), fully type-checked at compile time in Policies and Scenarios.
 4. Publish first-party **Authn Contrib Adapters**: a production `jwt-oidc` adapter (verifying JWT signatures via JWKS endpoints) and a dev-only `trusted-headers` adapter that prints an unmistakable boot banner and structured warning log line.
 5. Introduce deterministic **`query many`**: a first-class Action Pipeline step for filtered, ordered, cursor-paginated reads that compiles into standard `GET /v1/<entities>` routes across all targets.
-6. Enforce **Deterministic Keyset Cursoring**:
+6. Enforce **Deterministic Bidirectional Keyset Cursoring**:
    - Require an `order_by` clause on a unique field (such as `@pk`), failing with a compile-time diagnostic if missing.
    - Enforce mandatory limits with a compiler-enforced hard ceiling.
-   - Emit opaque keyset pagination cursors (`?cursor=<token>&limit=25`), permanently rejecting slow, non-deterministic offset pagination.
+   - Emit opaque keyset pagination cursors for both forward (`next_cursor`) and backward (`prev_cursor`) traversal, permanently rejecting slow, non-deterministic offset pagination (relegating arbitrary page-jumping to handwritten Slots).
 7. Expand the **Filter Predicate Grammar**: support comparison operators (`>`, `<`, `>=`, `<=`, `!=`) and logical conjunction (`and`) in `where` clauses, ensuring sargable, index-friendly query generation.
 8. Upgrade to **Real Domain Types**:
    - `timestamp`: Native `time.Time` (Go) and `Date` (TypeScript) with RFC3339 serialization and temporal comparisons.
    - `decimal`: Fixed-precision arithmetic across all targets to guarantee currency-grade financial calculations.
+9. Enforce **Deterministic Entity Table Pluralization & `@table` Trait**:
+   - Lower entity names to pluralized database tables by default via zero-dependency English rules (e.g. `Order` -> `orders`, `Category` -> `categories`), preventing ANSI SQL reserved word collisions (`order`, `user`).
+   - Allow domain authors to override table names explicitly using `@table("custom_name")` for legacy schema integration.
 
 ## User Stories
 
@@ -102,31 +105,61 @@ Deliver the Production API Surface & Security milestone (Phases 3 and 4) across 
   - `ValidateQueryManyLimitCap`: Verifies that `limit` has a static ceiling (max 100).
   - `ValidateSargableWhere`: Verifies that predicates are conjunctions of single-field comparisons.
 
-### 3. Keyset Cursor Format
-- The cursor is an opaque base64url-encoded JSON string containing the ordering key value of the last item in the page:
+### 3. Bidirectional Keyset Cursor Format
+- Cursors are opaque base64url-encoded JSON strings containing the ordering key value of the boundary item:
   ```json
   {"id": "018f3a21-72a3-7b2c-9a4f-5231a498b8c1"}
   ```
 - Keyset SQL Generation:
-  ```sql
-  SELECT id, customer_id, status, total, version, created_at
-  FROM orders
-  WHERE customer_id = $1 AND status = $2 AND id > $3
-  ORDER BY id ASC
-  LIMIT $4;
-  ```
+  - **Forward (`next_cursor`)**:
+    ```sql
+    SELECT id, customer_id, status, total, version, created_at
+    FROM orders
+    WHERE customer_id = $1 AND status = $2 AND id > $3
+    ORDER BY id ASC
+    LIMIT $4; -- where limit is requested limit + 1 to detect has_next
+    ```
+  - **Backward (`prev_cursor`)**:
+    ```sql
+    SELECT id, customer_id, status, total, version, created_at
+    FROM orders
+    WHERE customer_id = $1 AND status = $2 AND id < $3
+    ORDER BY id DESC
+    LIMIT $4;
+    ```
+    *(Results are reversed in memory prior to returning so they remain in ascending order).*
 
 ### 4. Transport Conventions for List Queries
 - List-returning Actions automatically map to HTTP `GET`:
   - Path parameters map from action inputs declared in `@http(path: "/v1/customers/{customer_id}/orders")`.
-  - Non-path inputs map to HTTP query string parameters: `?limit=20&cursor=eyJpZCI6...`.
-  - Returns a paginated envelope:
+  - Non-path inputs map to HTTP query string parameters: `?limit=20&cursor=eyJpZCI6...&direction=next`.
+  - Returns a paginated envelope supporting bidirectional traversal:
     ```json
     {
       "items": [...],
-      "next_cursor": "eyJpZCI6..."
+      "page_info": {
+        "next_cursor": "eyJpZCI6...",
+        "prev_cursor": "eyJpZCI6...",
+        "has_next": true,
+        "has_prev": false
+      }
     }
     ```
+- Arbitrary page jumping (`OFFSET N`) is intentionally excluded from the pipeline language; applications requiring offset pagination or total table counts implement a handwritten **Slot**.
+
+### 5. Entity Table Pluralization & @table Trait
+- By default, entities lower to pluralized table names via a zero-dependency rule set:
+  - Standard nouns: `Order` -> `orders`, `Customer` -> `customers`
+  - Suffixes `-s`, `-x`, `-z`, `-ch`, `-sh`: `Tax` -> `taxes`, `Batch` -> `batches`
+  - Consonant + `-y`: `Category` -> `categories`
+- Domain authors can explicitly override the table name via `@table`:
+  ```fdn
+  @table("legacy_customer_records")
+  entity Customer {
+    id: uuid @pk
+    name: string
+  }
+  ```
 
 ## Testing Decisions
 

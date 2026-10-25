@@ -1,112 +1,203 @@
 # Foundation (`.fdn`)
 
-**Foundation** is a deterministic, rule-based, multi-target architecture and application compiler written in Go. It translates declarative domain **Blueprints** (`.fdn`) and a project **Build Profile** (`foundation.build.yaml`) into production-ready backend services, PostgreSQL schemas, sequential migrations, **Slot** interfaces with starter stubs, and hermetic test suites—with **zero runtime LLM dependency**.
+> **Stop writing backend plumbing.** Define your domain entities, authorization policies, and action pipelines in declarative Blueprints (`.fdn`). Foundation compiles them into production-ready Go and TypeScript backends, PostgreSQL schemas, sequential migrations, and automated test suites—with **zero runtime LLM dependency** and **100% offline determinism**.
 
 ---
 
-## The 90/10 Rule
+## 💡 Why Foundation?
 
-Foundation balances developer velocity, architectural integrity, and determinism via the **90/10 Rule** ([ADR 0001](./docs/adr/0001-action-pipelines-and-slot-interfaces.md)):
+Modern backend development suffers from two extremes:
 
-- **The 90% Generated Core (`Action Pipelines`)**: Domain entities, value objects, authorization policies, validation guards, transactional persistence, tactical traits (`@transactional`, `@idempotent`, `@outbox`, `@cache`, `@retry`), and HTTP transport routes are compiled deterministically.
-- **The 10% Handcrafted Boundary (`Slots`)**: Proprietary algorithms, third-party APIs (Stripe, Twilio), and hardware protocols are declared as strongly-typed `slot` contracts. The compiler emits safe starter stubs that are **never overwritten** once customized.
-- **Compile-Time Architectural Guardrails**: Enforces termination (no unbounded loops or recursive actions), exhaustive `match` handling, relational N+1 query prevention, and isolation of `@external` slots from tight database transactions.
+1. **The Boilerplate Trap**: Up to 90% of a production backend is repetitive plumbing—HTTP routing, DTO validation, database transaction managers, idempotency stores, transactional outboxes, optimistic concurrency checks, and SQL schema migrations.
+2. **The LLM Generation Trap**: Asking AI assistants to generate entire backends leads to silent drift, hallucinated dependencies, architectural erosion, and maintenance nightmares.
 
----
+**Foundation solves this with the 90/10 Rule** ([ADR 0001](./docs/adr/0001-action-pipelines-and-slot-interfaces.md)):
 
-## Three-Stage Compiler Architecture
-
-Foundation cleanly separates business semantics from structural code generation:
-
-```text
-  .fdn Blueprints ──► [Stage 1: Frontend] ──► Validated Semantic IR (.fdn.json)
-                            │
-                            ▼ (+ foundation.build.yaml & foundation.lock.json)
-                      [Stage 2: Middle-End] ──► Architecture IR + Storage Plan
-                            │
-                            ▼
-                      [Stage 3: Backend Emitters & Manifest Reconciler]
-                            ├──► Go Backend (Hexagonal) + Chi + PostgreSQL + Tests + Server Entrypoint
-                            ├──► TypeScript Backend (Clean) + Express + PG + Tests + Server Entrypoint
-                            ├──► Storage Artifacts (schema.sql & migrations/NNNN_*.sql)
-                            └──► Manifest Tracker (.foundation-manifest.json)
-```
+- **The 90% Generated Core**: Foundation deterministically compiles the repetitive plumbing into idiomatic, typed code following proven architectural patterns (Hexagonal Architecture in Go or Clean Architecture in TypeScript).
+- **The 10% Handcrafted Boundary (`Slots`)**: Custom proprietary algorithms, third-party integrations (Stripe, Twilio), and hardware protocols live in strongly-typed **Slot** interfaces. Foundation generates safe starter stubs that are **never overwritten** once customized.
 
 ---
 
-## Quick Start
+## ⚡ Key Features at a Glance
 
-### 1. Build the CLI
+- 🛡️ **Compile-Time Architectural Guardrails**:
+  Rejects relational N+1 queries in loops, unbounded `while` loops, recursive actions, and unhandled enum variants at compile time.
+- 🔄 **Enterprise Tactical Traits**:
+  Annotate action pipelines with `@idempotent(key: ...)`, `@transactional`, `@outbox`, `@cache(ttl: ...)`, and `@retry(attempts: ...)`. Foundation emits the corresponding PostgreSQL DDL and background `OutboxRelayWorker` with `FOR UPDATE SKIP LOCKED` automatically.
+- 🔒 **Native Optimistic Concurrency Control (OCC)**:
+  Tag entity version fields with `@version` to generate conditional SQL updates (`WHERE id = $1 AND version = $2`), automatic `ETag` / `If-Match` HTTP headers, and deterministic HTTP 409 Conflict handling.
+- 🧪 **Declarative BDD Scenarios**:
+  Write integration tests directly inside `.fdn` using `given`, `when`, and `expect`. They compile into native `go test` and `npm test` suites with zero mock boilerplate.
+- 🎯 **Multi-Target Code Generation**:
+  Compile the exact same domain blueprint into a Go Hexagonal service (Chi router + `database/sql`) or a TypeScript Clean service (Express + `pg`).
+
+---
+
+## ⚠️ Intentional Boundaries & Limitations
+
+To guarantee architectural integrity, predictability, and safety, Foundation defines clear boundaries:
+
+### What Foundation is NOT:
+- **Not a visual Low-Code / No-Code tool**: Foundation is a text-first, git-versioned compiler built by software engineers for software engineers.
+- **Not an ORM or Dynamic Query Builder**: Foundation compiles strict, deterministic domain repositories and migrations. It is not designed for runtime ad-hoc reporting or arbitrary SQL construction.
+- **Not a proprietary runtime**: Generated backends depend only on standard open-source libraries (`chi`, `express`, `pg`, `lib/pq`). There is no proprietary cloud runtime lock-in.
+
+### Intentional Constraints (By Design):
+- **Guaranteed Termination**: Action pipelines are deterministic finite state transitions. Unbounded loops and recursive action calls are rejected at compile time.
+- **Transaction Isolation**: Calling third-party APIs (`@external` slots like Stripe or Twilio) inside `@transactional` actions is forbidden at compile time to protect database connection pools.
+- **No N+1 Queries**: Database queries and mutations inside `for` loops are strictly rejected.
+- **The Escape Hatch**: If logic cannot be expressed cleanly within an action pipeline, declare a `slot`. You implement slots in native Go or TypeScript with complete language freedom.
+
+### Current Platform Scope:
+- **Storage**: PostgreSQL (declarative schemas, sequential up/down migrations, transactional outbox tables).
+- **Languages**: Go 1.23+ and TypeScript / Node.js 20+.
+- **Transports**: HTTP/REST routes (gRPC and event queue consumer transports are on the roadmap).
+
+---
+
+## 🎯 Common Use Cases
+
+- **Fintech & Payment Services**:
+  Execute balance transfers with `@transactional`, double-spend prevention via `@version`, deduplicated requests via `@idempotent(key: ...)`, and guaranteed post-commit event publishing via `@outbox`.
+- **E-Commerce & Inventory Management**:
+  Manage cart calculations with collection combinators (`.filter`, `.map`, `.sum`), enforce coupon expiration guards, and prevent overselling using Optimistic Concurrency Control.
+- **Multi-Tenant SaaS Backends**:
+  Declare reusable authorization policies (`policy CanAccess(actor: Actor)`), generate clean migration histories, and scaffold decoupled service boundaries.
+
+---
+
+## 🚀 Quickstart in 60 Seconds
+
+### 1. Build or Install the CLI
+
 Requires **Go 1.23+**:
+
 ```bash
 git clone https://github.com/galihanggara68/foundation.git
 cd foundation
 go build -o bin/foundation ./cmd/foundation
 ```
 
-### 2. Define a Project
-Create `foundation.build.yaml`:
-```yaml
-version: "1"
-name: "commerce"
+### 2. Define Your Project (`foundation.build.yaml`)
 
-target:
-  language: "go"
-  architecture: "hexagonal"
-  module: "example.com/commerce"
+```yaml
+project:
+  name: wallet-service
+  module: example.com/wallet
 
 storage:
-  dialect: "postgres"
-  mode: "both"
+  dialect: postgres
+  mode: both # Emits schema.sql and sequential migrations/
+
+targets:
+  - name: backend
+    kind: backend
+    language: go
+    architecture: hexagonal
+    http: chi
+    out_dir: ./dist/backend
 ```
 
-Create `orders.fdn`:
+### 3. Write a Blueprint (`wallet.fdn`)
+
 ```fdn
-entity Order {
-  id: string @pk
-  customer_id: string @index
-  total: int
+entity Wallet {
+  id: uuid @pk
+  owner_id: uuid @unique
+  balance: decimal(12, 2)
   version: int @version
 }
 
-error OrderNotFound {
-  kind: not_found
-  message: "Order does not exist"
+event MoneyTransferred {
+  from_id: uuid
+  to_id: uuid
+  amount: decimal(12, 2)
 }
 
-action GetOrder(id: string) -> Order
-  @http(method: GET, path: "/orders/{id}")
+error WalletNotFound {
+  kind: not_found
+  message: "Wallet does not exist"
+}
+
+error InsufficientFunds {
+  kind: validation
+  message: "Sender wallet balance is insufficient"
+}
+
+value TransferInput {
+  to_wallet_id: uuid
+  amount: decimal(12, 2)
+  idempotency_key: string
+}
+
+action TransferMoney(from_id: uuid, input: TransferInput) -> bool
+  @http(method: POST, path: "/wallets/{from_id}/transfer")
+  @transactional
+  @idempotent(key: input.idempotency_key)
+  @outbox
 {
-  return get Order where id == id or fail OrderNotFound
+  let sender = query one Wallet where id == from_id else WalletNotFound
+  let recipient = query one Wallet where id == input.to_wallet_id else WalletNotFound
+
+  guard sender.balance >= input.amount else InsufficientFunds
+
+  update Wallet where id == from_id set {
+    balance: sender.balance - input.amount
+  }
+
+  update Wallet where id == input.to_wallet_id set {
+    balance: recipient.balance + input.amount
+  }
+
+  emit MoneyTransferred {
+    from_id: sender.id,
+    to_id: recipient.id,
+    amount: input.amount
+  }
+
+  return true
+}
+
+scenario "TransferMoney transfers balance and records outbox event" {
+  given Wallet {
+    id: "00000000-0000-0000-0000-000000000001",
+    owner_id: "00000000-0000-0000-0000-000000000099",
+    balance: 100.00,
+    version: 1
+  }
+  given Wallet {
+    id: "00000000-0000-0000-0000-000000000002",
+    owner_id: "00000000-0000-0000-0000-000000000098",
+    balance: 50.00,
+    version: 1
+  }
+  when TransferMoney("00000000-0000-0000-0000-000000000001", TransferInput {
+    to_wallet_id: "00000000-0000-0000-0000-000000000002",
+    amount: 30.00,
+    idempotency_key: "tx-1001"
+  })
+  expect result == true
+  expect stored Wallet where id == "00000000-0000-0000-0000-000000000001" {
+    balance: 70.00
+  }
+  expect stored Wallet where id == "00000000-0000-0000-0000-000000000002" {
+    balance: 80.00
+  }
 }
 ```
 
-### 3. Check, Build, and Test
+### 4. Check, Build, and Test
+
 ```bash
-# Validate syntax, type safety, and architectural invariants
+# Verify syntax, type correctness, and architectural invariants
 foundation check
 
-# Compile blueprints into target backend code, SQL migrations, and stubs
+# Compile into Go backend, Chi router, SQL migrations, and outbox tables
 foundation build
 
 # Run hermetic offline scenario tests
 foundation test
 ```
-
----
-
-## Detailed Blueprint Documentation (`docs/blueprints/`)
-
-Exhaustive guides and code examples for each component of the Foundation Blueprint language:
-
-- [**Blueprint README & Sitemap**](./docs/blueprints/README.md)
-- [**Top-Level Declarations & Syntax**](./docs/blueprints/declarations.md): Guide to `entity`, `value`, `enum`, `error`, `event`, `policy`, `slot`, `action`, `scenario`, optionals, and collection combinators (`.filter`, `.map`, `.sum`).
-- [**HTTP Transport & Parameter Binding**](./docs/blueprints/http-transport.md): Route definition, path parameters (`/items/{id}`), request body unmarshaling, actor authentication headers, `ETag` / `If-Match`, and HTTP error mappings.
-- [**Tactical Traits & Durability**](./docs/blueprints/tactical-traits.md): Enterprise resilience with `@transactional`, `@idempotent(key: ...)`, `@outbox`, `@cache`, `@retry`, DDL table generation, and background `OutboxRelayWorker`.
-- [**Optimistic Concurrency Control (OCC)**](./docs/blueprints/concurrency-control.md): Field versioning with `@version`, conditional SQL execution (`version = version + 1`), HTTP `409 Conflict`, and client retry patterns.
-- [**Slots & Handwritten Boundaries**](./docs/blueprints/slots-and-contracts.md): Handcrafted custom code boundaries, `@external` transaction protection, manifest exclusion, and automated contract tests.
-- [**Declarative Scenarios & Testing**](./docs/blueprints/scenarios-and-testing.md): BDD-style unit tests with `given`, `when`, `expect`, slot mocking, and 100% offline hermetic execution.
-- [**Build Profile & Configuration**](./docs/blueprints/build-profile.md): Reference for `foundation.build.yaml`, storage modes (`declarative`, `migrations`, `both`), and CLI commands.
 
 ---
 
@@ -117,44 +208,24 @@ Usage: foundation <check|build|test|ir> [--dir <path>] [--force]
 ```
 
 | Command | Description |
-|---|---|
-| `foundation check` | Parses blueprints, resolves symbols, checks type safety, and verifies architectural rules. |
-| `foundation build` | Compiles IR into production source code, SQL migrations, stubs, and updates `.foundation.manifest.json`. |
-| `foundation test` | Compiles and executes native scenario tests (`go test ./...` or `npm test`) offline. |
-| `foundation ir` | Emits canonical compiler Intermediate Representation (IR) JSON to stdout or file. |
+| :--- | :--- |
+| `foundation check` | Parses blueprints, resolves symbol tables, type-checks actions, and verifies architectural rules. |
+| `foundation build` | Compiles IR into production code, SQL migrations, stubs, and reconciles `.foundation-manifest.json`. |
+| `foundation test` | Compiles and runs native target scenario tests (`go test ./...` or `npm test`) 100% offline. |
+| `foundation ir` | Emits canonical Semantic IR JSON to stdout for tooling and inspection. |
 
 ---
 
-## Architectural Guardrails & Invariants
+## 📚 Blueprint Guides & Documentation
 
-| Diagnostic Code | Rule | Explanation |
-|---|---|---|
-| `FDN0210` | Termination | Unbounded `while` loops are rejected. |
-| `FDN0211` | Termination | Recursive action calls are rejected. |
-| `FDN0212` | Exhaustiveness | `match` expressions must exhaustively cover all enum variants. |
-| `FDN0213` | Isolation | `@external` slot methods cannot be invoked inside `@transactional` actions. |
-| `FDN0214` | Performance | Relational database operations (`query`, `save`, `delete`) are forbidden inside `for` loops. |
+Explore in-depth documentation and reference examples in [`docs/blueprints/`](./docs/blueprints/README.md):
 
----
+- [**Declarations & Syntax**](./docs/blueprints/declarations.md): Complete guide to `entity`, `value`, `enum`, `error`, `event`, `policy`, `slot`, `action`, and combinators.
+- [**HTTP Transport & Routing**](./docs/blueprints/http-transport.md): Path binding (`/items/{id}`), request body mapping, headers, and error status codes.
+- [**Tactical Traits & Durability**](./docs/blueprints/tactical-traits.md): Enterprise durability with `@transactional`, `@idempotent`, `@outbox`, `@cache`, and PostgreSQL relay workers.
+- [**Optimistic Concurrency Control**](./docs/blueprints/concurrency-control.md): Field versioning with `@version`, conditional SQL updates, and HTTP 409 Conflict handling.
+- [**Slots & Custom Boundaries**](./docs/blueprints/slots-and-contracts.md): Handwritten code seams, starter stubs, manifest exclusion, and automated contract tests.
+- [**BDD Scenarios & Testing**](./docs/blueprints/scenarios-and-testing.md): BDD testing syntax (`given`, `when`, `expect`) and hermetic execution.
+- [**Build Profile Configuration**](./docs/blueprints/build-profile.md): Reference for `foundation.build.yaml` options and storage modes.
 
-## Specifications & Decision Records
-
-- [Ubiquitous Language Glossary](./GLOSSARY.md)
-- [Public Trust-First Roadmap](./ROADMAP.md)
-- [Coding & Architectural Standards](./CODING_STANDARDS.md)
-- **Technical Specifications**:
-  - [Spec 00: Baseline Compiler & Architecture](./docs/specs/00-baseline-compiler-and-architecture.md)
-  - [Spec 01: Runtime Integrity & Durability](./docs/specs/01-runtime-integrity-and-durability.md)
-  - [Spec 02: Production API Surface & Security](./docs/specs/02-production-api-surface-and-security.md)
-- **Architectural Decision Records**:
-  - [ADR 0001: Constrained Action Pipelines & Slots](./docs/adr/0001-action-pipelines-and-slot-interfaces.md)
-  - [ADR 0002: Three-Stage Lowering](./docs/adr/0002-three-stage-architecture-lowering.md)
-  - [ADR 0003: Purpose-Built Grammar](./docs/adr/0003-purpose-built-fdn-grammar.md)
-  - [ADR 0004: Static Invariants](./docs/adr/0004-static-architectural-invariants.md)
-  - [ADR 0005: Manifest-Tracked Scaffolding](./docs/adr/0005-manifest-tracked-root-scaffolding.md)
-  - [ADR 0006: Actor Resolver Port](./docs/adr/0006-actor-resolver-port-with-contrib-adapters.md)
-  - [ADR 0007: Post-Commit Event Dispatch](./docs/adr/0007-post-commit-in-process-event-dispatch.md)
-  - [ADR 0008: Deterministic Query-Many](./docs/adr/0008-deterministic-query-many.md)
-  - [ADR 0009: Contrib Runtime Libraries](./docs/adr/0009-contrib-runtimes-for-stateful-traits.md)
-  - [ADR 0010: Optimistic Concurrency Control](./docs/adr/0010-optimistic-concurrency-control.md)
-  - [ADR 0011: Standardized IR Protocol](./docs/adr/0011-pluggable-emitter-protocol.md)
+For architecture decisions and compiler specifications, see [Architectural Decision Records (`docs/adr/`)](./docs/adr/) and [Technical Specifications (`docs/specs/`)](./docs/specs/).

@@ -146,6 +146,10 @@ import (
 
 `, lay.MemoryPkg, findManyImports, "", timeImport, archIR.Module, lay.DomainDir))
 
+	if hasFindMany {
+		sb.WriteString("var (\n\t_ = sort.SliceStable\n\t_ = strings.Join\n)\n\n")
+	}
+
 	repoStruct := "InMemory" + p.EntityName + "Repository"
 	sb.WriteString(fmt.Sprintf("type %s struct {\n\tmu sync.RWMutex\n\tentities []%s.%s\n\tseq int\n}\n\n", repoStruct, lay.DomainPkg, p.EntityName))
 	sb.WriteString(fmt.Sprintf("func New%s() *%s {\n\treturn &%s{}\n}\n\n", repoStruct, repoStruct, repoStruct))

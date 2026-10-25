@@ -20,6 +20,7 @@ import (
 type DBTX interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 type PostgresTransactionManager struct {
@@ -57,6 +58,17 @@ func connFromContext(ctx context.Context, db *sql.DB) DBTX {
 
 func (lay goLayout) emitGoSinglePostgresRepo(archIR *arch.ArchitectureIR, p arch.RepositoryPortIR) string {
 	var sb strings.Builder
+	hasFindMany := false
+	for _, m := range p.Methods {
+		if m.Kind == arch.RepoMethodFindMany {
+			hasFindMany = true
+			break
+		}
+	}
+	stringsImport := ""
+	if hasFindMany {
+		stringsImport = "\t\"strings\"\n"
+	}
 	sb.WriteString(fmt.Sprintf(`package %s
 
 import (
@@ -65,11 +77,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
+%s	"time"
 	"%s/%s"
 )
 
-`, lay.PostgresPkg, archIR.Module, lay.DomainDir))
+`, lay.PostgresPkg, stringsImport, archIR.Module, lay.DomainDir))
 
 	ent := archIR.EntityByName(p.EntityName)
 	tableName := arch.EntityTableName(ent)

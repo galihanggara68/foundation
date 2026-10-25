@@ -202,6 +202,9 @@ func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.Use
 	pipeExecParams := append(append([]string(nil), execParams...), "postCommitEvents *[]func()")
 	sb.WriteString(fmt.Sprintf("func (uc *%s) executePipeline(%s) (%s, error) {\n", uc.Name, strings.Join(pipeExecParams, ", "), retType))
 	sb.WriteString(fmt.Sprintf("\tvar zero %s\n\t_ = zero\n\t_ = %s.Actor{}\n\tvar _pageInfo *%s.PageInfo\n\t_ = _pageInfo\n", retType, lay.DomainPkg, lay.DomainPkg))
+	if uc.IsListReturning {
+		sb.WriteString(fmt.Sprintf("\tvar _finalPI %s.PageInfo\n\t_ = _finalPI\n", lay.DomainPkg))
+	}
 	if uc.UsesActor {
 		sb.WriteString(fmt.Sprintf("\tactor := %s.ActorFromContext(ctx)\n\t_ = actor\n", lay.DomainPkg))
 	}
@@ -220,7 +223,7 @@ func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.Use
 
 	if uc.ReturnType != "" {
 		if uc.IsListReturning {
-			sb.WriteString(fmt.Sprintf("\tvar _finalPI %s.PageInfo\n\tif _pageInfo != nil { _finalPI = *_pageInfo }\n", lay.DomainPkg))
+			sb.WriteString("\tif _pageInfo != nil { _finalPI = *_pageInfo }\n")
 			sb.WriteString(fmt.Sprintf("\treturn &%s.%sResult{ PageInfo: _finalPI }, nil\n", lay.DomainPkg, uc.ActionName))
 		} else {
 			sb.WriteString("\treturn zero, nil\n")

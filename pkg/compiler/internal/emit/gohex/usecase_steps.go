@@ -226,7 +226,7 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 			if s.Expr != nil {
 				retVal := lay.emitGoExpr(*s.Expr, false)
 				if ctx.useCase.IsListReturning {
-					sb.WriteString(fmt.Sprintf("%svar _finalPI %s.PageInfo\n%sif _pageInfo != nil { _finalPI = *_pageInfo }\n", indent, lay.DomainPkg, indent))
+					sb.WriteString(fmt.Sprintf("%sif _pageInfo != nil { _finalPI = *_pageInfo }\n", indent))
 					sb.WriteString(fmt.Sprintf("%sreturn &%s.%sResult{ Items: %s, PageInfo: _finalPI }, nil\n", indent, lay.DomainPkg, ctx.useCase.ActionName, retVal))
 				} else {
 					sb.WriteString(fmt.Sprintf("%sreturn %s, nil\n", indent, retVal))

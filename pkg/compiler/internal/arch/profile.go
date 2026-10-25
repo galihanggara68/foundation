@@ -18,14 +18,19 @@ type TargetKey struct {
 
 // BuildProfile represents the parsed foundation.build.yaml configuration.
 type BuildProfile struct {
-	Project ProjectConfig  `json:"project"`
-	Storage StorageConfig  `json:"storage"`
-	Targets []TargetConfig `json:"targets"`
+	Project      ProjectConfig      `json:"project"`
+	Storage      StorageConfig      `json:"storage"`
+	Dependencies DependenciesConfig `json:"dependencies"`
+	Targets      []TargetConfig     `json:"targets"`
 }
 
 type ProjectConfig struct {
 	Name   string `json:"name"`
 	Module string `json:"module"`
+}
+
+type DependenciesConfig struct {
+	Runtime string `json:"runtime"`
 }
 
 type StorageConfig struct {
@@ -103,6 +108,14 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 			case "mode":
 				bp.Storage.Mode = v
 			}
+		case "dependencies":
+			k, v, ok := splitKV(trimmed)
+			if !ok {
+				return nil, yamlErr(lineNum, "invalid dependencies key-value")
+			}
+			if k == "runtime" {
+				bp.Dependencies.Runtime = v
+			}
 		case "targets":
 			if strings.HasPrefix(trimmed, "-") {
 				if curTarget != nil {
@@ -133,7 +146,34 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 		bp.Project.Module = "example.com/" + bp.Project.Name
 	}
 
+	if bp.Dependencies.Runtime != "" {
+		if !isSemVerCompatible("0.1.0", bp.Dependencies.Runtime) {
+			return nil, []ir.Diagnostic{{
+				Code:     "FDN0007",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("incompatible contrib runtime version %q: compiler v0.1.0 requires ~0.1.0", bp.Dependencies.Runtime),
+				Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			}}
+		}
+	}
+
 	return bp, nil
+}
+
+func isSemVerCompatible(compilerVer, pinned string) bool {
+	clean := strings.TrimLeft(pinned, "^~>=v ")
+	parts := strings.Split(clean, ".")
+	cClean := strings.TrimLeft(compilerVer, "v ")
+	cParts := strings.Split(cClean, ".")
+	if len(parts) < 2 || len(cParts) < 2 {
+		return false
+	}
+	// For 0.y.z versions, minor version must match exactly (SemVer 0.x rule)
+	if cParts[0] == "0" {
+		return parts[0] == "0" && parts[1] == cParts[1]
+	}
+	// For major >= 1, major version must match
+	return parts[0] == cParts[0]
 }
 
 func splitKV(s string) (string, string, bool) {

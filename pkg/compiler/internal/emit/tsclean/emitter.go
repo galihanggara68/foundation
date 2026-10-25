@@ -21,6 +21,14 @@ func (Emitter) Emit(archIR *arch.ArchitectureIR) (emit.Emission, []ir.Diagnostic
 		pkgName = "foundation-ts-backend"
 	}
 
+	contribTS := emit.FindContribTSRuntime()
+	contribDep := ""
+	if contribTS != "" {
+		contribDep = fmt.Sprintf("    \"@foundation-contrib/runtime\": \"file:%s\",\n", contribTS)
+	} else {
+		contribDep = "    \"@foundation-contrib/runtime\": \"^0.1.0\",\n"
+	}
+
 	tracked["package.json"] = []byte(fmt.Sprintf(`{
   "name": %q,
   "version": "0.1.0",
@@ -31,7 +39,7 @@ func (Emitter) Emit(archIR *arch.ArchitectureIR) (emit.Emission, []ir.Diagnostic
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {
-    "express": "^4.21.0",
+%s    "express": "^4.21.0",
     "pg": "^8.13.0"
   },
   "devDependencies": {
@@ -41,7 +49,7 @@ func (Emitter) Emit(archIR *arch.ArchitectureIR) (emit.Emission, []ir.Diagnostic
     "typescript": "^5.6.0"
   }
 }
-`, pkgName))
+`, pkgName, contribDep))
 
 	tracked["tsconfig.json"] = []byte(`{
   "compilerOptions": {

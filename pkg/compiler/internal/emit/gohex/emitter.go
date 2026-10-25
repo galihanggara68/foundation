@@ -111,12 +111,21 @@ func emitWithLayout(archIR *arch.ArchitectureIR, lay goLayout) (map[string][]byt
 	files := make(map[string][]byte)
 	stubs := make(map[string][]byte)
 
+	contribGoPath := emit.FindContribGoRuntime()
+	replaceClause := ""
+	if contribGoPath != "" {
+		replaceClause = fmt.Sprintf("\nreplace github.com/galihanggara68/foundation/contrib/go/runtime => %s\n", contribGoPath)
+	}
+
 	files["go.mod"] = []byte(fmt.Sprintf(`module %s
 
 go 1.23
 
-require github.com/go-chi/chi/v5 v5.3.0
-`, archIR.Module))
+require (
+	github.com/go-chi/chi/v5 v5.3.0
+	github.com/galihanggara68/foundation/contrib/go/runtime v0.1.0
+)
+%s`, archIR.Module, replaceClause))
 
 	files["go.sum"] = []byte(`github.com/go-chi/chi/v5 v5.3.0 h1:halUjDxhshgXHMrao5bB8eNBXo/rnzwr8m5m36glehM=
 github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=

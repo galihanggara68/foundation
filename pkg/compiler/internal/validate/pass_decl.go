@@ -132,5 +132,49 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		sym.policies[pol.Name] = *pol
 	}
 
+	for _, a := range sem.Actions {
+		for _, tr := range a.Traits {
+			if tr.Name == "event_handler" {
+				evName := tr.Args["_"]
+				if evName == "" {
+					evName = tr.Args["event"]
+				}
+				if evName == "" {
+					diags = append(diags, ir.Diagnostic{
+						Code:     "FDN0203",
+						Severity: ir.SeverityError,
+						Message:  fmt.Sprintf("@event_handler on action %q requires an event name", a.Name),
+						Span:     tr.Span,
+					})
+					continue
+				}
+				if _, ok := sym.events[evName]; !ok {
+					diags = append(diags, ir.Diagnostic{
+						Code:     "FDN0203",
+						Severity: ir.SeverityError,
+						Message:  fmt.Sprintf("@event_handler on action %q subscribes to undeclared event %q", a.Name, evName),
+						Span:     tr.Span,
+					})
+					continue
+				}
+				hasParam := false
+				for _, p := range a.Params {
+					if p.Type == evName {
+						hasParam = true
+						break
+					}
+				}
+				if !hasParam {
+					diags = append(diags, ir.Diagnostic{
+						Code:     "FDN0204",
+						Severity: ir.SeverityError,
+						Message:  fmt.Sprintf("@event_handler action %q must accept a parameter of event type %q", a.Name, evName),
+						Span:     a.Span,
+					})
+				}
+			}
+		}
+	}
+
 	return diags
 }

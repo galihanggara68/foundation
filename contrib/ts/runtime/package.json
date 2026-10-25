@@ -1,0 +1,14 @@
+{
+  "name": "@foundation-contrib/runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Zero-dependency in-memory runtime driver for Foundation applications",
+  "main": "src/index.js",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": ["foundation", "runtime"],
+  "author": "Foundation Authors",
+  "license": "Apache-2.0"
+}

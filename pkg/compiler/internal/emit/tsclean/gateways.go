@@ -53,9 +53,24 @@ export interface Snapshotter {
 
 export class InMemoryEventPublisher implements ports.EventPublisher {
   private events: Array<{ eventType: string; payload: unknown }> = [];
+  private handlers = new Map<string, Array<(payload: unknown) => Promise<void>>>();
+
+  subscribe(eventType: string, handler: (payload: unknown) => Promise<void>): void {
+    const list = this.handlers.get(eventType) ?? [];
+    list.push(handler);
+    this.handlers.set(eventType, list);
+  }
 
   async publish(eventType: string, payload: unknown): Promise<void> {
     this.events.push({ eventType, payload });
+    const list = this.handlers.get(eventType) ?? [];
+    for (const h of list) {
+      try {
+        await h(payload);
+      } catch (err) {
+        // Handlers run independently; errors do not disrupt publisher or other handlers
+      }
+    }
   }
 
   byType<T = unknown>(eventType: string): T[] {

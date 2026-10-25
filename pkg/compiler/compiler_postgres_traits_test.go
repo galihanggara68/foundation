@@ -296,7 +296,7 @@ action OnPaymentProcessed(ev: PaymentProcessed) -> bool
 }
 
 action ReconcileNightly() -> bool
-  @cron("0 0 * * *")
+  @internal
 {
   return true
 }
@@ -385,14 +385,11 @@ targets:
 	archIR := res.Architectures[0]
 	for _, h := range archIR.HTTPHandlers {
 		if h.ActionName == "InternalAudit" || h.ActionName == "OnPaymentProcessed" || h.ActionName == "ReconcileNightly" {
-			t.Fatalf("expected @internal, @event_handler, and @cron actions to be excluded from HTTPHandlers, but found %s", h.ActionName)
+			t.Fatalf("expected @internal and @event_handler actions to be excluded from HTTPHandlers, but found %s", h.ActionName)
 		}
 	}
 	if len(archIR.EventHandlers) != 1 || archIR.EventHandlers[0].ActionName != "OnPaymentProcessed" || archIR.EventHandlers[0].EventName != "PaymentProcessed" {
 		t.Fatalf("expected 1 EventHandlerIR for OnPaymentProcessed, got %+v", archIR.EventHandlers)
-	}
-	if len(archIR.CronHandlers) != 1 || archIR.CronHandlers[0].ActionName != "ReconcileNightly" || archIR.CronHandlers[0].Schedule != "0 0 * * *" {
-		t.Fatalf("expected 1 CronHandlerIR for ReconcileNightly, got %+v", archIR.CronHandlers)
 	}
 
 	// 3. Run generated test suite (verifies Scenarios including @transactional rollback, @idempotent, @cache, @retry, @outbox, and Contract Tests)

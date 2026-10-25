@@ -58,18 +58,12 @@ type ArchitectureIR struct {
 	UseCases       []UseCaseIR        `json:"use_cases"`
 	HTTPHandlers   []HTTPHandlerIR    `json:"http_handlers"`
 	EventHandlers  []EventHandlerIR   `json:"event_handlers,omitempty"`
-	CronHandlers   []CronHandlerIR    `json:"cron_handlers,omitempty"`
 	Scenarios      []ir.ScenarioDecl  `json:"scenarios,omitempty"`
 }
 
 type EventHandlerIR struct {
 	ActionName string `json:"action_name"`
 	EventName  string `json:"event_name"`
-}
-
-type CronHandlerIR struct {
-	ActionName string `json:"action_name"`
-	Schedule   string `json:"schedule"`
 }
 
 type ArchLayer struct {

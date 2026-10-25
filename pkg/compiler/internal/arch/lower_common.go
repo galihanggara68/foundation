@@ -137,7 +137,6 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 		httpPath := "/" + strings.ToLower(a.Name)
 		isInternal := false
 		isEventHandler := false
-		isCron := false
 		for _, tr := range a.Traits {
 			switch tr.Name {
 			case "http":
@@ -156,16 +155,9 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 					ActionName: a.Name,
 					EventName:  evName,
 				})
-			case "cron":
-				isCron = true
-				sched, _ := getTraitsArg([]ir.TraitDecl{tr}, "cron")
-				arch.CronHandlers = append(arch.CronHandlers, CronHandlerIR{
-					ActionName: a.Name,
-					Schedule:   sched,
-				})
 			}
 		}
-		if !isInternal && !isEventHandler && !isCron {
+		if !isInternal && !isEventHandler {
 			var pathParams []string
 			for _, seg := range strings.Split(httpPath, "/") {
 				if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {

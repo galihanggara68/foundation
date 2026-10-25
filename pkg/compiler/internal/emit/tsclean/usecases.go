@@ -15,6 +15,7 @@ func emitTSPorts(archIR *arch.ArchitectureIR) string {
 
 export interface EventPublisher {
   publish(eventType: string, payload: unknown): Promise<void>;
+  subscribe(eventType: string, handler: (payload: unknown) => Promise<void>): void;
 }
 
 export interface TransactionManager {
@@ -66,10 +67,12 @@ func emitTSUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
 	retryTrait, isRetry := uc.HasTrait("retry")
 	_, isOutbox := uc.HasTrait("outbox")
 
-	sb.WriteString(`import * as domain from "../entities/domain.ts";
-import * as ports from "./ports.ts";
-
-`)
+	sb.WriteString("import * as domain from \"../entities/domain.ts\";\n")
+	sb.WriteString("import * as ports from \"./ports.ts\";\n")
+	if isIdem || isCache || isOutbox {
+		sb.WriteString("import type { IdempotencyStore, CacheStore, OutboxStore } from \"@foundation-contrib/runtime\";\n")
+	}
+	sb.WriteString("\n")
 
 	retTS := tsType(uc.ReturnType, false)
 
@@ -87,10 +90,13 @@ import * as ports from "./ports.ts";
 		sb.WriteString("  private readonly txManager?: ports.TransactionManager;\n")
 	}
 	if isIdem {
-		sb.WriteString(fmt.Sprintf("  private readonly idemStore = new Map<string, %s>();\n", retTS))
+		sb.WriteString("  private readonly idemStore?: IdempotencyStore;\n")
 	}
 	if isCache {
-		sb.WriteString(fmt.Sprintf("  private readonly cacheStore = new Map<string, { val: %s; expiresAt: number }>();\n", retTS))
+		sb.WriteString("  private readonly cacheStore?: CacheStore;\n")
+	}
+	if isOutbox {
+		sb.WriteString("  private readonly outboxStore?: OutboxStore;\n")
 	}
 	sb.WriteString("\n  constructor(\n")
 	var ctorParams []string
@@ -105,6 +111,15 @@ import * as ports from "./ports.ts";
 	}
 	if isTx {
 		ctorParams = append(ctorParams, "    txManager?: ports.TransactionManager")
+	}
+	if isIdem {
+		ctorParams = append(ctorParams, "    idemStore?: IdempotencyStore")
+	}
+	if isCache {
+		ctorParams = append(ctorParams, "    cacheStore?: CacheStore")
+	}
+	if isOutbox {
+		ctorParams = append(ctorParams, "    outboxStore?: OutboxStore")
 	}
 	sb.WriteString(strings.Join(ctorParams, ",\n") + "\n  ) {\n")
 	for _, dep := range uc.RepoDeps {
@@ -121,6 +136,15 @@ import * as ports from "./ports.ts";
 	if isTx {
 		sb.WriteString("    this.txManager = txManager;\n")
 	}
+	if isIdem {
+		sb.WriteString("    this.idemStore = idemStore;\n")
+	}
+	if isCache {
+		sb.WriteString("    this.cacheStore = cacheStore;\n")
+	}
+	if isOutbox {
+		sb.WriteString("    this.outboxStore = outboxStore;\n")
+	}
 	sb.WriteString("  }\n\n")
 
 	var execParams []string
@@ -132,71 +156,12 @@ import * as ports from "./ports.ts";
 		callArgs = append(callArgs, p.Name)
 	}
 
-	// Tactical traits compose as decorator methods around executePipeline:
-	// execute -> withIdempotency -> withCache -> withRetry -> withTransaction -> executePipeline.
 	paramsSig := strings.Join(execParams, ", ")
-	argsSig := strings.Join(callArgs, ", ")
+	pipelineCallArgs := append(callArgs, "postCommitEvents")
+	pipelineArgsSig := strings.Join(pipelineCallArgs, ", ")
 
-	outermost := "this.executePipeline"
-	if isTx {
-		outermost = "this.withTransaction"
-	}
-	if isRetry {
-		outermost = "this.withRetry"
-	}
-	if isCache {
-		outermost = "this.withCache"
-	}
-	if isIdem {
-		outermost = "this.withIdempotency"
-	}
-	sb.WriteString(fmt.Sprintf("  async execute(%s): Promise<%s> {\n    return %s(%s);\n  }\n\n", paramsSig, retTS, outermost, argsSig))
-
-	innerCall := "this.executePipeline"
-	if isTx {
-		sb.WriteString("  // withTransaction applies the @transactional tactical trait decorator.\n")
-		sb.WriteString(fmt.Sprintf("  private async withTransaction(%s): Promise<%s> {\n", paramsSig, retTS))
-		sb.WriteString("    if (this.txManager) {\n")
-		sb.WriteString(fmt.Sprintf("      return this.txManager.withinTransaction(() => %s(%s));\n", innerCall, argsSig))
-		sb.WriteString("    }\n")
-		sb.WriteString(fmt.Sprintf("    return %s(%s);\n  }\n\n", innerCall, argsSig))
-		innerCall = "this.withTransaction"
-	}
-
-	if isRetry {
-		attempts := "1"
-		if a, ok := retryTrait.Args["attempts"]; ok && a != "" {
-			attempts = a
-		}
-		sb.WriteString("  // withRetry applies the @retry tactical trait decorator.\n")
-		sb.WriteString(fmt.Sprintf("  private async withRetry(%s): Promise<%s> {\n", paramsSig, retTS))
-		sb.WriteString("    let lastErr: unknown;\n")
-		sb.WriteString(fmt.Sprintf("    for (let attempt = 0; attempt < %s; attempt++) {\n      try {\n        return await %s(%s);\n      } catch (err) {\n        lastErr = err;\n      }\n    }\n    throw lastErr;\n  }\n\n", attempts, innerCall, argsSig))
-		innerCall = "this.withRetry"
-	}
-
-	if isCache {
-		ttlSecs := "60"
-		if tVal, ok := cacheTrait.Args["ttl"]; ok && tVal != "" {
-			ttlSecs = tVal
-		}
-		var keyParts []string
-		for _, p := range uc.Params {
-			keyParts = append(keyParts, p.Name)
-		}
-		keyStr := `"default"`
-		if len(keyParts) > 0 {
-			keyStr = "JSON.stringify([" + strings.Join(keyParts, ", ") + "])"
-		}
-		sb.WriteString("  // withCache applies the @cache tactical trait decorator.\n")
-		sb.WriteString(fmt.Sprintf("  private async withCache(%s): Promise<%s> {\n", paramsSig, retTS))
-		sb.WriteString(fmt.Sprintf("    const cacheKey = %s;\n", keyStr))
-		sb.WriteString("    const cached = this.cacheStore.get(cacheKey);\n    if (cached && Date.now() < cached.expiresAt) {\n      return cached.val;\n    }\n")
-		sb.WriteString(fmt.Sprintf("    const cacheTTLMs = %s * 1000;\n", ttlSecs))
-		sb.WriteString(fmt.Sprintf("    const res = await %s(%s);\n", innerCall, argsSig))
-		sb.WriteString("    this.cacheStore.set(cacheKey, { val: res, expiresAt: Date.now() + cacheTTLMs });\n    return res;\n  }\n\n")
-		innerCall = "this.withCache"
-	}
+	sb.WriteString(fmt.Sprintf("  async execute(%s): Promise<%s> {\n", paramsSig, retTS))
+	sb.WriteString("    const postCommitEvents: Array<() => Promise<void>> = [];\n")
 
 	if isIdem {
 		keyExpr := idemTrait.Args["key"]
@@ -205,19 +170,79 @@ import * as ports from "./ports.ts";
 		} else if keyExpr == "" {
 			keyExpr = `"default"`
 		}
-		sb.WriteString("  // withIdempotency applies the @idempotent tactical trait decorator.\n")
-		sb.WriteString(fmt.Sprintf("  private async withIdempotency(%s): Promise<%s> {\n", paramsSig, retTS))
 		sb.WriteString(fmt.Sprintf("    const idemKey = String(%s);\n", keyExpr))
-		sb.WriteString("    if (this.idemStore.has(idemKey)) {\n      return this.idemStore.get(idemKey)!;\n    }\n")
-		sb.WriteString(fmt.Sprintf("    const res = await %s(%s);\n", innerCall, argsSig))
-		sb.WriteString("    this.idemStore.set(idemKey, res);\n    return res;\n  }\n\n")
+		sb.WriteString("    let unlock: ((completed: boolean, responsePayload?: Uint8Array) => Promise<void>) | undefined;\n")
+		sb.WriteString("    if (this.idemStore) {\n")
+		sb.WriteString("      const idemRes = await this.idemStore.getOrLock(idemKey, 5 * 60 * 1000);\n")
+		sb.WriteString(fmt.Sprintf("      if (idemRes.status === \"completed\" && idemRes.payload && idemRes.payload.length > 0) {\n        return JSON.parse(new TextDecoder().decode(idemRes.payload)) as %s;\n      }\n", retTS))
+		sb.WriteString("      unlock = idemRes.unlock;\n")
+		sb.WriteString("    }\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("  private async executePipeline(%s): Promise<%s> {\n    void actor;\n",
-		strings.Join(execParams, ", "), retTS))
-	if isOutbox && uc.EmitsEvents {
-		sb.WriteString("    const outboxQueue: Array<{ eventType: string; payload: unknown }> = [];\n")
+	ttlSecs := "60"
+	if isCache {
+		if tVal, ok := cacheTrait.Args["ttl"]; ok && tVal != "" {
+			ttlSecs = tVal
+		}
+		var keyParts []string
+		for _, p := range uc.Params {
+			keyParts = append(keyParts, p.Name)
+		}
+		cacheKeyStr := `"default"`
+		if len(keyParts) > 0 {
+			cacheKeyStr = "JSON.stringify([" + strings.Join(keyParts, ", ") + "])"
+		}
+		sb.WriteString(fmt.Sprintf("    const cacheKey = %s;\n", cacheKeyStr))
+		sb.WriteString("    if (this.cacheStore) {\n")
+		sb.WriteString("      const cached = await this.cacheStore.get(cacheKey);\n")
+		sb.WriteString(fmt.Sprintf("      if (cached.found && cached.value) {\n        return JSON.parse(new TextDecoder().decode(cached.value)) as %s;\n      }\n", retTS))
+		sb.WriteString("    }\n")
 	}
+
+	attempts := "1"
+	backoffMs := "0"
+	if isRetry {
+		if a, ok := retryTrait.Args["attempts"]; ok && a != "" {
+			attempts = a
+		}
+		if b, ok := retryTrait.Args["backoff"]; ok && b != "" {
+			backoffMs = b
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("    let finalRes: %s;\n", retTS))
+	sb.WriteString("    let finalErr: unknown;\n")
+	sb.WriteString(fmt.Sprintf("    for (let attempt = 0; attempt < %s; attempt++) {\n", attempts))
+	sb.WriteString("      postCommitEvents.length = 0;\n")
+	if isRetry && backoffMs != "0" {
+		sb.WriteString(fmt.Sprintf("      if (attempt > 0) { await new Promise((r) => setTimeout(r, %s)); }\n", backoffMs))
+	}
+	sb.WriteString("      try {\n")
+	if isTx {
+		sb.WriteString("        if (this.txManager) {\n")
+		sb.WriteString(fmt.Sprintf("          finalRes = await this.txManager.withinTransaction(() => this.executePipeline(%s));\n", pipelineArgsSig))
+		sb.WriteString("        } else {\n")
+		sb.WriteString(fmt.Sprintf("          finalRes = await this.executePipeline(%s);\n", pipelineArgsSig))
+		sb.WriteString("        }\n")
+	} else {
+		sb.WriteString(fmt.Sprintf("        finalRes = await this.executePipeline(%s);\n", pipelineArgsSig))
+	}
+	sb.WriteString("        finalErr = undefined;\n        break;\n")
+	sb.WriteString("      } catch (err) {\n        finalErr = err;\n      }\n    }\n")
+
+	if isIdem {
+		sb.WriteString("    if (unlock) {\n      if (!finalErr) {\n        const respBytes = new TextEncoder().encode(JSON.stringify(finalRes!));\n        await unlock(true, respBytes);\n      } else {\n        await unlock(false);\n      }\n    }\n")
+	}
+	sb.WriteString("    if (finalErr) {\n      throw finalErr;\n    }\n")
+	if isCache {
+		sb.WriteString(fmt.Sprintf("    if (this.cacheStore) {\n      const respBytes = new TextEncoder().encode(JSON.stringify(finalRes!));\n      await this.cacheStore.set(cacheKey, respBytes, %s * 1000);\n    }\n", ttlSecs))
+	}
+	sb.WriteString("    for (const fn of postCommitEvents) {\n      await fn();\n    }\n")
+	sb.WriteString("    return finalRes!;\n  }\n\n")
+
+	pipelineParams := append(execParams, "postCommitEvents: Array<() => Promise<void>>")
+	sb.WriteString(fmt.Sprintf("  private async executePipeline(%s): Promise<%s> {\n    void actor;\n    void postCommitEvents;\n",
+		strings.Join(pipelineParams, ", "), retTS))
 
 	declaredVars := make(map[string]bool)
 	for _, p := range uc.Params {
@@ -330,14 +355,22 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 
 		case ir.StepEmit:
 			if useOutbox {
-				sb.WriteString(fmt.Sprintf("%soutboxQueue.push({\n%s  eventType: %q,\n%s  payload: {\n", indent, indent, s.EventName, indent))
+				sb.WriteString(fmt.Sprintf("%sif (this.outboxStore) {\n", indent))
+				sb.WriteString(fmt.Sprintf("%s  const payload = {\n", indent))
 				emitTSFieldInits(sb, s.Fields, indent+"    ")
-				sb.WriteString(fmt.Sprintf("%s  } satisfies domain.%s,\n%s});\n", indent, s.EventName, indent))
-			} else {
-				sb.WriteString(fmt.Sprintf("%sif (this.events) {\n%s  await this.events.publish(%q, {\n", indent, indent, s.EventName))
-				emitTSFieldInits(sb, s.Fields, indent+"    ")
-				sb.WriteString(fmt.Sprintf("%s  } satisfies domain.%s);\n%s}\n", indent, s.EventName, indent))
+				sb.WriteString(fmt.Sprintf("%s  } satisfies domain.%s;\n", indent, s.EventName))
+				sb.WriteString(fmt.Sprintf("%s  await this.outboxStore.stage(undefined, {\n", indent))
+				sb.WriteString(fmt.Sprintf("%s    id: String(Date.now()),\n", indent))
+				sb.WriteString(fmt.Sprintf("%s    topic: %q,\n", indent, s.EventName))
+				sb.WriteString(fmt.Sprintf("%s    eventName: %q,\n", indent, s.EventName))
+				sb.WriteString(fmt.Sprintf("%s    payload: new TextEncoder().encode(JSON.stringify(payload)),\n", indent))
+				sb.WriteString(fmt.Sprintf("%s    createdAt: new Date(),\n", indent))
+				sb.WriteString(fmt.Sprintf("%s  });\n%s}\n", indent, indent))
 			}
+			sb.WriteString(fmt.Sprintf("%spostCommitEvents.push(async () => {\n", indent))
+			sb.WriteString(fmt.Sprintf("%s  if (this.events) {\n%s    await this.events.publish(%q, {\n", indent, indent, s.EventName))
+			emitTSFieldInits(sb, s.Fields, indent+"      ")
+			sb.WriteString(fmt.Sprintf("%s    } satisfies domain.%s);\n%s  }\n%s});\n", indent, s.EventName, indent, indent))
 
 		case ir.StepSlot:
 			var callArgs []string
@@ -364,10 +397,6 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 			}
 
 		case ir.StepReturn:
-			if useOutbox {
-				sb.WriteString(fmt.Sprintf("%sif (this.events) {\n%s  for (const msg of outboxQueue) {\n%s    await this.events.publish(msg.eventType, msg.payload);\n%s  }\n%s}\n",
-					indent, indent, indent, indent, indent))
-			}
 			if s.Expr != nil {
 				sb.WriteString(fmt.Sprintf("%sreturn %s;\n", indent, emitTSExpr(*s.Expr, false)))
 			}

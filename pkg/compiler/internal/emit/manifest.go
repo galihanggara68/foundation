@@ -60,6 +60,13 @@ func pruneEmptyDirs(outDir string, relDirs []string) {
 	}
 }
 
+var protectedLockfiles = map[string]bool{
+	"go.sum":            true,
+	"package-lock.json": true,
+	"pnpm-lock.yaml":    true,
+	"yarn.lock":         true,
+}
+
 // ReconcileManifest compares the newly emitted files with the existing .foundation-manifest.json,
 // detects human conflicts, prunes stale generated files, writes tracked files, and writes create-if-missing stubs.
 func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles map[string][]byte, force bool) []ir.Diagnostic {
@@ -97,6 +104,9 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 		sort.Strings(prevPaths)
 
 		for _, rel := range prevPaths {
+			if protectedLockfiles[rel] {
+				continue
+			}
 			expectedHash := prev.Files[rel]
 			diskPath := filepath.Join(outDir, filepath.FromSlash(rel))
 			diskBytes, err := os.ReadFile(diskPath)
@@ -121,6 +131,9 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 	// 2. Prune stale files that were in the previous manifest but are no longer emitted
 	var prunedDirs []string
 	for rel := range prev.Files {
+		if protectedLockfiles[rel] {
+			continue
+		}
 		if _, stillPresent := trackedFiles[rel]; !stillPresent {
 			diskPath := filepath.Join(outDir, filepath.FromSlash(rel))
 			_ = os.Remove(diskPath)
@@ -151,6 +164,13 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 				Message:  fmt.Sprintf("failed to create parent directory for %s: %v", rel, err),
 				Span:     ir.Span{File: rel, Line: 1, Column: 1},
 			}}
+		}
+		base := filepath.Base(rel)
+		if protectedLockfiles[base] {
+			if existingBytes, err := os.ReadFile(diskPath); err == nil {
+				nextManifest.Files[rel] = sha256Hex(existingBytes)
+				continue
+			}
 		}
 		if err := os.WriteFile(diskPath, content, 0644); err != nil {
 			return []ir.Diagnostic{{

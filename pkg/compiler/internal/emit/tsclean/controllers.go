@@ -124,6 +124,7 @@ func emitTSContainer(archIR *arch.ArchitectureIR) string {
 	sb.WriteString(`import * as memory from "../gateways/memory_repositories.ts";
 import * as postgres from "../gateways/postgres_repositories.ts";
 import { ExpressController } from "../controllers/express_router.ts";
+import { createMemoryDriver } from "@foundation-contrib/runtime";
 `)
 	for _, sl := range archIR.Slots {
 		sb.WriteString(fmt.Sprintf("import { create%sSlot } from \"../slots/%s_stub.ts\";\n", sl.Name, strings.ToLower(sl.Name)))
@@ -133,6 +134,7 @@ import { ExpressController } from "../controllers/express_router.ts";
 	}
 
 	sb.WriteString("\nexport function createTestContainer() {\n")
+	sb.WriteString("  const runtimeDriver = createMemoryDriver();\n")
 	var snapRepos []string
 	for _, p := range archIR.Ports {
 		rVar := toCamelCase(p.EntityName) + "Repo"
@@ -161,9 +163,21 @@ import { ExpressController } from "../controllers/express_router.ts";
 		if _, isTx := uc.HasTrait("transactional"); isTx {
 			depArgs = append(depArgs, "txManager")
 		}
+		if _, isIdem := uc.HasTrait("idempotent"); isIdem {
+			depArgs = append(depArgs, "runtimeDriver.idempotency()")
+		}
+		if _, isCache := uc.HasTrait("cache"); isCache {
+			depArgs = append(depArgs, "runtimeDriver.cache()")
+		}
+		if _, isOutbox := uc.HasTrait("outbox"); isOutbox {
+			depArgs = append(depArgs, "runtimeDriver.outbox()")
+		}
 		ucVar := toCamelCase(uc.ActionName)
 		sb.WriteString(fmt.Sprintf("  const %s = new %s(%s);\n", ucVar, uc.Name, strings.Join(depArgs, ", ")))
 		ctrlArgs = append(ctrlArgs, ucVar)
+	}
+	for _, eh := range archIR.EventHandlers {
+		sb.WriteString(fmt.Sprintf("  events.subscribe(%q, async (payload) => {\n    await %s.execute({ id: \"system\", role: \"system\", is_verified: true }, payload as any);\n  });\n", eh.EventName, toCamelCase(eh.ActionName)))
 	}
 	sb.WriteString(fmt.Sprintf("  const controller = new ExpressController(%s);\n", strings.Join(ctrlArgs, ", ")))
 	sb.WriteString("  return {\n")
@@ -180,6 +194,7 @@ import { ExpressController } from "../controllers/express_router.ts";
 	sb.WriteString("    controller,\n  };\n}\n\n")
 
 	sb.WriteString("export function createPostgresContainer(db: postgres.PgQueryable) {\n")
+	sb.WriteString("  const runtimeDriver = createMemoryDriver();\n  void runtimeDriver;\n")
 	for _, p := range archIR.Ports {
 		rVar := toCamelCase(p.EntityName) + "Repo"
 		sb.WriteString(fmt.Sprintf("  const %s = new postgres.Postgres%sRepository(db);\n  void %s;\n", rVar, p.EntityName, rVar))
@@ -190,6 +205,7 @@ import { ExpressController } from "../controllers/express_router.ts";
 	}
 	sb.WriteString("  const events = new memory.InMemoryEventPublisher();\n  void events;\n")
 	sb.WriteString("  const txManager = new postgres.PostgresTransactionManager(db);\n  void txManager;\n")
+	var pgCtrlArgs []string
 	for _, uc := range archIR.UseCases {
 		var depArgs []string
 		for _, dep := range uc.RepoDeps {
@@ -204,10 +220,23 @@ import { ExpressController } from "../controllers/express_router.ts";
 		if _, isTx := uc.HasTrait("transactional"); isTx {
 			depArgs = append(depArgs, "txManager")
 		}
+		if _, isIdem := uc.HasTrait("idempotent"); isIdem {
+			depArgs = append(depArgs, "runtimeDriver.idempotency()")
+		}
+		if _, isCache := uc.HasTrait("cache"); isCache {
+			depArgs = append(depArgs, "runtimeDriver.cache()")
+		}
+		if _, isOutbox := uc.HasTrait("outbox"); isOutbox {
+			depArgs = append(depArgs, "runtimeDriver.outbox()")
+		}
 		ucVar := toCamelCase(uc.ActionName)
 		sb.WriteString(fmt.Sprintf("  const %s = new %s(%s);\n", ucVar, uc.Name, strings.Join(depArgs, ", ")))
+		pgCtrlArgs = append(pgCtrlArgs, ucVar)
 	}
-	sb.WriteString(fmt.Sprintf("  const controller = new ExpressController(%s);\n", strings.Join(ctrlArgs, ", ")))
+	for _, eh := range archIR.EventHandlers {
+		sb.WriteString(fmt.Sprintf("  events.subscribe(%q, async (payload) => {\n    await %s.execute({ id: \"system\", role: \"system\", is_verified: true }, payload as any);\n  });\n", eh.EventName, toCamelCase(eh.ActionName)))
+	}
+	sb.WriteString(fmt.Sprintf("  const controller = new ExpressController(%s);\n", strings.Join(pgCtrlArgs, ", ")))
 	sb.WriteString("  return { controller };\n}\n")
 
 	return sb.String()

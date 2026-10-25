@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
 func (lay goLayout) emitGoMemoryEventPublisher() string {
@@ -156,18 +157,36 @@ import (
 						fExport, fExport, lay.DomainPkg, f.Type, arch.ExportIdent(variant)))
 				}
 			}
+			if _, vExport, hasV := arch.EntityVersionField(ent); hasV {
+				sb.WriteString(fmt.Sprintf("\tif entity.%s == 0 {\n\t\tentity.%s = 1\n\t}\n", vExport, vExport))
+			}
 			sb.WriteString("\tr.entities = append(r.entities, entity)\n\treturn entity, nil\n}\n\n")
 
 		case arch.RepoMethodUpdate:
 			sb.WriteString(fmt.Sprintf("func (r *%s) Update(_ context.Context, entity %s.%s) error {\n", repoStruct, lay.DomainPkg, p.EntityName))
 			sb.WriteString("\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n")
+			_, vExport, hasV := arch.EntityVersionField(ent)
 			if hasID {
-				sb.WriteString("\tfor i := range r.entities {\n\t\tif r.entities[i].ID == entity.ID {\n\t\t\tr.entities[i] = entity\n\t\t\treturn nil\n\t\t}\n\t}\n")
+				sb.WriteString("\tfor i := range r.entities {\n\t\tif r.entities[i].ID == entity.ID {\n")
+				if hasV {
+					sb.WriteString(fmt.Sprintf("\t\t\tif r.entities[i].%s != entity.%s {\n\t\t\t\treturn %s.ErrConflict\n\t\t\t}\n", vExport, vExport, lay.DomainPkg))
+					sb.WriteString(fmt.Sprintf("\t\t\tentity.%s++\n", vExport))
+				}
+				sb.WriteString("\t\t\tr.entities[i] = entity\n\t\t\treturn nil\n\t\t}\n\t}\n")
 			} else if len(ent.Fields) > 0 {
 				firstExport := arch.ExportIdent(ent.Fields[0].Name)
-				sb.WriteString(fmt.Sprintf("\tfor i := range r.entities {\n\t\tif r.entities[i].%s == entity.%s {\n\t\t\tr.entities[i] = entity\n\t\t\treturn nil\n\t\t}\n\t}\n", firstExport, firstExport))
+				sb.WriteString(fmt.Sprintf("\tfor i := range r.entities {\n\t\tif r.entities[i].%s == entity.%s {\n", firstExport, firstExport))
+				if hasV {
+					sb.WriteString(fmt.Sprintf("\t\t\tif r.entities[i].%s != entity.%s {\n\t\t\t\treturn %s.ErrConflict\n\t\t\t}\n", vExport, vExport, lay.DomainPkg))
+					sb.WriteString(fmt.Sprintf("\t\t\tentity.%s++\n", vExport))
+				}
+				sb.WriteString("\t\t\tr.entities[i] = entity\n\t\t\treturn nil\n\t\t}\n\t}\n")
 			}
-			sb.WriteString("\treturn nil\n}\n\n")
+			if hasV {
+				sb.WriteString(fmt.Sprintf("\treturn %s.ErrConflict\n}\n\n", lay.DomainPkg))
+			} else {
+				sb.WriteString("\treturn nil\n}\n\n")
+			}
 
 		case arch.RepoMethodDelete:
 			fieldExport := arch.ExportIdent(m.WhereField)
@@ -200,11 +219,18 @@ func (lay goLayout) emitGoChiRouter(archIR *arch.ArchitectureIR) string {
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"%s/%s"
 	"%s/%s"
+)
+
+var (
+	_ = fmt.Sprintf
+	_ = strings.Trim
 )
 
 type Server struct {
@@ -246,6 +272,13 @@ type Server struct {
 	sb.WriteString("}\n\n")
 
 	for _, h := range archIR.HTTPHandlers {
+		var targetUC *arch.UseCaseIR
+		for i := range archIR.UseCases {
+			if archIR.UseCases[i].ActionName == h.ActionName {
+				targetUC = &archIR.UseCases[i]
+				break
+			}
+		}
 		sb.WriteString(fmt.Sprintf("func (s *Server) handle%s(w http.ResponseWriter, r *http.Request) {\n", h.ActionName))
 		sb.WriteString(fmt.Sprintf("\tctx := %s.WithActor(r.Context(), %s.Actor{\n\t\tID: r.Header.Get(\"X-Actor-ID\"),\n\t\tRole: r.Header.Get(\"X-Actor-Role\"),\n\t\tIsVerified: r.Header.Get(\"X-Actor-Verified\") == \"true\",\n\t})\n",
 			lay.DomainPkg, lay.DomainPkg))
@@ -257,19 +290,46 @@ type Server struct {
 			pathParamSet[pp] = true
 		}
 
+		var bodyParams []ir.ParamDecl
 		for _, p := range h.Params {
 			if pathParamSet[p.Name] {
 				sb.WriteString(fmt.Sprintf("\t%s := chi.URLParam(r, %q)\n", p.Name, p.Name))
 				callArgs = append(callArgs, p.Name)
 			} else {
-				sb.WriteString(fmt.Sprintf("\tvar %s %s\n", p.Name, lay.goType(p.Type, false)))
-				sb.WriteString(fmt.Sprintf("\tif err := json.NewDecoder(r.Body).Decode(&%s); err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n", p.Name))
+				bodyParams = append(bodyParams, p)
+			}
+		}
+
+		if len(bodyParams) == 1 && !isScalarType(bodyParams[0].Type) {
+			p := bodyParams[0]
+			sb.WriteString(fmt.Sprintf("\tvar %s %s\n", p.Name, lay.goType(p.Type, false)))
+			sb.WriteString(fmt.Sprintf("\tif err := json.NewDecoder(r.Body).Decode(&%s); err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n", p.Name))
+			callArgs = append(callArgs, p.Name)
+		} else if len(bodyParams) > 0 {
+			sb.WriteString("\tvar reqBody struct {\n")
+			for _, p := range bodyParams {
+				sb.WriteString(fmt.Sprintf("\t\t%s %s `json:%q`\n", arch.ExportIdent(p.Name), lay.goType(p.Type, false), p.Name))
+			}
+			sb.WriteString("\t}\n")
+			sb.WriteString("\tif err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n")
+			for _, p := range bodyParams {
+				sb.WriteString(fmt.Sprintf("\t%s := reqBody.%s\n", p.Name, arch.ExportIdent(p.Name)))
 				callArgs = append(callArgs, p.Name)
 			}
 		}
 
+		if h.Method != "GET" && h.ExpectedVersionParam != "" {
+			sb.WriteString(fmt.Sprintf("\tif ifMatch := r.Header.Get(\"If-Match\"); ifMatch != \"\" && ifMatch != \"*\" {\n\t\tcleanMatch := strings.Trim(ifMatch, \"\\\"\")\n\t\tif fmt.Sprintf(\"%%d\", %s) != cleanMatch {\n\t\t\twriteError(w, %s.ErrConflict)\n\t\t\treturn\n\t\t}\n\t}\n", h.ExpectedVersionParam, lay.DomainPkg))
+		}
+
 		sb.WriteString(fmt.Sprintf("\tres, err := s.%s.Execute(%s)\n", h.ActionName, strings.Join(callArgs, ", ")))
 		sb.WriteString("\tif err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n")
+		if h.Method == "GET" && targetUC != nil {
+			retEnt := archIR.EntityByName(targetUC.ReturnType)
+			if _, vExp, hasV := arch.EntityVersionField(retEnt); hasV {
+				sb.WriteString(fmt.Sprintf("\tw.Header().Set(\"ETag\", fmt.Sprintf(\"\\\"%%d\\\"\", res.%s))\n", vExp))
+			}
+		}
 		status := "http.StatusOK"
 		if h.Method == "POST" {
 			status = "http.StatusCreated"
@@ -304,4 +364,13 @@ type Server struct {
 `, lay.DomainPkg))
 
 	return sb.String()
+}
+
+func isScalarType(t string) bool {
+	switch t {
+	case "uuid", "string", "int", "decimal", "bool", "timestamp":
+		return true
+	default:
+		return false
+	}
 }

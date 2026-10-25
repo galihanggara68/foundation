@@ -86,16 +86,17 @@ type RepositoryPortIR struct {
 }
 
 type UseCaseIR struct {
-	Name        string         `json:"name"`
-	ActionName  string         `json:"action_name"`
-	Params      []ir.ParamDecl `json:"params"`
-	ReturnType  string         `json:"return_type"`
-	Traits      []ir.TraitDecl `json:"traits,omitempty"`
-	Steps       []ir.StepDecl  `json:"steps"`
-	RepoDeps    []string       `json:"repo_deps"`
-	SlotDeps    []string       `json:"slot_deps,omitempty"`
-	EmitsEvents bool           `json:"emits_events,omitempty"`
-	UsesActor   bool           `json:"uses_actor,omitempty"`
+	Name                 string         `json:"name"`
+	ActionName           string         `json:"action_name"`
+	Params               []ir.ParamDecl `json:"params"`
+	ReturnType           string         `json:"return_type"`
+	Traits               []ir.TraitDecl `json:"traits,omitempty"`
+	Steps                []ir.StepDecl  `json:"steps"`
+	RepoDeps             []string       `json:"repo_deps"`
+	SlotDeps             []string       `json:"slot_deps,omitempty"`
+	EmitsEvents          bool           `json:"emits_events,omitempty"`
+	UsesActor            bool           `json:"uses_actor,omitempty"`
+	ExpectedVersionParam string         `json:"expected_version_param,omitempty"`
 }
 
 // HasTrait looks up a tactical or transport trait on the lowered UseCaseIR by name.
@@ -127,21 +128,31 @@ func EntityPKField(ent ir.EntityDecl) (string, string) {
 		pkExport = ExportIdent(ent.Fields[0].Name)
 	}
 	for _, f := range ent.Fields {
-		for _, tr := range f.Traits {
-			if tr.Name == "pk" {
-				return f.Name, ExportIdent(f.Name)
-			}
+		if f.HasTrait("pk") {
+			return f.Name, ExportIdent(f.Name)
 		}
 	}
 	return pkField, pkExport
 }
 
+// EntityVersionField inspects the entity fields and returns the field name, its exported Go identifier,
+// and whether a field with the @version trait exists.
+func EntityVersionField(ent ir.EntityDecl) (string, string, bool) {
+	for _, f := range ent.Fields {
+		if f.HasTrait("version") {
+			return f.Name, ExportIdent(f.Name), true
+		}
+	}
+	return "", "", false
+}
+
 type HTTPHandlerIR struct {
-	ActionName string         `json:"action_name"`
-	Method     string         `json:"method"`
-	Path       string         `json:"path"`
-	PathParams []string       `json:"path_params,omitempty"`
-	Params     []ir.ParamDecl `json:"params,omitempty"`
+	ActionName           string         `json:"action_name"`
+	Method               string         `json:"method"`
+	Path                 string         `json:"path"`
+	PathParams           []string       `json:"path_params,omitempty"`
+	Params               []ir.ParamDecl `json:"params,omitempty"`
+	ExpectedVersionParam string         `json:"expected_version_param,omitempty"`
 }
 
 // ExportIdent converts a snake_case or camelCase identifier into idiomatic Go PascalCase (preserving ID, SKU, URL acronyms).

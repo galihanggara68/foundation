@@ -24,6 +24,7 @@ export interface ExpressRequest {
 export interface ExpressResponse {
   status(code: number): ExpressResponse;
   json(payload: unknown): void;
+  setHeader(name: string, value: string): void;
 }
 
 export interface ExpressRouterLike {
@@ -107,12 +108,31 @@ export class ExpressController {
 			}
 			callArgs = append(callArgs, p.Name)
 		}
+		if h.Method != "GET" && h.ExpectedVersionParam != "" {
+			sb.WriteString(fmt.Sprintf("      if (req.headers[\"if-match\"] && req.headers[\"if-match\"] !== \"*\") {\n        const cleanMatch = req.headers[\"if-match\"].replace(/\"/g, \"\");\n        if (String(%s) !== cleanMatch) {\n          throw domain.ErrConflict;\n        }\n      }\n", h.ExpectedVersionParam))
+		}
+
+		var targetUC *arch.UseCaseIR
+		for i := range archIR.UseCases {
+			if archIR.UseCases[i].ActionName == h.ActionName {
+				targetUC = &archIR.UseCases[i]
+				break
+			}
+		}
+
 		status := 200
 		if h.Method == "POST" {
 			status = 201
 		}
-		sb.WriteString(fmt.Sprintf("      const out = await this.%s.execute(%s);\n      res.status(%d).json(out);\n    } catch (err) {\n      writeError(res, err);\n    }\n  }\n\n",
-			toCamelCase(h.ActionName), strings.Join(callArgs, ", "), status))
+		sb.WriteString(fmt.Sprintf("      const out = await this.%s.execute(%s);\n",
+			toCamelCase(h.ActionName), strings.Join(callArgs, ", ")))
+		if h.Method == "GET" && targetUC != nil {
+			retEnt := archIR.EntityByName(targetUC.ReturnType)
+			if vField, _, hasV := arch.EntityVersionField(retEnt); hasV {
+				sb.WriteString(fmt.Sprintf("      if (res.setHeader && (out as any)?.%s !== undefined) {\n        res.setHeader(\"ETag\", `\"${(out as any).%s}\"`);\n      }\n", vField, vField))
+			}
+		}
+		sb.WriteString(fmt.Sprintf("      res.status(%d).json(out);\n    } catch (err) {\n      writeError(res, err);\n    }\n  }\n\n", status))
 	}
 
 	sb.WriteString("}\n")

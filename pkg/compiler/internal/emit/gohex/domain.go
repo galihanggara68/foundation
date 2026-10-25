@@ -109,8 +109,17 @@ func (e *DomainError) Error() string {
 	return e.Message
 }
 
+var ErrConflict = &DomainError{
+	Code:    "Conflict",
+	Kind:    "conflict",
+	Message: "optimistic concurrency conflict",
+}
+
 `, lay.DomainPkg))
 	for _, errDecl := range archIR.DomainErrors {
+		if errDecl.Name == "Conflict" {
+			continue
+		}
 		sb.WriteString(fmt.Sprintf("var Err%s = &DomainError{\n\tCode: %q,\n\tKind: %q,\n\tMessage: %q,\n}\n\n",
 			errDecl.Name, errDecl.Name, errDecl.Kind, errDecl.Message))
 	}

@@ -97,6 +97,9 @@ import (
 				tableName, colsCSV, strings.Join(placeholders, ", "), colsCSV)
 			sb.WriteString(fmt.Sprintf("func (r *%s) Create(ctx context.Context, entity %s.%s) (%s.%s, error) {\n",
 				repoStruct, lay.DomainPkg, p.EntityName, lay.DomainPkg, p.EntityName))
+			if _, vExport, hasV := arch.EntityVersionField(ent); hasV {
+				sb.WriteString(fmt.Sprintf("\tif entity.%s == 0 {\n\t\tentity.%s = 1\n\t}\n", vExport, vExport))
+			}
 			sb.WriteString(fmt.Sprintf("\tvar out %s.%s\n", lay.DomainPkg, p.EntityName))
 			sb.WriteString(fmt.Sprintf("\trow := connFromContext(ctx, r.db).QueryRowContext(ctx, %q, %s)\n",
 				query, strings.Join(fieldValues, ", ")))
@@ -104,19 +107,47 @@ import (
 				strings.Join(scanTargets, ", ")))
 
 		case arch.RepoMethodUpdate:
-			var setClauses []string
-			for i, col := range colNames {
-				setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, i+1))
+			vField, vExport, hasV := arch.EntityVersionField(ent)
+			if hasV {
+				var setClauses []string
+				var args []string
+				paramIdx := 1
+				for _, col := range colNames {
+					if col == vField {
+						setClauses = append(setClauses, fmt.Sprintf("%s = %s + 1", col, col))
+					} else {
+						setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, paramIdx))
+						args = append(args, "entity."+arch.ExportIdent(col))
+						paramIdx++
+					}
+				}
+				pkParam := fmt.Sprintf("$%d", paramIdx)
+				paramIdx++
+				verParam := fmt.Sprintf("$%d", paramIdx)
+				args = append(args, "entity."+pkExport, "entity."+vExport)
+
+				query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s AND %s = %s RETURNING %s",
+					tableName, strings.Join(setClauses, ", "), pkField, pkParam, vField, verParam, vField)
+				sb.WriteString(fmt.Sprintf("func (r *%s) Update(ctx context.Context, entity %s.%s) error {\n",
+					repoStruct, lay.DomainPkg, p.EntityName))
+				sb.WriteString(fmt.Sprintf("\tvar newVer int\n\trow := connFromContext(ctx, r.db).QueryRowContext(ctx, %q, %s)\n",
+					query, strings.Join(args, ", ")))
+				sb.WriteString(fmt.Sprintf("\tif err := row.Scan(&newVer); err != nil {\n\t\tif errors.Is(err, sql.ErrNoRows) {\n\t\t\treturn %s.ErrConflict\n\t\t}\n\t\treturn err\n\t}\n\treturn nil\n}\n\n", lay.DomainPkg))
+			} else {
+				var setClauses []string
+				for i, col := range colNames {
+					setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, i+1))
+				}
+				whereParam := fmt.Sprintf("$%d", len(colNames)+1)
+				query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s",
+					tableName, strings.Join(setClauses, ", "), pkField, whereParam)
+				args := append([]string{}, fieldValues...)
+				args = append(args, "entity."+pkExport)
+				sb.WriteString(fmt.Sprintf("func (r *%s) Update(ctx context.Context, entity %s.%s) error {\n",
+					repoStruct, lay.DomainPkg, p.EntityName))
+				sb.WriteString(fmt.Sprintf("\t_, err := connFromContext(ctx, r.db).ExecContext(ctx, %q, %s)\n\treturn err\n}\n\n",
+					query, strings.Join(args, ", ")))
 			}
-			whereParam := fmt.Sprintf("$%d", len(colNames)+1)
-			query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s",
-				tableName, strings.Join(setClauses, ", "), pkField, whereParam)
-			args := append([]string{}, fieldValues...)
-			args = append(args, "entity."+pkExport)
-			sb.WriteString(fmt.Sprintf("func (r *%s) Update(ctx context.Context, entity %s.%s) error {\n",
-				repoStruct, lay.DomainPkg, p.EntityName))
-			sb.WriteString(fmt.Sprintf("\t_, err := connFromContext(ctx, r.db).ExecContext(ctx, %q, %s)\n\treturn err\n}\n\n",
-				query, strings.Join(args, ", ")))
 
 		case arch.RepoMethodDelete:
 			query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", tableName, m.WhereField)

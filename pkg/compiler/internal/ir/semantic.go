@@ -81,6 +81,16 @@ type FieldDecl struct {
 	Span       Span        `json:"span"`
 }
 
+// HasTrait reports whether the field has a trait with the given name.
+func (f FieldDecl) HasTrait(name string) bool {
+	for _, t := range f.Traits {
+		if t.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 type TraitDecl struct {
 	Name string            `json:"name"`
 	Args map[string]string `json:"args,omitempty"`

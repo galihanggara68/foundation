@@ -141,7 +141,7 @@ func generateCreateTableSQL(ent ir.EntityDecl, enumSet map[string]bool) string {
 			comma = ""
 		}
 		sb.WriteString(fmt.Sprintf("  %s %s%s\n", f.Name, colDef, comma))
-		if hasFieldTrait(f, "index") {
+		if f.HasTrait("index") {
 			indexes = append(indexes, fmt.Sprintf("CREATE INDEX idx_%s_%s ON %s (%s);\n", tableName, f.Name, tableName, f.Name))
 		}
 	}
@@ -164,14 +164,14 @@ func columnDefinitionSQL(f ir.FieldDecl, enumSet map[string]bool) string {
 	var parts []string
 	parts = append(parts, sqlColumnType(f, enumSet))
 
-	isPK := hasFieldTrait(f, "pk")
+	isPK := f.HasTrait("pk")
 	if isPK {
 		parts = append(parts, "PRIMARY KEY")
 	} else if !f.Optional {
 		parts = append(parts, "NOT NULL")
 	}
 
-	if hasFieldTrait(f, "unique") {
+	if f.HasTrait("unique") {
 		parts = append(parts, "UNIQUE")
 	}
 
@@ -179,8 +179,10 @@ func columnDefinitionSQL(f ir.FieldDecl, enumSet map[string]bool) string {
 		parts = append(parts, "REFERENCES "+formatFKTarget(fkRef))
 	}
 
-	if hasFieldTrait(f, "auto_now_add") {
+	if f.HasTrait("auto_now_add") {
 		parts = append(parts, "DEFAULT NOW()")
+	} else if f.HasTrait("version") && f.DefaultVal == "" {
+		parts = append(parts, "DEFAULT 1")
 	} else if f.DefaultVal != "" {
 		parts = append(parts, "DEFAULT "+formatSQLDefault(f.DefaultVal, f.Type, enumSet))
 	}
@@ -290,7 +292,7 @@ func diffEntitiesSQL(prevEntities, currEntities []ir.EntityDecl, enumSet map[str
 			colDef := columnDefinitionSQL(cf, enumSet)
 			upSB.WriteString(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;\n", tableName, cf.Name, colDef))
 			downSB.WriteString(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s;\n", tableName, cf.Name))
-			if hasFieldTrait(cf, "index") {
+			if cf.HasTrait("index") {
 				upSB.WriteString(fmt.Sprintf("CREATE INDEX idx_%s_%s ON %s (%s);\n", tableName, cf.Name, tableName, cf.Name))
 			}
 		}
@@ -342,7 +344,7 @@ func diffColumnChangesSQL(tableName string, prevField, currField ir.FieldDecl, e
 		upSB.WriteString(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s;\n", tableName, currField.Name, currType))
 		downSB.WriteString(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s;\n", tableName, currField.Name, prevType))
 	}
-	if prevField.Optional != currField.Optional && !hasFieldTrait(currField, "pk") {
+	if prevField.Optional != currField.Optional && !currField.HasTrait("pk") {
 		if currField.Optional {
 			upSB.WriteString(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL;\n", tableName, currField.Name))
 			downSB.WriteString(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL;\n", tableName, currField.Name))
@@ -363,15 +365,6 @@ func diffColumnChangesSQL(tableName string, prevField, currField ir.FieldDecl, e
 			downSB.WriteString(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP DEFAULT;\n", tableName, currField.Name))
 		}
 	}
-}
-
-func hasFieldTrait(f ir.FieldDecl, name string) bool {
-	for _, tr := range f.Traits {
-		if tr.Name == name {
-			return true
-		}
-	}
-	return false
 }
 
 func getFieldTraitArg(f ir.FieldDecl, name string) (string, bool) {

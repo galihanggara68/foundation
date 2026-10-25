@@ -120,17 +120,26 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 			},
 		)
 
+		var expectedVersionParam string
+		for _, p := range a.Params {
+			if p.Name == "expected_version" || p.Name == "version" {
+				expectedVersionParam = p.Name
+				break
+			}
+		}
+
 		arch.UseCases = append(arch.UseCases, UseCaseIR{
-			Name:        a.Name + useCaseSuffix,
-			ActionName:  a.Name,
-			Params:      a.Params,
-			ReturnType:  a.ReturnType,
-			Traits:      a.Traits,
-			Steps:       a.Steps,
-			RepoDeps:    deps,
-			SlotDeps:    slotDeps,
-			EmitsEvents: emitsEvents,
-			UsesActor:   usesActor,
+			Name:                 a.Name + useCaseSuffix,
+			ActionName:           a.Name,
+			Params:               a.Params,
+			ReturnType:           a.ReturnType,
+			Traits:               a.Traits,
+			Steps:                a.Steps,
+			RepoDeps:             deps,
+			SlotDeps:             slotDeps,
+			EmitsEvents:          emitsEvents,
+			UsesActor:            usesActor,
+			ExpectedVersionParam: expectedVersionParam,
 		})
 
 		httpMethod := "POST"
@@ -165,11 +174,12 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 				}
 			}
 			arch.HTTPHandlers = append(arch.HTTPHandlers, HTTPHandlerIR{
-				ActionName: a.Name,
-				Method:     httpMethod,
-				Path:       httpPath,
-				PathParams: pathParams,
-				Params:     a.Params,
+				ActionName:           a.Name,
+				Method:               httpMethod,
+				Path:                 httpPath,
+				PathParams:           pathParams,
+				Params:               a.Params,
+				ExpectedVersionParam: expectedVersionParam,
 			})
 		}
 	}

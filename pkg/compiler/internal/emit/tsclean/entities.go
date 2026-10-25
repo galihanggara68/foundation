@@ -28,15 +28,18 @@ export class DomainError extends Error {
   }
 }
 
+export const ErrConflict = new DomainError("Conflict", "conflict", "optimistic concurrency conflict");
+
 `)
 
 	for _, errDecl := range archIR.DomainErrors {
+		if errDecl.Name == "Conflict" {
+			continue
+		}
 		sb.WriteString(fmt.Sprintf("export const Err%s = new DomainError(%q, %q, %q);\n",
 			errDecl.Name, errDecl.Name, errDecl.Kind, errDecl.Message))
 	}
-	if len(archIR.DomainErrors) > 0 {
-		sb.WriteString("\n")
-	}
+	sb.WriteString("\n")
 
 	for _, en := range archIR.DomainEnums {
 		var quoted []string

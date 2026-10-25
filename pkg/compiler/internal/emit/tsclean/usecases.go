@@ -249,16 +249,29 @@ func emitTSUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
 		declaredVars[p.Name] = true
 	}
 	stepCounter := 0
-	emitTSSteps(&sb, uc.Steps, declaredVars, &stepCounter, isOutbox && uc.EmitsEvents, "    ")
+	ctx := stepEmitCtx{
+		arch:        archIR,
+		useCase:     uc,
+		useOutbox:   isOutbox && uc.EmitsEvents,
+		stepCounter: &stepCounter,
+	}
+	emitTSSteps(&sb, uc.Steps, declaredVars, "    ", ctx)
 	sb.WriteString(fmt.Sprintf("    return %s;\n  }\n}\n", tsZeroVal(uc.ReturnType, archIR, false)))
 
 	return sb.String()
 }
 
-func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[string]bool, stepCounter *int, useOutbox bool, indent string) {
+type stepEmitCtx struct {
+	arch        *arch.ArchitectureIR
+	useCase     arch.UseCaseIR
+	useOutbox   bool
+	stepCounter *int
+}
+
+func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[string]bool, indent string, ctx stepEmitCtx) {
 	for _, s := range steps {
-		*stepCounter++
-		idx := *stepCounter
+		*ctx.stepCounter++
+		idx := *ctx.stepCounter
 		switch s.Kind {
 		case ir.StepRequire:
 			var args []string
@@ -309,9 +322,17 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 			updVar := fmt.Sprintf("updTarget%d", idx)
 			sb.WriteString(fmt.Sprintf("%sconst %s = await this.%sRepo.%s(%s);\n",
 				indent, updVar, toCamelCase(s.EntityName), mName, wExpr))
+			if s.ElseError != "" {
+				sb.WriteString(fmt.Sprintf("%sif (!%s) {\n%s  throw domain.Err%s;\n%s}\n",
+					indent, updVar, indent, s.ElseError, indent))
+			}
 			sb.WriteString(fmt.Sprintf("%sif (%s) {\n", indent, updVar))
 			for _, fi := range s.Fields {
 				sb.WriteString(fmt.Sprintf("%s  %s.%s = %s;\n", indent, updVar, fi.Name, emitTSExpr(fi.Value, false)))
+			}
+			ent := ctx.arch.EntityByName(s.EntityName)
+			if vField, _, hasV := arch.EntityVersionField(ent); hasV && ctx.useCase.ExpectedVersionParam != "" {
+				sb.WriteString(fmt.Sprintf("%s  %s.%s = %s;\n", indent, updVar, vField, ctx.useCase.ExpectedVersionParam))
 			}
 			sb.WriteString(fmt.Sprintf("%s  await this.%sRepo.update(%s);\n%s}\n",
 				indent, toCamelCase(s.EntityName), updVar, indent))
@@ -325,10 +346,10 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 		case ir.StepIf:
 			if s.Expr != nil {
 				sb.WriteString(fmt.Sprintf("%sif (%s) {\n", indent, emitTSExpr(*s.Expr, false)))
-				emitTSSteps(sb, s.ThenSteps, emit.CloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"  ")
+				emitTSSteps(sb, s.ThenSteps, emit.CloneBoolMap(declaredVars), indent+"  ", ctx)
 				if len(s.ElseSteps) > 0 {
 					sb.WriteString(fmt.Sprintf("%s} else {\n", indent))
-					emitTSSteps(sb, s.ElseSteps, emit.CloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"  ")
+					emitTSSteps(sb, s.ElseSteps, emit.CloneBoolMap(declaredVars), indent+"  ", ctx)
 				}
 				sb.WriteString(fmt.Sprintf("%s}\n", indent))
 			}
@@ -338,7 +359,7 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 				sb.WriteString(fmt.Sprintf("%sswitch (%s) {\n", indent, emitTSExpr(*s.Expr, false)))
 				for _, arm := range s.MatchArms {
 					sb.WriteString(fmt.Sprintf("%s  case %q: {\n", indent, arm.Variant))
-					emitTSSteps(sb, arm.Steps, emit.CloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"    ")
+					emitTSSteps(sb, arm.Steps, emit.CloneBoolMap(declaredVars), indent+"    ", ctx)
 					sb.WriteString(fmt.Sprintf("%s    break;\n%s  }\n", indent, indent))
 				}
 				sb.WriteString(fmt.Sprintf("%s}\n", indent))
@@ -349,12 +370,12 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 				sb.WriteString(fmt.Sprintf("%sfor (const %s of %s) {\n", indent, s.IterVar, emitTSExpr(*s.Expr, false)))
 				loopVars := emit.CloneBoolMap(declaredVars)
 				loopVars[s.IterVar] = true
-				emitTSSteps(sb, s.ThenSteps, loopVars, stepCounter, useOutbox, indent+"  ")
+				emitTSSteps(sb, s.ThenSteps, loopVars, indent+"  ", ctx)
 				sb.WriteString(fmt.Sprintf("%s}\n", indent))
 			}
 
 		case ir.StepEmit:
-			if useOutbox {
+			if ctx.useOutbox {
 				sb.WriteString(fmt.Sprintf("%sif (this.outboxStore) {\n", indent))
 				sb.WriteString(fmt.Sprintf("%s  const payload = {\n", indent))
 				emitTSFieldInits(sb, s.Fields, indent+"    ")

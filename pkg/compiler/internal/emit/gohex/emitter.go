@@ -124,11 +124,14 @@ go 1.23
 require (
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/galihanggara68/foundation/contrib/go/runtime v0.1.0
+	github.com/lib/pq v1.10.9
 )
 %s`, archIR.Module, replaceClause))
 
 	files["go.sum"] = []byte(`github.com/go-chi/chi/v5 v5.3.0 h1:halUjDxhshgXHMrao5bB8eNBXo/rnzwr8m5m36glehM=
 github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
+github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
+github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
 `)
 
 	if archIR.Storage.SchemaSQL != "" {
@@ -235,7 +238,7 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 
 	for _, uc := range archIR.UseCases {
 		relPath := fmt.Sprintf("%s/%s%s", lay.UseCasesDir, strings.ToLower(uc.ActionName), lay.UseCaseFileSuf)
-		if d := addGoFile(relPath, lay.emitGoSingleUseCase(archIR.Module, uc)); d != nil {
+		if d := addGoFile(relPath, lay.emitGoSingleUseCase(archIR, uc)); d != nil {
 			return nil, nil, []ir.Diagnostic{*d}
 		}
 	}
@@ -255,6 +258,9 @@ github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutV
 		return nil, nil, []ir.Diagnostic{*d}
 	}
 	if d := addGoFile("internal/bootstrap/container.go", lay.emitGoBootstrap(archIR)); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
+	}
+	if d := addGoFile("cmd/server/main.go", emitGoServer(archIR)); d != nil {
 		return nil, nil, []ir.Diagnostic{*d}
 	}
 	if d := addGoFile("scenarios_test.go", lay.emitGoScenariosTest(archIR)); d != nil {

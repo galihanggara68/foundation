@@ -116,6 +116,8 @@ export class InMemoryTransactionManager implements ports.TransactionManager {
 				for _, f := range ent.Fields {
 					if f.Name == "id" && f.Type == "uuid" {
 						sb.WriteString(`      id: input.id ?? "00000000-0000-0000-0000-" + String(this.seq).padStart(12, "0"),` + "\n")
+					} else if f.HasTrait("version") {
+						sb.WriteString(fmt.Sprintf("      %s: input.%s ?? 1,\n", f.Name, f.Name))
 					} else if strings.HasPrefix(f.DefaultVal, ".") {
 						sb.WriteString(fmt.Sprintf("      %s: input.%s ?? %q,\n", f.Name, f.Name, strings.TrimPrefix(f.DefaultVal, ".")))
 					} else if f.DefaultVal != "" {
@@ -128,9 +130,15 @@ export class InMemoryTransactionManager implements ports.TransactionManager {
 
 			case arch.RepoMethodUpdate:
 				pkField, _ := arch.EntityPKField(ent)
+				vField, _, hasV := arch.EntityVersionField(ent)
 				sb.WriteString(fmt.Sprintf("  async update(entity: domain.%s): Promise<void> {\n", p.EntityName))
 				sb.WriteString(fmt.Sprintf("    const idx = this.entities.findIndex((e) => e.%s === entity.%s);\n", pkField, pkField))
-				sb.WriteString("    if (idx >= 0) {\n      this.entities[idx] = { ...entity };\n    }\n  }\n\n")
+				if hasV {
+					sb.WriteString(fmt.Sprintf("    if (idx < 0 || this.entities[idx].%s !== entity.%s) {\n      throw domain.ErrConflict;\n    }\n", vField, vField))
+					sb.WriteString(fmt.Sprintf("    this.entities[idx] = { ...entity, %s: entity.%s + 1 };\n  }\n\n", vField, vField))
+				} else {
+					sb.WriteString("    if (idx >= 0) {\n      this.entities[idx] = { ...entity };\n    }\n  }\n\n")
+				}
 
 			case arch.RepoMethodDelete:
 				sb.WriteString(fmt.Sprintf("  async %s(%s: %s): Promise<void> {\n",
@@ -209,7 +217,7 @@ func emitTSPostgresGateways(archIR *arch.ArchitectureIR) string {
 import * as ports from "../usecases/ports.ts";
 
 export interface PgQueryable {
-  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowCount?: number }>;
 }
 
 export class PostgresTransactionManager implements ports.TransactionManager {
@@ -261,16 +269,40 @@ export class PostgresTransactionManager implements ports.TransactionManager {
 					query, strings.Join(fieldVals, ", "), p.EntityName))
 
 			case arch.RepoMethodUpdate:
-				var sets []string
-				for i, col := range colNames {
-					sets = append(sets, fmt.Sprintf("%s = $%d", col, i+1))
+				vField, _, hasV := arch.EntityVersionField(ent)
+				if hasV {
+					var sets []string
+					var vals []string
+					paramIdx := 1
+					for _, col := range colNames {
+						if col == vField {
+							sets = append(sets, fmt.Sprintf("%s = %s + 1", col, col))
+						} else {
+							sets = append(sets, fmt.Sprintf("%s = $%d", col, paramIdx))
+							vals = append(vals, "entity."+col)
+							paramIdx++
+						}
+					}
+					pkParam := fmt.Sprintf("$%d", paramIdx)
+					paramIdx++
+					verParam := fmt.Sprintf("$%d", paramIdx)
+					vals = append(vals, "entity."+pkField, "entity."+vField)
+					query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s AND %s = %s RETURNING %s",
+						tableName, strings.Join(sets, ", "), pkField, pkParam, vField, verParam, vField)
+					sb.WriteString(fmt.Sprintf("  async update(entity: domain.%s): Promise<void> {\n    const res = await this.db.query(%q, [%s]);\n    if ((res.rowCount ?? 0) === 0) {\n      throw domain.ErrConflict;\n    }\n  }\n\n",
+						p.EntityName, query, strings.Join(vals, ", ")))
+				} else {
+					var sets []string
+					for i, col := range colNames {
+						sets = append(sets, fmt.Sprintf("%s = $%d", col, i+1))
+					}
+					query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = $%d",
+						tableName, strings.Join(sets, ", "), pkField, len(colNames)+1)
+					vals := append([]string{}, fieldVals...)
+					vals = append(vals, "entity."+pkField)
+					sb.WriteString(fmt.Sprintf("  async update(entity: domain.%s): Promise<void> {\n    await this.db.query(%q, [%s]);\n  }\n\n",
+						p.EntityName, query, strings.Join(vals, ", ")))
 				}
-				query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = $%d",
-					tableName, strings.Join(sets, ", "), pkField, len(colNames)+1)
-				vals := append([]string{}, fieldVals...)
-				vals = append(vals, "entity."+pkField)
-				sb.WriteString(fmt.Sprintf("  async update(entity: domain.%s): Promise<void> {\n    await this.db.query(%q, [%s]);\n  }\n\n",
-					p.EntityName, query, strings.Join(vals, ", ")))
 
 			case arch.RepoMethodDelete:
 				query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", tableName, m.WhereField)

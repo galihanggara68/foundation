@@ -51,7 +51,9 @@ func NewSymbolTable() *SymbolTable {
 		enums:    make(map[string]ir.EnumDecl),
 		entities: make(map[string]ir.EntityDecl),
 		values:   make(map[string]ir.ValueDecl),
-		errors:   make(map[string]ir.ErrorDecl),
+		errors: map[string]ir.ErrorDecl{
+			"Conflict": {Name: "Conflict", Kind: "conflict", Message: "optimistic concurrency conflict"},
+		},
 		events:   make(map[string]ir.EventDecl),
 		policies: make(map[string]ir.PolicyDecl),
 		slots:    make(map[string]ir.SlotDecl),

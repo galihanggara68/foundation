@@ -71,14 +71,55 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		}
 	}
 
+	checkNoVersionTrait := func(constructKind, constructName string, fields []ir.FieldDecl) {
+		for _, f := range fields {
+			for _, tr := range f.Traits {
+				if tr.Name == "version" {
+					diags = append(diags, ir.Diagnostic{
+						Code:     "FDN0215",
+						Severity: ir.SeverityError,
+						Message:  fmt.Sprintf("@version trait is only valid on entity fields, found on %s %q field %q", constructKind, constructName, f.Name),
+						Span:     tr.Span,
+					})
+				}
+			}
+		}
+	}
+
 	for _, v := range sem.Values {
 		validateFields(v.Fields)
+		checkNoVersionTrait("value", v.Name, v.Fields)
 	}
 	for _, e := range sem.Entities {
 		validateFields(e.Fields)
+		versionCount := 0
+		for _, f := range e.Fields {
+			for _, tr := range f.Traits {
+				if tr.Name == "version" {
+					versionCount++
+					if f.Type != "int" {
+						diags = append(diags, ir.Diagnostic{
+							Code:     "FDN0205",
+							Severity: ir.SeverityError,
+							Message:  fmt.Sprintf("field %q with @version trait must be of type int, got %s", f.Name, f.Type),
+							Span:     f.Span,
+						})
+					}
+					if versionCount > 1 {
+						diags = append(diags, ir.Diagnostic{
+							Code:     "FDN0215",
+							Severity: ir.SeverityError,
+							Message:  fmt.Sprintf("entity %q declares multiple @version fields; at most one is allowed", e.Name),
+							Span:     tr.Span,
+						})
+					}
+				}
+			}
+		}
 	}
 	for _, ev := range sem.Events {
 		validateFields(ev.Fields)
+		checkNoVersionTrait("event", ev.Name, ev.Fields)
 	}
 	for _, sl := range sem.Slots {
 		for _, m := range sl.Methods {

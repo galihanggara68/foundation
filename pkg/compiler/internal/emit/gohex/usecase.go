@@ -9,8 +9,9 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
-func (lay goLayout) emitGoSingleUseCase(module string, uc arch.UseCaseIR) string {
+func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
 	var sb strings.Builder
+	module := archIR.Module
 	_, isTx := uc.HasTrait("transactional")
 	idemTrait, isIdem := uc.HasTrait("idempotent")
 	cacheTrait, isCache := uc.HasTrait("cache")
@@ -195,16 +196,29 @@ func (lay goLayout) emitGoSingleUseCase(module string, uc arch.UseCaseIR) string
 		declaredVars[p.Name] = true
 	}
 	stepCounter := 0
-	lay.emitGoSteps(&sb, uc.Steps, declaredVars, &stepCounter, isOutbox && uc.EmitsEvents, "\t")
+	ctx := stepEmitCtx{
+		arch:        archIR,
+		useCase:     uc,
+		useOutbox:   isOutbox && uc.EmitsEvents,
+		stepCounter: &stepCounter,
+	}
+	lay.emitGoSteps(&sb, uc.Steps, declaredVars, "\t", ctx)
 
 	sb.WriteString("}\n")
 	return sb.String()
 }
 
-func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[string]bool, stepCounter *int, useOutbox bool, indent string) {
+type stepEmitCtx struct {
+	arch        *arch.ArchitectureIR
+	useCase     arch.UseCaseIR
+	useOutbox   bool
+	stepCounter *int
+}
+
+func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[string]bool, indent string, ctx stepEmitCtx) {
 	for _, s := range steps {
-		*stepCounter++
-		idx := *stepCounter
+		*ctx.stepCounter++
+		idx := *ctx.stepCounter
 		switch s.Kind {
 		case ir.StepRequire:
 			var args []string
@@ -255,9 +269,16 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 			updVar := fmt.Sprintf("updTarget%d", idx)
 			sb.WriteString(fmt.Sprintf("%s%s, err := uc.%sRepo.%s(ctx, %s)\n", indent, updVar, s.EntityName, mName, wExpr))
 			sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n", indent, indent, indent))
+			if s.ElseError != "" {
+				sb.WriteString(fmt.Sprintf("%sif %s == nil {\n%s\treturn zero, %s.Err%s\n%s}\n", indent, updVar, indent, lay.DomainPkg, s.ElseError, indent))
+			}
 			sb.WriteString(fmt.Sprintf("%sif %s != nil {\n", indent, updVar))
 			for _, fi := range s.Fields {
 				sb.WriteString(fmt.Sprintf("%s\t%s.%s = %s\n", indent, updVar, arch.ExportIdent(fi.Name), lay.emitGoExpr(fi.Value, false)))
+			}
+			ent := ctx.arch.EntityByName(s.EntityName)
+			if _, vExport, hasV := arch.EntityVersionField(ent); hasV && ctx.useCase.ExpectedVersionParam != "" {
+				sb.WriteString(fmt.Sprintf("%s\t%s.%s = %s\n", indent, updVar, vExport, ctx.useCase.ExpectedVersionParam))
 			}
 			sb.WriteString(fmt.Sprintf("%s\tif err := uc.%sRepo.Update(ctx, *%s); err != nil {\n%s\t\treturn zero, err\n%s\t}\n",
 				indent, s.EntityName, updVar, indent, indent))
@@ -272,10 +293,10 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 		case ir.StepIf:
 			if s.Expr != nil {
 				sb.WriteString(fmt.Sprintf("%sif %s {\n", indent, lay.emitGoExpr(*s.Expr, false)))
-				lay.emitGoSteps(sb, s.ThenSteps, emit.CloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"\t")
+				lay.emitGoSteps(sb, s.ThenSteps, emit.CloneBoolMap(declaredVars), indent+"\t", ctx)
 				if len(s.ElseSteps) > 0 {
 					sb.WriteString(fmt.Sprintf("%s} else {\n", indent))
-					lay.emitGoSteps(sb, s.ElseSteps, emit.CloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"\t")
+					lay.emitGoSteps(sb, s.ElseSteps, emit.CloneBoolMap(declaredVars), indent+"\t", ctx)
 				}
 				sb.WriteString(fmt.Sprintf("%s}\n", indent))
 			}
@@ -286,7 +307,7 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 				sb.WriteString(fmt.Sprintf("%sswitch %s {\n", indent, lay.emitGoExpr(*s.Expr, false)))
 				for _, arm := range s.MatchArms {
 					sb.WriteString(fmt.Sprintf("%scase %s.%s%s:\n", indent, lay.DomainPkg, enumType, arch.ExportIdent(arm.Variant)))
-					lay.emitGoSteps(sb, arm.Steps, emit.CloneBoolMap(declaredVars), stepCounter, useOutbox, indent+"\t")
+					lay.emitGoSteps(sb, arm.Steps, emit.CloneBoolMap(declaredVars), indent+"\t", ctx)
 				}
 				sb.WriteString(fmt.Sprintf("%s}\n", indent))
 			}
@@ -297,12 +318,12 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 					indent, s.IterVar, lay.emitGoExpr(*s.Expr, false), indent, s.IterVar))
 				loopVars := emit.CloneBoolMap(declaredVars)
 				loopVars[s.IterVar] = true
-				lay.emitGoSteps(sb, s.ThenSteps, loopVars, stepCounter, useOutbox, indent+"\t")
+				lay.emitGoSteps(sb, s.ThenSteps, loopVars, indent+"\t", ctx)
 				sb.WriteString(fmt.Sprintf("%s}\n", indent))
 			}
 
 		case ir.StepEmit:
-			if useOutbox {
+			if ctx.useOutbox {
 				sb.WriteString(fmt.Sprintf("%sif uc.OutboxStore != nil {\n", indent))
 				sb.WriteString(fmt.Sprintf("%s\tpayloadBytes, _ := json.Marshal(%s.%s{\n", indent, lay.DomainPkg, s.EventName))
 				lay.emitGoFieldInits(sb, s.Fields, indent+"\t\t")

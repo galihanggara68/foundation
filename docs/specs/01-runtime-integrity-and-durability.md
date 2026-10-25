@@ -1,5 +1,5 @@
 ---
-status: ready-for-agent
+status: done
 ---
 
 # Specification 01: Core Runtime Integrity & Durability (Phases 0–2)

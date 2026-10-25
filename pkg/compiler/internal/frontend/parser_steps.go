@@ -59,14 +59,7 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 			if _, ok := p.expectIdentText("where"); !ok {
 				return ir.StepDecl{}, false
 			}
-			fieldTok, ok := p.expect(tokIdent)
-			if !ok {
-				return ir.StepDecl{}, false
-			}
-			if _, ok := p.expect(tokEq); !ok {
-				return ir.StepDecl{}, false
-			}
-			valExpr, ok := p.parseExpr()
+			whereExpr, ok := p.parseExpr()
 			if !ok {
 				return ir.StepDecl{}, false
 			}
@@ -79,15 +72,15 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 				}
 				elseErr = errTok.text
 			}
-			return ir.StepDecl{
+			step := ir.StepDecl{
 				Kind:       ir.StepQuery,
 				VarName:    varTok.text,
 				EntityName: entTok.text,
-				WhereField: fieldTok.text,
-				WhereValue: &valExpr,
 				ElseError:  elseErr,
 				Span:       t.span,
-			}, true
+			}
+			populateStepWhere(&step, whereExpr)
+			return step, true
 		}
 		if next.kind == tokIdent && next.text == "create" {
 			p.advance()
@@ -188,14 +181,7 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 		if _, ok := p.expectIdentText("where"); !ok {
 			return ir.StepDecl{}, false
 		}
-		fieldTok, ok := p.expect(tokIdent)
-		if !ok {
-			return ir.StepDecl{}, false
-		}
-		if _, ok := p.expect(tokEq); !ok {
-			return ir.StepDecl{}, false
-		}
-		whereVal, ok := p.parseExpr()
+		whereExpr, ok := p.parseExpr()
 		if !ok {
 			return ir.StepDecl{}, false
 		}
@@ -206,14 +192,14 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 		if !ok {
 			return ir.StepDecl{}, false
 		}
-		return ir.StepDecl{
+		step := ir.StepDecl{
 			Kind:       ir.StepUpdate,
 			EntityName: entTok.text,
-			WhereField: fieldTok.text,
-			WhereValue: &whereVal,
 			Fields:     fields,
 			Span:       t.span,
-		}, true
+		}
+		populateStepWhere(&step, whereExpr)
+		return step, true
 
 	case "delete":
 		p.advance()
@@ -224,24 +210,17 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 		if _, ok := p.expectIdentText("where"); !ok {
 			return ir.StepDecl{}, false
 		}
-		fieldTok, ok := p.expect(tokIdent)
+		whereExpr, ok := p.parseExpr()
 		if !ok {
 			return ir.StepDecl{}, false
 		}
-		if _, ok := p.expect(tokEq); !ok {
-			return ir.StepDecl{}, false
-		}
-		whereVal, ok := p.parseExpr()
-		if !ok {
-			return ir.StepDecl{}, false
-		}
-		return ir.StepDecl{
+		step := ir.StepDecl{
 			Kind:       ir.StepDelete,
 			EntityName: entTok.text,
-			WhereField: fieldTok.text,
-			WhereValue: &whereVal,
 			Span:       t.span,
-		}, true
+		}
+		populateStepWhere(&step, whereExpr)
+		return step, true
 
 	case "if":
 		return p.parseIfStep(t.span)

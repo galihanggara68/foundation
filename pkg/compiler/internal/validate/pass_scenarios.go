@@ -110,6 +110,8 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 						Message:  fmt.Sprintf("argument %d to %q has type %s, expected %s", k+1, act.Name, argType, paramType),
 						Span:     sc.WhenArgs[k].Span,
 					})
+				} else if ok && paramType == "timestamp" && sc.WhenArgs[k].Kind == ir.ExprString {
+					sc.WhenArgs[k].InferredType = "timestamp"
 				}
 			}
 		}
@@ -138,7 +140,7 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 				continue
 			}
 			if ex.StoredEntity != "" {
-				ent, sOk := validateEntityWhereClause("scenario expect stored", ex.StoredEntity, ex.WhereField, ex.WhereValue, ex.Span, expectScope, sym, &diags)
+				ent, sOk := validateExpectWhere("scenario expect stored", ex, expectScope, sym, &diags)
 				if sOk && len(ex.StoredFields) > 0 {
 					validateFieldInitializers("entity", ent.Name, ex.StoredFields, expectScope, sym, &diags)
 				}

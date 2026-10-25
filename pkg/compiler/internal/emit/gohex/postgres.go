@@ -169,19 +169,57 @@ import (
 			}
 
 		case arch.RepoMethodDelete:
-			query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", tableName, m.WhereField)
-			sb.WriteString(fmt.Sprintf("func (r *%s) %s(ctx context.Context, %s %s) error {\n",
-				repoStruct, m.Name, m.WhereField, lay.goType(m.WhereType, false)))
+			var conds []string
+			var argVars []string
+			fieldCounts := make(map[string]int)
+			for _, wp := range m.WherePredicates {
+				fieldCounts[wp.Field]++
+			}
+			if len(m.WherePredicates) > 0 {
+				for i, wp := range m.WherePredicates {
+					conds = append(conds, fmt.Sprintf("%s %s $%d", wp.Field, arch.SQLComparisonOp(wp.Op), i+1))
+					pName := wp.Field
+					if fieldCounts[wp.Field] > 1 {
+						pName += "_" + strings.ToLower(arch.OpSuffix(wp.Op))
+					}
+					argVars = append(argVars, pName)
+				}
+			} else {
+				conds = append(conds, fmt.Sprintf("%s = $1", m.WhereField))
+				argVars = append(argVars, m.WhereField)
+			}
+			query := fmt.Sprintf("DELETE FROM %s WHERE %s", tableName, strings.Join(conds, " AND "))
+			sb.WriteString(fmt.Sprintf("func (r *%s) %s(ctx context.Context, %s) error {\n",
+				repoStruct, m.Name, lay.formatRepoParams(m)))
 			sb.WriteString(fmt.Sprintf("\t_, err := connFromContext(ctx, r.db).ExecContext(ctx, %q, %s)\n\treturn err\n}\n\n",
-				query, m.WhereField))
+				query, strings.Join(argVars, ", ")))
 
 		case arch.RepoMethodFind:
-			query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1 LIMIT 1", colsCSV, tableName, m.WhereField)
-			sb.WriteString(fmt.Sprintf("func (r *%s) %s(ctx context.Context, %s %s) (*%s.%s, error) {\n",
-				repoStruct, m.Name, m.WhereField, lay.goType(m.WhereType, false), lay.DomainPkg, p.EntityName))
+			var conds []string
+			var argVars []string
+			fieldCounts := make(map[string]int)
+			for _, wp := range m.WherePredicates {
+				fieldCounts[wp.Field]++
+			}
+			if len(m.WherePredicates) > 0 {
+				for i, wp := range m.WherePredicates {
+					conds = append(conds, fmt.Sprintf("%s %s $%d", wp.Field, arch.SQLComparisonOp(wp.Op), i+1))
+					pName := wp.Field
+					if fieldCounts[wp.Field] > 1 {
+						pName += "_" + strings.ToLower(arch.OpSuffix(wp.Op))
+					}
+					argVars = append(argVars, pName)
+				}
+			} else {
+				conds = append(conds, fmt.Sprintf("%s = $1", m.WhereField))
+				argVars = append(argVars, m.WhereField)
+			}
+			query := fmt.Sprintf("SELECT %s FROM %s WHERE %s LIMIT 1", colsCSV, tableName, strings.Join(conds, " AND "))
+			sb.WriteString(fmt.Sprintf("func (r *%s) %s(ctx context.Context, %s) (*%s.%s, error) {\n",
+				repoStruct, m.Name, lay.formatRepoParams(m), lay.DomainPkg, p.EntityName))
 			sb.WriteString(fmt.Sprintf("\tvar out %s.%s\n", lay.DomainPkg, p.EntityName))
 			sb.WriteString(fmt.Sprintf("\trow := connFromContext(ctx, r.db).QueryRowContext(ctx, %q, %s)\n",
-				query, m.WhereField))
+				query, strings.Join(argVars, ", ")))
 			sb.WriteString(fmt.Sprintf("\tif err := row.Scan(%s); err != nil {\n\t\tif errors.Is(err, sql.ErrNoRows) {\n\t\t\treturn nil, nil\n\t\t}\n\t\treturn nil, err\n\t}\n\treturn &out, nil\n}\n\n",
 				strings.Join(scanTargets, ", ")))
 		}

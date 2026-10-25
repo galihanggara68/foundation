@@ -125,14 +125,7 @@ func (p *parser) parseScenario() (ir.ScenarioDecl, bool) {
 				if _, ok := p.expectIdentText("where"); !ok {
 					return ir.ScenarioDecl{}, false
 				}
-				wField, ok := p.expect(tokIdent)
-				if !ok {
-					return ir.ScenarioDecl{}, false
-				}
-				if _, ok := p.expect(tokEq); !ok {
-					return ir.ScenarioDecl{}, false
-				}
-				wVal, ok := p.parseExpr()
+				whereExpr, ok := p.parseExpr()
 				if !ok {
 					return ir.ScenarioDecl{}, false
 				}
@@ -144,14 +137,14 @@ func (p *parser) parseScenario() (ir.ScenarioDecl, bool) {
 						return ir.ScenarioDecl{}, false
 					}
 				}
-				scen.Expects = append(scen.Expects, ir.ExpectDecl{
+				ex := ir.ExpectDecl{
 					StoredEntity: entTok.text,
-					WhereField:   wField.text,
-					WhereValue:   &wVal,
 					StoredFields: storedFields,
 					NotStored:    notStored,
 					Span:         clause.span,
-				})
+				}
+				populateExpectWhere(&ex, whereExpr)
+				scen.Expects = append(scen.Expects, ex)
 				continue
 			}
 			left, ok := p.parsePostfixExpr()

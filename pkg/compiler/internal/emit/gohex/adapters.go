@@ -113,16 +113,31 @@ func (tm *InMemoryTransactionManager) WithinTransaction(ctx context.Context, fn 
 
 func (lay goLayout) emitGoSingleMemoryRepo(archIR *arch.ArchitectureIR, p arch.RepositoryPortIR) string {
 	var sb strings.Builder
+	hasTime := false
+	for _, m := range p.Methods {
+		for _, wp := range m.WherePredicates {
+			if wp.Type == "timestamp" {
+				hasTime = true
+			}
+		}
+		if m.WhereType == "timestamp" {
+			hasTime = true
+		}
+	}
+	timeImport := ""
+	if hasTime {
+		timeImport = "\t\"time\"\n"
+	}
 	sb.WriteString(fmt.Sprintf(`package %s
 
 import (
 	"context"
 	"fmt"
 	"sync"
-	"%s/%s"
+%s	"%s/%s"
 )
 
-`, lay.MemoryPkg, archIR.Module, lay.DomainDir))
+`, lay.MemoryPkg, timeImport, archIR.Module, lay.DomainDir))
 
 	repoStruct := "InMemory" + p.EntityName + "Repository"
 	sb.WriteString(fmt.Sprintf("type %s struct {\n\tmu sync.RWMutex\n\tentities []%s.%s\n\tseq int\n}\n\n", repoStruct, lay.DomainPkg, p.EntityName))
@@ -189,22 +204,52 @@ import (
 			}
 
 		case arch.RepoMethodDelete:
-			fieldExport := arch.ExportIdent(m.WhereField)
-			sb.WriteString(fmt.Sprintf("func (r *%s) %s(_ context.Context, %s %s) error {\n",
-				repoStruct, m.Name, m.WhereField, lay.goType(m.WhereType, false)))
+			sb.WriteString(fmt.Sprintf("func (r *%s) %s(_ context.Context, %s) error {\n",
+				repoStruct, m.Name, lay.formatRepoParams(m)))
 			sb.WriteString("\tr.mu.Lock()\n\tdefer r.mu.Unlock()\n")
 			sb.WriteString(fmt.Sprintf("\tvar kept []%s.%s\n", lay.DomainPkg, p.EntityName))
 			sb.WriteString("\tfor _, item := range r.entities {\n")
-			sb.WriteString(fmt.Sprintf("\t\tif item.%s != %s {\n\t\t\tkept = append(kept, item)\n\t\t}\n", fieldExport, m.WhereField))
+			fieldCounts := make(map[string]int)
+			for _, wp := range m.WherePredicates {
+				fieldCounts[wp.Field]++
+			}
+			var checks []string
+			if len(m.WherePredicates) > 0 {
+				for _, wp := range m.WherePredicates {
+					pName := wp.Field
+					if fieldCounts[wp.Field] > 1 {
+						pName += "_" + strings.ToLower(arch.OpSuffix(wp.Op))
+					}
+					checks = append(checks, lay.formatInMemoryCheck("item."+arch.ExportIdent(wp.Field), wp.Op, pName, wp.Type))
+				}
+			} else {
+				checks = append(checks, fmt.Sprintf("item.%s == %s", arch.ExportIdent(m.WhereField), m.WhereField))
+			}
+			sb.WriteString(fmt.Sprintf("\t\tif !(%s) {\n\t\t\tkept = append(kept, item)\n\t\t}\n", strings.Join(checks, " && ")))
 			sb.WriteString("\t}\n\tr.entities = kept\n\treturn nil\n}\n\n")
 
 		case arch.RepoMethodFind:
-			fieldExport := arch.ExportIdent(m.WhereField)
-			sb.WriteString(fmt.Sprintf("func (r *%s) %s(_ context.Context, %s %s) (*%s.%s, error) {\n",
-				repoStruct, m.Name, m.WhereField, lay.goType(m.WhereType, false), lay.DomainPkg, p.EntityName))
+			sb.WriteString(fmt.Sprintf("func (r *%s) %s(_ context.Context, %s) (*%s.%s, error) {\n",
+				repoStruct, m.Name, lay.formatRepoParams(m), lay.DomainPkg, p.EntityName))
 			sb.WriteString("\tr.mu.RLock()\n\tdefer r.mu.RUnlock()\n")
 			sb.WriteString("\tfor _, item := range r.entities {\n")
-			sb.WriteString(fmt.Sprintf("\t\tif item.%s == %s {\n\t\t\tcopyItem := item\n\t\t\treturn &copyItem, nil\n\t\t}\n", fieldExport, m.WhereField))
+			fieldCounts := make(map[string]int)
+			for _, wp := range m.WherePredicates {
+				fieldCounts[wp.Field]++
+			}
+			var checks []string
+			if len(m.WherePredicates) > 0 {
+				for _, wp := range m.WherePredicates {
+					pName := wp.Field
+					if fieldCounts[wp.Field] > 1 {
+						pName += "_" + strings.ToLower(arch.OpSuffix(wp.Op))
+					}
+					checks = append(checks, lay.formatInMemoryCheck("item."+arch.ExportIdent(wp.Field), wp.Op, pName, wp.Type))
+				}
+			} else {
+				checks = append(checks, fmt.Sprintf("item.%s == %s", arch.ExportIdent(m.WhereField), m.WhereField))
+			}
+			sb.WriteString(fmt.Sprintf("\t\tif %s {\n\t\t\tcopyItem := item\n\t\t\treturn &copyItem, nil\n\t\t}\n", strings.Join(checks, " && ")))
 			sb.WriteString("\t}\n\treturn nil, nil\n}\n\n")
 		}
 	}

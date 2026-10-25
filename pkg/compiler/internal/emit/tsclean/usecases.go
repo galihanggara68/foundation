@@ -37,11 +37,11 @@ export interface ActorResolverGateway {
 			case arch.RepoMethodUpdate:
 				sb.WriteString(fmt.Sprintf("  update(entity: domain.%s): Promise<void>;\n", m.EntityName))
 			case arch.RepoMethodDelete:
-				sb.WriteString(fmt.Sprintf("  %s(%s: %s): Promise<void>;\n",
-					toCamelCase(m.Name), m.WhereField, tsType(m.WhereType, false)))
+				sb.WriteString(fmt.Sprintf("  %s(%s): Promise<void>;\n",
+					toCamelCase(m.Name), formatTSRepoParams(m)))
 			case arch.RepoMethodFind:
-				sb.WriteString(fmt.Sprintf("  %s(%s: %s): Promise<domain.%s | null>;\n",
-					toCamelCase(m.Name), m.WhereField, tsType(m.WhereType, false), m.EntityName))
+				sb.WriteString(fmt.Sprintf("  %s(%s): Promise<domain.%s | null>;\n",
+					toCamelCase(m.Name), formatTSRepoParams(m), m.EntityName))
 			}
 		}
 		sb.WriteString("}\n\n")
@@ -315,8 +315,7 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 
 		case ir.StepQuery:
 			declaredVars[s.VarName] = true
-			mName := "findBy" + arch.ExportIdent(s.WhereField)
-			wExpr := emitTSExpr(*s.WhereValue, false)
+			mName, wExpr := formatTSStepRepoCall(arch.RepoMethodFind, s)
 			sb.WriteString(fmt.Sprintf("%sconst %sOrNull = await this.%sRepo.%s(%s);\n",
 				indent, s.VarName, toCamelCase(s.EntityName), mName, wExpr))
 			if s.ElseError != "" {
@@ -326,8 +325,7 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 			sb.WriteString(fmt.Sprintf("%sconst %s = %sOrNull!;\n", indent, s.VarName, s.VarName))
 
 		case ir.StepUpdate:
-			mName := "findBy" + arch.ExportIdent(s.WhereField)
-			wExpr := emitTSExpr(*s.WhereValue, false)
+			mName, wExpr := formatTSStepRepoCall(arch.RepoMethodFind, s)
 			updVar := fmt.Sprintf("updTarget%d", idx)
 			sb.WriteString(fmt.Sprintf("%sconst %s = await this.%sRepo.%s(%s);\n",
 				indent, updVar, toCamelCase(s.EntityName), mName, wExpr))
@@ -347,8 +345,7 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 				indent, toCamelCase(s.EntityName), updVar, indent))
 
 		case ir.StepDelete:
-			mName := "deleteBy" + arch.ExportIdent(s.WhereField)
-			wExpr := emitTSExpr(*s.WhereValue, false)
+			mName, wExpr := formatTSStepRepoCall(arch.RepoMethodDelete, s)
 			sb.WriteString(fmt.Sprintf("%sawait this.%sRepo.%s(%s);\n",
 				indent, toCamelCase(s.EntityName), mName, wExpr))
 

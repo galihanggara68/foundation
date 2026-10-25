@@ -25,6 +25,9 @@ func formatIdempotentKeyGoExpr(rawKey string, params []ir.ParamDecl) string {
 func (lay goLayout) emitGoExpr(e ir.Expr, inDomainPkg bool) string {
 	switch e.Kind {
 	case ir.ExprString:
+		if e.InferredType == "timestamp" {
+			return fmt.Sprintf("func() time.Time { t, _ := time.Parse(time.RFC3339, %q); return t }()", e.Value)
+		}
 		return fmt.Sprintf("%q", e.Value)
 	case ir.ExprInt, ir.ExprBool:
 		return e.Value
@@ -114,7 +117,14 @@ func (lay goLayout) emitGoExpr(e ir.Expr, inDomainPkg bool) string {
 				return fmt.Sprintf("%s.LessThanOrEqual(%s)", leftStr, rightStr)
 			}
 		}
-		return fmt.Sprintf("(%s %s %s)", leftStr, e.Op, rightStr)
+		goOp := e.Op
+		switch goOp {
+		case "and":
+			goOp = "&&"
+		case "or":
+			goOp = "||"
+		}
+		return fmt.Sprintf("(%s %s %s)", leftStr, goOp, rightStr)
 	case ir.ExprConstruct:
 		prefix := lay.DomainPkg + "."
 		if inDomainPkg {

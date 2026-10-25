@@ -22,6 +22,7 @@ func Validate(sem *ir.SemanticIR) []ir.Diagnostic {
 	passes := []Pass{
 		DeclarationPass{},
 		ActionTypeCheckPass{},
+		SargableWherePass{},
 		TerminationPass{},
 		InvariantPass{},
 		ScenarioTypeCheckPass{},
@@ -202,7 +203,10 @@ func (s *SymbolTable) resolveEnumLiteral(e *ir.Expr, expectedType string) {
 }
 
 func isAssignableType(expected, actual string) bool {
-	return expected == actual || (expected == "uuid" && actual == "string") || (strings.HasPrefix(expected, "[]") && actual == "[]")
+	return expected == actual ||
+		(expected == "uuid" && actual == "string") ||
+		(expected == "timestamp" && actual == "string") ||
+		(strings.HasPrefix(expected, "[]") && actual == "[]")
 }
 
 func isNumericType(t string) bool {

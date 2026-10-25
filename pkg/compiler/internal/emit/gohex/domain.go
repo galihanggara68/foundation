@@ -160,14 +160,29 @@ var ErrUnauthenticated = &DomainError{
 
 func (lay goLayout) emitGoSinglePort(module string, p arch.RepositoryPortIR) string {
 	var sb strings.Builder
+	hasTime := false
+	for _, m := range p.Methods {
+		for _, wp := range m.WherePredicates {
+			if wp.Type == "timestamp" {
+				hasTime = true
+			}
+		}
+		if m.WhereType == "timestamp" {
+			hasTime = true
+		}
+	}
+	timeImport := ""
+	if hasTime {
+		timeImport = "\t\"time\"\n"
+	}
 	sb.WriteString(fmt.Sprintf(`package %s
 
 import (
 	"context"
-	"%s/%s"
+%s	"%s/%s"
 )
 
-`, lay.PortsPkg, module, lay.DomainDir))
+`, lay.PortsPkg, timeImport, module, lay.DomainDir))
 
 	sb.WriteString(fmt.Sprintf("type %s interface {\n", p.InterfaceName))
 	for _, m := range p.Methods {
@@ -178,11 +193,11 @@ import (
 		case arch.RepoMethodUpdate:
 			sb.WriteString(fmt.Sprintf("\tUpdate(ctx context.Context, entity %s.%s) error\n", lay.DomainPkg, m.EntityName))
 		case arch.RepoMethodDelete:
-			sb.WriteString(fmt.Sprintf("\t%s(ctx context.Context, %s %s) error\n",
-				m.Name, m.WhereField, lay.goType(m.WhereType, false)))
+			sb.WriteString(fmt.Sprintf("\t%s(ctx context.Context, %s) error\n",
+				m.Name, lay.formatRepoParams(m)))
 		case arch.RepoMethodFind:
-			sb.WriteString(fmt.Sprintf("\t%s(ctx context.Context, %s %s) (*%s.%s, error)\n",
-				m.Name, m.WhereField, lay.goType(m.WhereType, false), lay.DomainPkg, m.EntityName))
+			sb.WriteString(fmt.Sprintf("\t%s(ctx context.Context, %s) (*%s.%s, error)\n",
+				m.Name, lay.formatRepoParams(m), lay.DomainPkg, m.EntityName))
 		}
 	}
 	sb.WriteString("}\n")

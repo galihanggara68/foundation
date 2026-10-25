@@ -261,7 +261,14 @@ func (l *lexer) tokenize() ([]token, []ir.Diagnostic) {
 				for unicode.IsLetter(l.peek()) || unicode.IsDigit(l.peek()) || l.peek() == '_' {
 					sb.WriteRune(l.next())
 				}
-				tokens = append(tokens, token{kind: tokIdent, text: sb.String(), span: span})
+				txt := sb.String()
+				if txt == "and" {
+					tokens = append(tokens, token{kind: tokAnd, text: "and", span: span})
+				} else if txt == "or" {
+					tokens = append(tokens, token{kind: tokOr, text: "or", span: span})
+				} else {
+					tokens = append(tokens, token{kind: tokIdent, text: txt, span: span})
+				}
 			} else {
 				l.next()
 				l.diags = append(l.diags, ir.Diagnostic{

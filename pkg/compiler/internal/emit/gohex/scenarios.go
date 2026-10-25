@@ -36,10 +36,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"%s/internal/bootstrap"
 	"%s/%s"
 )
+
+var _ = time.RFC3339
 
 `, archIR.Module, archIR.Module, lay.DomainDir))
 
@@ -152,19 +155,18 @@ func (lay goLayout) emitGoScenarioExpect(sb *strings.Builder, idx int, ex ir.Exp
 		return
 	}
 
-	if ex.StoredEntity != "" && ex.WhereValue != nil {
-		findMethod := "FindBy" + arch.ExportIdent(ex.WhereField)
-		whereExpr := lay.emitGoExpr(*ex.WhereValue, false)
+	if ex.StoredEntity != "" && (len(ex.WherePredicates) > 0 || ex.WhereValue != nil) {
+		findMethod, whereExpr := lay.formatGoStepRepoCall(arch.RepoMethodFind, ex.WherePredicates, ex.WhereField, ex.WhereValue)
 		storedVar := fmt.Sprintf("stored%d", idx)
 		sb.WriteString(fmt.Sprintf("\t%s, err := c.%sRepo.%s(ctx, %s)\n", storedVar, ex.StoredEntity, findMethod, whereExpr))
 		sb.WriteString("\tif err != nil {\n\t\tt.Fatalf(\"unexpected repo error: %v\", err)\n\t}\n")
 		if ex.NotStored {
-			sb.WriteString(fmt.Sprintf("\tif %s != nil {\n\t\tt.Fatalf(\"expected %s where %s == %%v to be deleted, but found %%+v\", %s, *%s)\n\t}\n",
-				storedVar, ex.StoredEntity, ex.WhereField, whereExpr, storedVar))
+			sb.WriteString(fmt.Sprintf("\tif %s != nil {\n\t\tt.Fatalf(\"expected %s to be deleted, but found %%+v\", *%s)\n\t}\n",
+				storedVar, ex.StoredEntity, storedVar))
 			return
 		}
-		sb.WriteString(fmt.Sprintf("\tif %s == nil {\n\t\tt.Fatalf(\"expected %s where %s == %%v to be stored, but found nil\", %s)\n\t}\n",
-			storedVar, ex.StoredEntity, ex.WhereField, whereExpr))
+		sb.WriteString(fmt.Sprintf("\tif %s == nil {\n\t\tt.Fatalf(\"expected %s to be stored, but found nil\")\n\t}\n",
+			storedVar, ex.StoredEntity))
 		for _, fi := range ex.StoredFields {
 			fieldAccess := fmt.Sprintf("%s.%s", storedVar, arch.ExportIdent(fi.Name))
 			expectedVal := lay.emitGoExpr(fi.Value, false)

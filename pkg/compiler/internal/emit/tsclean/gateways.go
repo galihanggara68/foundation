@@ -141,15 +141,47 @@ export class InMemoryTransactionManager implements ports.TransactionManager {
 				}
 
 			case arch.RepoMethodDelete:
-				sb.WriteString(fmt.Sprintf("  async %s(%s: %s): Promise<void> {\n",
-					toCamelCase(m.Name), m.WhereField, tsType(m.WhereType, false)))
-				sb.WriteString(fmt.Sprintf("    this.entities = this.entities.filter((e) => e.%s !== %s);\n  }\n\n",
-					m.WhereField, m.WhereField))
+				sb.WriteString(fmt.Sprintf("  async %s(%s): Promise<void> {\n",
+					toCamelCase(m.Name), formatTSRepoParams(m)))
+				fieldCounts := make(map[string]int)
+				for _, wp := range m.WherePredicates {
+					fieldCounts[wp.Field]++
+				}
+				var checks []string
+				if len(m.WherePredicates) > 0 {
+					for _, wp := range m.WherePredicates {
+						pName := toCamelCase(wp.Field)
+						if fieldCounts[wp.Field] > 1 {
+							pName += arch.OpSuffix(wp.Op)
+						}
+						checks = append(checks, formatTSInMemoryCheck("e."+toCamelCase(wp.Field), wp.Op, pName, wp.Type))
+					}
+				} else {
+					checks = append(checks, fmt.Sprintf("e.%s === %s", m.WhereField, m.WhereField))
+				}
+				sb.WriteString(fmt.Sprintf("    this.entities = this.entities.filter((e) => !(%s));\n  }\n\n",
+					strings.Join(checks, " && ")))
 
 			case arch.RepoMethodFind:
-				sb.WriteString(fmt.Sprintf("  async %s(%s: %s): Promise<domain.%s | null> {\n",
-					toCamelCase(m.Name), m.WhereField, tsType(m.WhereType, false), p.EntityName))
-				sb.WriteString(fmt.Sprintf("    const found = this.entities.find((e) => e.%s === %s);\n", m.WhereField, m.WhereField))
+				sb.WriteString(fmt.Sprintf("  async %s(%s): Promise<domain.%s | null> {\n",
+					toCamelCase(m.Name), formatTSRepoParams(m), p.EntityName))
+				fieldCounts := make(map[string]int)
+				for _, wp := range m.WherePredicates {
+					fieldCounts[wp.Field]++
+				}
+				var checks []string
+				if len(m.WherePredicates) > 0 {
+					for _, wp := range m.WherePredicates {
+						pName := toCamelCase(wp.Field)
+						if fieldCounts[wp.Field] > 1 {
+							pName += arch.OpSuffix(wp.Op)
+						}
+						checks = append(checks, formatTSInMemoryCheck("e."+toCamelCase(wp.Field), wp.Op, pName, wp.Type))
+					}
+				} else {
+					checks = append(checks, fmt.Sprintf("e.%s === %s", m.WhereField, m.WhereField))
+				}
+				sb.WriteString(fmt.Sprintf("    const found = this.entities.find((e) => %s);\n", strings.Join(checks, " && ")))
 				sb.WriteString("    return found ? { ...found } : null;\n  }\n\n")
 			}
 		}
@@ -305,14 +337,52 @@ export class PostgresTransactionManager implements ports.TransactionManager {
 				}
 
 			case arch.RepoMethodDelete:
-				query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", tableName, m.WhereField)
-				sb.WriteString(fmt.Sprintf("  async %s(%s: %s): Promise<void> {\n    await this.db.query(%q, [%s]);\n  }\n\n",
-					toCamelCase(m.Name), m.WhereField, tsType(m.WhereType, false), query, m.WhereField))
+				var conds []string
+				var argVars []string
+				fieldCounts := make(map[string]int)
+				for _, wp := range m.WherePredicates {
+					fieldCounts[wp.Field]++
+				}
+				if len(m.WherePredicates) > 0 {
+					for i, wp := range m.WherePredicates {
+						conds = append(conds, fmt.Sprintf("%s %s $%d", wp.Field, arch.SQLComparisonOp(wp.Op), i+1))
+						pName := toCamelCase(wp.Field)
+						if fieldCounts[wp.Field] > 1 {
+							pName += arch.OpSuffix(wp.Op)
+						}
+						argVars = append(argVars, pName)
+					}
+				} else {
+					conds = append(conds, fmt.Sprintf("%s = $1", m.WhereField))
+					argVars = append(argVars, m.WhereField)
+				}
+				query := fmt.Sprintf("DELETE FROM %s WHERE %s", tableName, strings.Join(conds, " AND "))
+				sb.WriteString(fmt.Sprintf("  async %s(%s): Promise<void> {\n    await this.db.query(%q, [%s]);\n  }\n\n",
+					toCamelCase(m.Name), formatTSRepoParams(m), query, strings.Join(argVars, ", ")))
 
 			case arch.RepoMethodFind:
-				query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1 LIMIT 1", colsCSV, tableName, m.WhereField)
-				sb.WriteString(fmt.Sprintf("  async %s(%s: %s): Promise<domain.%s | null> {\n    const res = await this.db.query(%q, [%s]);\n    return (res.rows[0] as unknown as domain.%s) ?? null;\n  }\n\n",
-					toCamelCase(m.Name), m.WhereField, tsType(m.WhereType, false), p.EntityName, query, m.WhereField, p.EntityName))
+				var conds []string
+				var argVars []string
+				fieldCounts := make(map[string]int)
+				for _, wp := range m.WherePredicates {
+					fieldCounts[wp.Field]++
+				}
+				if len(m.WherePredicates) > 0 {
+					for i, wp := range m.WherePredicates {
+						conds = append(conds, fmt.Sprintf("%s %s $%d", wp.Field, arch.SQLComparisonOp(wp.Op), i+1))
+						pName := toCamelCase(wp.Field)
+						if fieldCounts[wp.Field] > 1 {
+							pName += arch.OpSuffix(wp.Op)
+						}
+						argVars = append(argVars, pName)
+					}
+				} else {
+					conds = append(conds, fmt.Sprintf("%s = $1", m.WhereField))
+					argVars = append(argVars, m.WhereField)
+				}
+				query := fmt.Sprintf("SELECT %s FROM %s WHERE %s LIMIT 1", colsCSV, tableName, strings.Join(conds, " AND "))
+				sb.WriteString(fmt.Sprintf("  async %s(%s): Promise<domain.%s | null> {\n    const res = await this.db.query(%q, [%s]);\n    return (res.rows[0] as unknown as domain.%s) ?? null;\n  }\n\n",
+					toCamelCase(m.Name), formatTSRepoParams(m), p.EntityName, query, strings.Join(argVars, ", "), p.EntityName))
 			}
 		}
 		sb.WriteString("}\n\n")

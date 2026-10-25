@@ -88,13 +88,18 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 					emitsEvents = true
 				}
 				if s.Kind == ir.StepQuery || s.Kind == ir.StepUpdate {
-					addPortMethod(RepositoryMethodIR{
-						Kind:       RepoMethodFind,
-						Name:       "FindBy" + ExportIdent(s.WhereField),
-						EntityName: s.EntityName,
-						WhereField: s.WhereField,
-						WhereType:  entityFields[s.EntityName][s.WhereField],
-					})
+					fType := ""
+					if entityFields[s.EntityName] != nil {
+						fType = entityFields[s.EntityName][s.WhereField]
+					}
+					addPortMethod(BuildRepoMethodIR(
+						RepoMethodFind,
+						s.EntityName,
+						s.WherePredicates,
+						s.WhereField,
+						fType,
+						entityFields[s.EntityName],
+					))
 					if s.Kind == ir.StepUpdate {
 						addPortMethod(RepositoryMethodIR{
 							Kind:       RepoMethodUpdate,
@@ -104,13 +109,18 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 					}
 				}
 				if s.Kind == ir.StepDelete {
-					addPortMethod(RepositoryMethodIR{
-						Kind:       RepoMethodDelete,
-						Name:       "DeleteBy" + ExportIdent(s.WhereField),
-						EntityName: s.EntityName,
-						WhereField: s.WhereField,
-						WhereType:  entityFields[s.EntityName][s.WhereField],
-					})
+					fType := ""
+					if entityFields[s.EntityName] != nil {
+						fType = entityFields[s.EntityName][s.WhereField]
+					}
+					addPortMethod(BuildRepoMethodIR(
+						RepoMethodDelete,
+						s.EntityName,
+						s.WherePredicates,
+						s.WhereField,
+						fType,
+						entityFields[s.EntityName],
+					))
 				}
 			},
 			func(e ir.Expr) {
@@ -187,13 +197,18 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 	for _, sc := range sem.Scenarios {
 		for _, ex := range sc.Expects {
 			if ex.StoredEntity != "" {
-				addPortMethod(RepositoryMethodIR{
-					Kind:       RepoMethodFind,
-					Name:       "FindBy" + ExportIdent(ex.WhereField),
-					EntityName: ex.StoredEntity,
-					WhereField: ex.WhereField,
-					WhereType:  entityFields[ex.StoredEntity][ex.WhereField],
-				})
+				fType := ""
+				if entityFields[ex.StoredEntity] != nil {
+					fType = entityFields[ex.StoredEntity][ex.WhereField]
+				}
+				addPortMethod(BuildRepoMethodIR(
+					RepoMethodFind,
+					ex.StoredEntity,
+					ex.WherePredicates,
+					ex.WhereField,
+					fType,
+					entityFields[ex.StoredEntity],
+				))
 			}
 		}
 	}

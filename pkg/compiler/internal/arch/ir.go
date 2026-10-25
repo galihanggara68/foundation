@@ -100,12 +100,19 @@ type ArchLayer struct {
 	Package string `json:"package"`
 }
 
+type RepoWherePredicateIR struct {
+	Field string `json:"field"`
+	Op    string `json:"op"`
+	Type  string `json:"type"`
+}
+
 type RepositoryMethodIR struct {
-	Kind       RepoMethodKind `json:"kind"`
-	Name       string         `json:"name"`
-	EntityName string         `json:"entity_name"`
-	WhereField string         `json:"where_field,omitempty"`
-	WhereType  string         `json:"where_type,omitempty"`
+	Kind            RepoMethodKind         `json:"kind"`
+	Name            string                 `json:"name"`
+	EntityName      string                 `json:"entity_name"`
+	WhereField      string                 `json:"where_field,omitempty"`
+	WhereType       string                 `json:"where_type,omitempty"`
+	WherePredicates []RepoWherePredicateIR `json:"where_predicates,omitempty"`
 }
 
 type RepositoryPortIR struct {

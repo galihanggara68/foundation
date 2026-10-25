@@ -151,9 +151,17 @@ func emitTSScenarioExpect(sb *strings.Builder, idx int, ex ir.ExpectDecl) {
 		return
 	}
 
-	if ex.StoredEntity != "" && ex.WhereValue != nil {
-		findMethod := "findBy" + arch.ExportIdent(ex.WhereField)
-		whereExpr := emitTSExpr(*ex.WhereValue, false)
+	if ex.StoredEntity != "" && (len(ex.WherePredicates) > 0 || ex.WhereValue != nil) {
+		findMethod := toCamelCase(arch.StepRepoMethodName(arch.RepoMethodFind, ex.WherePredicates, ex.WhereField))
+		var argExprs []string
+		if len(ex.WherePredicates) > 0 {
+			for _, wp := range ex.WherePredicates {
+				argExprs = append(argExprs, emitTSExpr(wp.Value, false))
+			}
+		} else if ex.WhereValue != nil {
+			argExprs = append(argExprs, emitTSExpr(*ex.WhereValue, false))
+		}
+		whereExpr := strings.Join(argExprs, ", ")
 		storedVar := fmt.Sprintf("stored%d", idx)
 		sb.WriteString(fmt.Sprintf("  const %s = await c.%sRepo.%s(%s);\n",
 			storedVar, toCamelCase(ex.StoredEntity), findMethod, whereExpr))

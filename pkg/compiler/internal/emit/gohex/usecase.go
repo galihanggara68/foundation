@@ -22,7 +22,16 @@ func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.Use
 	if isIdem || isCache {
 		sb.WriteString("\t\"encoding/json\"\n\t\"fmt\"\n")
 	}
-	if isIdem || isCache || isRetry {
+	hasTime := false
+	for _, p := range uc.Params {
+		if p.Type == "timestamp" {
+			hasTime = true
+		}
+	}
+	if uc.ReturnType == "timestamp" {
+		hasTime = true
+	}
+	if isIdem || isCache || isRetry || hasTime {
 		sb.WriteString("\t\"time\"\n")
 	}
 	if isIdem || isCache || isOutbox {
@@ -258,8 +267,7 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 
 		case ir.StepQuery:
 			declaredVars[s.VarName] = true
-			mName := "FindBy" + arch.ExportIdent(s.WhereField)
-			wExpr := lay.emitGoExpr(*s.WhereValue, false)
+			mName, wExpr := lay.formatGoStepRepoCall(arch.RepoMethodFind, s.WherePredicates, s.WhereField, s.WhereValue)
 			sb.WriteString(fmt.Sprintf("%s%sPtr, err := uc.%sRepo.%s(ctx, %s)\n", indent, s.VarName, s.EntityName, mName, wExpr))
 			sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n", indent, indent, indent))
 			if s.ElseError != "" {
@@ -268,8 +276,7 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 			sb.WriteString(fmt.Sprintf("%s%s := *%sPtr\n%s_ = %s\n", indent, s.VarName, s.VarName, indent, s.VarName))
 
 		case ir.StepUpdate:
-			mName := "FindBy" + arch.ExportIdent(s.WhereField)
-			wExpr := lay.emitGoExpr(*s.WhereValue, false)
+			mName, wExpr := lay.formatGoStepRepoCall(arch.RepoMethodFind, s.WherePredicates, s.WhereField, s.WhereValue)
 			updVar := fmt.Sprintf("updTarget%d", idx)
 			sb.WriteString(fmt.Sprintf("%s%s, err := uc.%sRepo.%s(ctx, %s)\n", indent, updVar, s.EntityName, mName, wExpr))
 			sb.WriteString(fmt.Sprintf("%sif err != nil {\n%s\treturn zero, err\n%s}\n", indent, indent, indent))
@@ -289,8 +296,7 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 			sb.WriteString(fmt.Sprintf("%s}\n", indent))
 
 		case ir.StepDelete:
-			mName := "DeleteBy" + arch.ExportIdent(s.WhereField)
-			wExpr := lay.emitGoExpr(*s.WhereValue, false)
+			mName, wExpr := lay.formatGoStepRepoCall(arch.RepoMethodDelete, s.WherePredicates, s.WhereField, s.WhereValue)
 			sb.WriteString(fmt.Sprintf("%sif err := uc.%sRepo.%s(ctx, %s); err != nil {\n%s\treturn zero, err\n%s}\n",
 				indent, s.EntityName, mName, wExpr, indent, indent))
 

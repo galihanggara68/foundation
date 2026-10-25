@@ -63,19 +63,28 @@ type MatchArmDecl struct {
 	Span    Span       `json:"span"`
 }
 
+type WherePredicate struct {
+	Field string `json:"field"`
+	Op    string `json:"op"`
+	Value Expr   `json:"value"`
+	Span  Span   `json:"span"`
+}
+
 type StepDecl struct {
-	Kind       StepKind        `json:"kind"`
-	VarName    string          `json:"var_name,omitempty"`
-	EntityName string          `json:"entity_name,omitempty"`
-	SlotName   string          `json:"slot_name,omitempty"`
-	SlotMethod string          `json:"slot_method,omitempty"`
-	SlotArgs   []Expr          `json:"slot_args,omitempty"`
-	PolicyName string          `json:"policy_name,omitempty"`
-	PolicyArgs []Expr          `json:"policy_args,omitempty"`
-	EventName  string          `json:"event_name,omitempty"`
-	WhereField string          `json:"where_field,omitempty"`
-	WhereValue *Expr           `json:"where_value,omitempty"`
-	ElseError  string          `json:"else_error,omitempty"`
+	Kind            StepKind         `json:"kind"`
+	VarName         string           `json:"var_name,omitempty"`
+	EntityName      string           `json:"entity_name,omitempty"`
+	SlotName        string           `json:"slot_name,omitempty"`
+	SlotMethod      string           `json:"slot_method,omitempty"`
+	SlotArgs        []Expr           `json:"slot_args,omitempty"`
+	PolicyName      string           `json:"policy_name,omitempty"`
+	PolicyArgs      []Expr           `json:"policy_args,omitempty"`
+	EventName       string           `json:"event_name,omitempty"`
+	WhereField      string           `json:"where_field,omitempty"`
+	WhereValue      *Expr            `json:"where_value,omitempty"`
+	WherePredicates []WherePredicate `json:"where_predicates,omitempty"`
+	WhereExpr       *Expr            `json:"where_expr,omitempty"`
+	ElseError       string           `json:"else_error,omitempty"`
 	Fields     []FieldInitDecl `json:"fields,omitempty"`
 	Expr       *Expr           `json:"expr,omitempty"`
 	IterVar    string          `json:"iter_var,omitempty"`

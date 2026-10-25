@@ -179,6 +179,10 @@ func emitTSExpr(e ir.Expr, inDomainFile bool) string {
 			op = "==="
 		case "!=":
 			op = "!=="
+		case "and":
+			op = "&&"
+		case "or":
+			op = "||"
 		}
 		return fmt.Sprintf("(%s %s %s)", emitTSExpr(*e.Left, inDomainFile), op, emitTSExpr(*e.Right, inDomainFile))
 	case ir.ExprConstruct:

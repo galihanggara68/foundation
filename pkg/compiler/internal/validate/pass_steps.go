@@ -80,7 +80,7 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 		validateFieldInitializers("event", ev.Name, s.Fields, scope, sym, diags)
 
 	case ir.StepQuery:
-		ent, ok := validateEntityWhereClause("query", s.EntityName, s.WhereField, s.WhereValue, s.Span, scope, sym, diags)
+		ent, ok := validateStepWhere("query", s, scope, sym, diags)
 		if !ok {
 			return
 		}
@@ -111,14 +111,14 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 		scope[s.VarName] = ent.Name
 
 	case ir.StepUpdate:
-		ent, ok := validateEntityWhereClause("update", s.EntityName, s.WhereField, s.WhereValue, s.Span, scope, sym, diags)
+		ent, ok := validateStepWhere("update", s, scope, sym, diags)
 		if !ok {
 			return
 		}
 		validateFieldInitializers("entity", ent.Name, s.Fields, scope, sym, diags)
 
 	case ir.StepDelete:
-		validateEntityWhereClause("delete", s.EntityName, s.WhereField, s.WhereValue, s.Span, scope, sym, diags)
+		validateStepWhere("delete", s, scope, sym, diags)
 
 	case ir.StepIf:
 		if s.Expr != nil {

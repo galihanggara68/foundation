@@ -32,6 +32,8 @@ func validateFieldInitializers(kindLabel, typeName string, inits []ir.FieldInitD
 			})
 		} else if ok && fi.Value.Kind == ir.ExprList && fi.Value.InferredType == "[]" {
 			fi.Value.InferredType = f.Type
+		} else if ok && f.Type == "timestamp" && fi.Value.Kind == ir.ExprString {
+			fi.Value.InferredType = "timestamp"
 		}
 	}
 }
@@ -299,7 +301,7 @@ func inferBinaryExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 	}
 
 	switch e.Op {
-	case "&&", "||":
+	case "&&", "||", "and", "or":
 		if lt != "bool" || rt != "bool" {
 			*diags = append(*diags, ir.Diagnostic{
 				Code:     "FDN0205",

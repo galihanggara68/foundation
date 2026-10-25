@@ -12,9 +12,21 @@ _Avoid_: Schema, spec, template, config
 A deterministic, guaranteed-terminating sequence of domain operations (validation guards, policy checks, state queries, mutations, bounded iterations, conditional branches, slot calls, and event emissions) declared within a Blueprint to express application behavior.
 _Avoid_: Workflow, script, controller, handler
 
+**Event**:
+A declared domain occurrence that an Action emits to announce a completed state change, delivered to subscribed Event Handlers after the emitting Action commits.
+_Avoid_: Message, notification, signal
+
+**Event Handler**:
+An Action triggered by a subscribed Event instead of an HTTP route, executed in-process after the emitting Action's transaction commits; its own Traits govern its robustness and delivery guarantees.
+_Avoid_: Listener, subscriber, cron job
+
 **Entity**:
 A persistent domain object with identity and lifecycle declared in a Blueprint, lowered by the compiler into storage schemas and domain models.
 _Avoid_: Table, model, record, struct
+
+**Entity Version**:
+A monotonically increasing integer field on an Entity annotated with `@version` that enables Optimistic Concurrency Control during mutations to prevent silent lost updates.
+_Avoid_: Revision, sequence number, timestamp, generation
 
 **Value**:
 An immutable, identity-less data structure declared in a Blueprint for action inputs, outputs, or embedded fields.
@@ -23,6 +35,24 @@ _Avoid_: DTO, payload, schema, POJO
 **Policy**:
 A reusable, side-effect-free boolean rule declared in a Blueprint that evaluates whether an actor is authorized to perform an action or access an entity.
 _Avoid_: Middleware, guard, RBAC filter, interceptor
+
+
+**Actor**:
+The principal on whose behalf an Action is performed, supplied to Policies for authorization decisions; resolved from an incoming request by the Actor Resolver.
+_Avoid_: User, session, caller
+
+
+**Actor Resolver**:
+The built-in port present in every generated backend that resolves an incoming request into a verified Actor before any Policy evaluates; its adapter is selected via the Build Profile's authn setting, defaulting to the trusted-headers dev adapter.
+_Avoid_: Auth middleware, session filter, identity provider
+
+**Conflict**:
+A built-in domain error indicating that a concurrent mutation has rendered the target Entity state stale due to an Entity Version mismatch (mapped to HTTP 409).
+_Avoid_: Race condition, concurrency error, stale data, mismatch
+
+**Keyset Cursor**:
+An opaque, deterministic pagination token representing the unique ordering key of the last item in a paginated read, used to retrieve the subsequent page without offset scanning.
+_Avoid_: Page number, offset, seek token, continuation token
 
 
 **Slot**:
@@ -42,12 +72,20 @@ The language-agnostic and architecture-agnostic intermediate representation of v
 _Avoid_: AST, domain graph
 
 **Architecture IR**:
-The lowered intermediate representation produced by applying a structural architecture pattern (such as Hexagonal, Layered CRUD, or CQRS) to the Semantic IR before emitting target language code.
+The lowered intermediate representation produced by applying a structural architecture pattern (such as Hexagonal, Layered CRUD, or Clean Architecture) to the Semantic IR before emitting target language code.
 _Avoid_: Codegen tree, file template tree
 
 **Emitter**:
 A target-specific backend module that translates the Architecture IR into deterministic, formatted source files for a concrete language or infrastructure stack (such as Go, TypeScript, or PostgreSQL DDL).
 _Avoid_: Transpiler, generator, printer
+
+**External Generator Plugin**:
+An executable binary (`foundation-gen-<target>`) invoked by the compiler over standard I/O that consumes a serialized `GenerationRequest` and returns a `GenerationResponse` containing generated file paths and contents.
+_Avoid_: Template engine, custom script, codegen hook
+
+**Generation Protocol**:
+The standardized JSON schema contract governing wire communication between the Foundation compiler and external generator plugins over standard I/O.
+_Avoid_: Plugin API, RPC protocol
 
 **SDK Client**:
 A strongly-typed, zero-boilerplate client package emitted directly from a Blueprint's exposed Actions, Value types, and Error contracts for consumption by external services or frontends.
@@ -68,6 +106,19 @@ _Avoid_: Boilerplate file, placeholder
 **Contract Test**:
 A compiler-emitted native test suite that executes against a developer's handwritten Slot implementation to verify that it satisfies the Blueprint's input/output invariants and error semantics.
 _Avoid_: Integration test, manual unit test
+
+**Pessimistic Row Lock**:
+A transactional database row lock (`SELECT ... FOR UPDATE` in PostgreSQL, fine-grained mutex in memory) acquired during an Action Pipeline query via `@lock(exclusive)` to serialize concurrent mutations on high-contention domain resources without triggering Optimistic Concurrency Control conflict aborts.
+_Avoid_: Table lock, spinlock, advisory lock
+
+**Worker**:
+A scheduled background process declared in a Blueprint that polls and processes persistent domain state at fixed intervals using transactional row locking (`FOR UPDATE SKIP LOCKED`), ensuring safe multi-replica execution without distributed leader election.
+_Avoid_: Cron job, ticker loop, daemon thread
+
+**Server-Sent Events Stream**:
+An HTTP streaming response (`text/event-stream`) emitted for real-time query Actions that continuously pushes domain Events to clients with deterministic offset resumption via `Last-Event-ID`.
+_Avoid_: WebSocket channel, long polling, socket connection
+
 
 
 

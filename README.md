@@ -810,12 +810,22 @@ Foundation is a deterministic compiler for a deliberately constrained domain lan
 ## Architecture Decision Records & Project Standards
 
 - [GLOSSARY.md](./GLOSSARY.md) — Canonical ubiquitous domain language.
-- [SPEC.md](./SPEC.md) — Formal technical specification and testing boundaries.
+- [ROADMAP.md](./ROADMAP.md) — Public trust-first roadmap toward 1.0.
 - [CODING_STANDARDS.md](./CODING_STANDARDS.md) — Deep Module architecture, SOLID principles, and stage-aligned package layout (`pkg/compiler/internal/{ir,frontend,validate,arch,emit}`).
 - [GRILL-SUMMARY.md](./GRILL-SUMMARY.md) — Complete design trade-offs and architectural interview summary.
+- **Technical Specifications (`docs/specs/`)**:
+  - [00: Baseline Compiler & Architecture](./docs/specs/00-baseline-compiler-and-architecture.md) — Tracer bullet through multi-target foundation.
+  - [01: Runtime Integrity & Durability (Phases 0–2)](./docs/specs/01-runtime-integrity-and-durability.md) — Contrib runtime, post-commit dispatch, Go entrypoint, OCC `@version`, and durable traits.
+  - [02: Production API Surface & Security (Phases 3–4)](./docs/specs/02-production-api-surface-and-security.md) — Actor resolver, multi-tenant claims, deterministic `query many`, and domain types.
 - **Architectural Decision Records (`docs/adr/`)**:
   - [ADR 0001: Constrained Action Pipelines with Generated Slot Interfaces](./docs/adr/0001-action-pipelines-and-slot-interfaces.md)
   - [ADR 0002: Three-Stage Compilation with Architecture Lowering](./docs/adr/0002-three-stage-architecture-lowering.md)
   - [ADR 0003: Purpose-Built `.fdn` Grammar over YAML/JSON](./docs/adr/0003-purpose-built-fdn-grammar.md)
   - [ADR 0004: Static Architectural Invariant Enforcement](./docs/adr/0004-static-architectural-invariants.md)
   - [ADR 0005: Manifest-Tracked Root Scaffolding over Isolated `gen/` Subtrees](./docs/adr/0005-manifest-tracked-root-scaffolding.md)
+  - [ADR 0006: Actor Resolver Port with Contrib Authn Adapters](./docs/adr/0006-actor-resolver-port-with-contrib-adapters.md)
+  - [ADR 0007: Post-Commit In-Process Event Dispatch](./docs/adr/0007-post-commit-in-process-event-dispatch.md)
+  - [ADR 0008: Deterministic Query-Many with Mandatory Ordering](./docs/adr/0008-deterministic-query-many.md)
+  - [ADR 0009: Contrib Runtime Libraries for Stateful Tactical Traits](./docs/adr/0009-contrib-runtimes-for-stateful-traits.md)
+  - [ADR 0010: Optimistic Concurrency Control with Entity Versions](./docs/adr/0010-optimistic-concurrency-control.md)
+  - [ADR 0011: Standardized IR Protocol and External Generator Plugins](./docs/adr/0011-pluggable-emitter-protocol.md)

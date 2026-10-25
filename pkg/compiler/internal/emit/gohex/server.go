@@ -7,8 +7,26 @@ import (
 )
 
 // emitGoServer renders the Go backend entrypoint (cmd/server/main.go) with environment variable
-// parsing (PORT, DATABASE_URL), graceful HTTP shutdown on SIGINT/SIGTERM, and clean connection pool closure.
+// parsing (PORT, DATABASE_URL), graceful HTTP shutdown on SIGINT/SIGTERM, clean connection pool closure,
+// and background outbox relay execution.
 func emitGoServer(archIR *arch.ArchitectureIR) string {
+	runtimeImport := ""
+	relayCode := ""
+	if len(archIR.DomainEvents) > 0 {
+		runtimeImport = "\t\"github.com/galihanggara68/foundation/contrib/go/runtime\"\n"
+		relayCode = `
+		if pgContainer.RuntimeDriver != nil && pgContainer.RuntimeDriver.Outbox() != nil {
+			relayWorker := runtime.NewOutboxRelayWorker(pgContainer.RuntimeDriver.Outbox(), func(pCtx context.Context, ev runtime.OutboxEvent) error {
+				if pgContainer.Events != nil {
+					return pgContainer.Events.Publish(pCtx, ev.EventName, ev.Payload)
+				}
+				return nil
+			}, 1*time.Second)
+			relayWorker.Start(context.Background())
+			defer relayWorker.Stop()
+		}`
+	}
+
 	return fmt.Sprintf(`package main
 
 import (
@@ -23,7 +41,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	"%s/internal/bootstrap"
+%s	"%s/internal/bootstrap"
 )
 
 func main() {
@@ -45,7 +63,7 @@ func main() {
 		}
 		defer db.Close()
 		pgContainer := bootstrap.NewPostgresContainer(db)
-		handler = pgContainer.HTTPServer
+		handler = pgContainer.HTTPServer%s
 	} else {
 		testContainer := bootstrap.NewTestContainer()
 		handler = testContainer.HTTPServer
@@ -86,5 +104,5 @@ func main() {
 		log.Println("Server stopped cleanly")
 	}
 }
-`, archIR.Module)
+`, runtimeImport, archIR.Module, relayCode)
 }

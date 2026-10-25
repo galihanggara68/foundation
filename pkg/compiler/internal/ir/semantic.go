@@ -132,6 +132,16 @@ type ActionDecl struct {
 	Span       Span        `json:"span"`
 }
 
+// HasTrait reports whether the action has a trait with the given name.
+func (a ActionDecl) HasTrait(name string) bool {
+	for _, t := range a.Traits {
+		if t.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 type GivenSeedDecl struct {
 	EntityName string          `json:"entity_name"`
 	Fields     []FieldInitDecl `json:"fields"`

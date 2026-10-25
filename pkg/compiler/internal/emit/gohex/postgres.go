@@ -13,9 +13,9 @@ func (lay goLayout) emitGoPostgresTxManager() string {
 import (
 	"context"
 	"database/sql"
-)
 
-type txCtxKey struct{}
+	"github.com/galihanggara68/foundation/contrib/go/runtime"
+)
 
 type DBTX interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -38,7 +38,7 @@ func (tm *PostgresTransactionManager) WithinTransaction(ctx context.Context, fn 
 	if err != nil {
 		return err
 	}
-	txCtx := context.WithValue(ctx, txCtxKey{}, tx)
+	txCtx := runtime.ContextWithTx(ctx, tx)
 	if err := fn(txCtx); err != nil {
 		_ = tx.Rollback()
 		return err
@@ -47,7 +47,7 @@ func (tm *PostgresTransactionManager) WithinTransaction(ctx context.Context, fn 
 }
 
 func connFromContext(ctx context.Context, db *sql.DB) DBTX {
-	if tx, ok := ctx.Value(txCtxKey{}).(*sql.Tx); ok && tx != nil {
+	if tx, ok := runtime.TxFromContext(ctx).(*sql.Tx); ok && tx != nil {
 		return tx
 	}
 	return db

@@ -51,6 +51,7 @@ func (lay goLayout) emitGoBootstrap(archIR *arch.ArchitectureIR) string {
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("\t%s *%s.%s\n", uc.ActionName, lay.UseCasesPkg, uc.Name))
 	}
+	sb.WriteString("\tRuntimeDriver runtime.Driver\n")
 	sb.WriteString(fmt.Sprintf("\tHTTPServer *%s.Server\n}\n\n", lay.HTTPPkg))
 
 	sb.WriteString("type PostgresContainer struct {\n")
@@ -67,6 +68,7 @@ func (lay goLayout) emitGoBootstrap(archIR *arch.ArchitectureIR) string {
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("\t%s *%s.%s\n", uc.ActionName, lay.UseCasesPkg, uc.Name))
 	}
+	sb.WriteString("\tRuntimeDriver runtime.Driver\n")
 	sb.WriteString(fmt.Sprintf("\tHTTPServer *%s.Server\n}\n\n", lay.HTTPPkg))
 
 	sb.WriteString("func NewTestContainer() *Container {\n")
@@ -152,13 +154,14 @@ func emitGoContainerStructFields(sb *strings.Builder, archIR *arch.ArchitectureI
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.ActionName, strings.ToLower(uc.ActionName)+"UC"))
 	}
+	sb.WriteString("\t\tRuntimeDriver: runtimeDriver,\n")
 	sb.WriteString("\t\tHTTPServer: srv,\n")
 }
 
 func (lay goLayout) emitGoPostgresBootstrapFunc(archIR *arch.ArchitectureIR) string {
 	var sb strings.Builder
 	sb.WriteString("func NewPostgresContainer(db *sql.DB) *PostgresContainer {\n")
-	sb.WriteString("\truntimeDriver := runtime.NewMemoryDriver()\n\t_ = runtimeDriver\n")
+	sb.WriteString("\truntimeDriver := runtime.NewPostgresDriver(db)\n\t_ = runtimeDriver\n")
 	for _, p := range archIR.Ports {
 		rVar := strings.ToLower(p.EntityName) + "Repo"
 		sb.WriteString(fmt.Sprintf("\t%s := %s.NewPostgres%sRepository(db)\n\t_ = %s\n", rVar, lay.PostgresPkg, p.EntityName, rVar))

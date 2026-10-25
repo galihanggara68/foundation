@@ -8,6 +8,21 @@ import (
 	"time"
 )
 
+type txContextKey struct{}
+
+// ContextWithTx injects an active transaction (e.g. *sql.Tx) into ctx.
+func ContextWithTx(ctx context.Context, tx any) context.Context {
+	return context.WithValue(ctx, txContextKey{}, tx)
+}
+
+// TxFromContext extracts an active transaction from ctx, if present.
+func TxFromContext(ctx context.Context) any {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Value(txContextKey{})
+}
+
 // IdempotencyStatus indicates whether an operation is in progress or completed.
 type IdempotencyStatus string
 
@@ -37,6 +52,7 @@ type OutboxEvent struct {
 type OutboxStore interface {
 	Stage(ctx context.Context, tx any, event OutboxEvent) error
 	Relay(ctx context.Context, publisher func(ctx context.Context, event OutboxEvent) error) error
+	MarkPublished(ctx context.Context, id string) error
 }
 
 // CacheStore manages temporary key-value data with time-to-live expiration.
@@ -214,6 +230,18 @@ func (s *MemoryOutboxStore) Relay(ctx context.Context, publisher func(ctx contex
 				return errors.Join(fmt.Errorf("failed to publish outbox event %s: %w", s.records[i].event.ID, err))
 			}
 			s.records[i].published = true
+		}
+	}
+	return nil
+}
+
+func (s *MemoryOutboxStore) MarkPublished(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.records {
+		if s.records[i].event.ID == id {
+			s.records[i].published = true
+			return nil
 		}
 	}
 	return nil

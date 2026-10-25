@@ -144,7 +144,7 @@ func emitTSContainer(archIR *arch.ArchitectureIR) string {
 	sb.WriteString(`import * as memory from "../gateways/memory_repositories.ts";
 import * as postgres from "../gateways/postgres_repositories.ts";
 import { ExpressController } from "../controllers/express_router.ts";
-import { createMemoryDriver } from "@foundation-contrib/runtime";
+import { createMemoryDriver, createPostgresDriver } from "@foundation-contrib/runtime";
 `)
 	for _, sl := range archIR.Slots {
 		sb.WriteString(fmt.Sprintf("import { create%sSlot } from \"../slots/%s_stub.ts\";\n", sl.Name, strings.ToLower(sl.Name)))
@@ -214,7 +214,7 @@ import { createMemoryDriver } from "@foundation-contrib/runtime";
 	sb.WriteString("    controller,\n  };\n}\n\n")
 
 	sb.WriteString("export function createPostgresContainer(db: postgres.PgQueryable) {\n")
-	sb.WriteString("  const runtimeDriver = createMemoryDriver();\n  void runtimeDriver;\n")
+	sb.WriteString("  const runtimeDriver = createPostgresDriver(db);\n  void runtimeDriver;\n")
 	for _, p := range archIR.Ports {
 		rVar := toCamelCase(p.EntityName) + "Repo"
 		sb.WriteString(fmt.Sprintf("  const %s = new postgres.Postgres%sRepository(db);\n  void %s;\n", rVar, p.EntityName, rVar))

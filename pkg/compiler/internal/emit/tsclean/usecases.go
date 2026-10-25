@@ -212,6 +212,7 @@ func emitTSUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
 
 	sb.WriteString(fmt.Sprintf("    let finalRes: %s;\n", retTS))
 	sb.WriteString("    let finalErr: unknown;\n")
+	sb.WriteString("    let idemRecorded = false;\n")
 	sb.WriteString(fmt.Sprintf("    for (let attempt = 0; attempt < %s; attempt++) {\n", attempts))
 	sb.WriteString("      postCommitEvents.length = 0;\n")
 	if isRetry && backoffMs != "0" {
@@ -220,7 +221,11 @@ func emitTSUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
 	sb.WriteString("      try {\n")
 	if isTx {
 		sb.WriteString("        if (this.txManager) {\n")
-		sb.WriteString(fmt.Sprintf("          finalRes = await this.txManager.withinTransaction(() => this.executePipeline(%s));\n", pipelineArgsSig))
+		if isIdem {
+			sb.WriteString(fmt.Sprintf("          finalRes = await this.txManager.withinTransaction(async () => {\n            const r = await this.executePipeline(%s);\n            if (unlock) {\n              const respBytes = new TextEncoder().encode(JSON.stringify(r!));\n              await unlock(true, respBytes);\n              idemRecorded = true;\n            }\n            return r;\n          });\n", pipelineArgsSig))
+		} else {
+			sb.WriteString(fmt.Sprintf("          finalRes = await this.txManager.withinTransaction(() => this.executePipeline(%s));\n", pipelineArgsSig))
+		}
 		sb.WriteString("        } else {\n")
 		sb.WriteString(fmt.Sprintf("          finalRes = await this.executePipeline(%s);\n", pipelineArgsSig))
 		sb.WriteString("        }\n")
@@ -231,7 +236,7 @@ func emitTSUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
 	sb.WriteString("      } catch (err) {\n        finalErr = err;\n      }\n    }\n")
 
 	if isIdem {
-		sb.WriteString("    if (unlock) {\n      if (!finalErr) {\n        const respBytes = new TextEncoder().encode(JSON.stringify(finalRes!));\n        await unlock(true, respBytes);\n      } else {\n        await unlock(false);\n      }\n    }\n")
+		sb.WriteString("    if (unlock) {\n      if (!finalErr && !idemRecorded) {\n        const respBytes = new TextEncoder().encode(JSON.stringify(finalRes!));\n        await unlock(true, respBytes);\n      } else if (finalErr) {\n        await unlock(false);\n      }\n    }\n")
 	}
 	sb.WriteString("    if (finalErr) {\n      throw finalErr;\n    }\n")
 	if isCache {

@@ -153,7 +153,7 @@ func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.Use
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("\tvar finalRes %s\n\tvar finalErr error\n", retType))
+	sb.WriteString(fmt.Sprintf("\tvar finalRes %s\n\tvar finalErr error\n\tvar idemRecorded bool\n\t_ = idemRecorded\n", retType))
 	sb.WriteString(fmt.Sprintf("\tfor attempt := 0; attempt < %s; attempt++ {\n", attempts))
 	sb.WriteString("\t\tpostCommitEvents = nil\n")
 	if isRetry {
@@ -167,7 +167,11 @@ func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.Use
 	if isTx {
 		sb.WriteString("\t\tif uc.TxManager != nil {\n")
 		sb.WriteString("\t\t\tfinalErr = uc.TxManager.WithinTransaction(ctx, func(txCtx context.Context) error {\n")
-		sb.WriteString(fmt.Sprintf("\t\t\t\tvar txErr error\n\t\t\t\tfinalRes, txErr = uc.executePipeline(%s)\n\t\t\t\treturn txErr\n\t\t\t})\n", strings.Join(txArgs, ", ")))
+		sb.WriteString(fmt.Sprintf("\t\t\t\tvar txErr error\n\t\t\t\tfinalRes, txErr = uc.executePipeline(%s)\n", strings.Join(txArgs, ", ")))
+		if isIdem {
+			sb.WriteString("\t\t\t\tif txErr == nil && unlock != nil {\n\t\t\t\t\trespBytes, _ := json.Marshal(finalRes)\n\t\t\t\t\t_ = unlock(txCtx, true, respBytes)\n\t\t\t\t\tidemRecorded = true\n\t\t\t\t}\n")
+		}
+		sb.WriteString("\t\t\t\treturn txErr\n\t\t\t})\n")
 		sb.WriteString("\t\t} else {\n")
 		sb.WriteString(fmt.Sprintf("\t\t\tfinalRes, finalErr = uc.executePipeline(%s)\n", strings.Join(regArgs, ", ")))
 		sb.WriteString("\t\t}\n")
@@ -177,7 +181,7 @@ func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.Use
 	sb.WriteString("\t\tif finalErr == nil {\n\t\t\tbreak\n\t\t}\n\t}\n")
 
 	if isIdem {
-		sb.WriteString("\tif unlock != nil {\n\t\tif finalErr == nil {\n\t\t\trespBytes, _ := json.Marshal(finalRes)\n\t\t\t_ = unlock(ctx, true, respBytes)\n\t\t} else {\n\t\t\t_ = unlock(ctx, false, nil)\n\t\t}\n\t}\n")
+		sb.WriteString("\tif unlock != nil {\n\t\tif finalErr == nil && !idemRecorded {\n\t\t\trespBytes, _ := json.Marshal(finalRes)\n\t\t\t_ = unlock(ctx, true, respBytes)\n\t\t} else if finalErr != nil {\n\t\t\t_ = unlock(ctx, false, nil)\n\t\t}\n\t}\n")
 	}
 	if isCache {
 		sb.WriteString("\tif finalErr == nil {\n\t\tcacheBytes, _ := json.Marshal(finalRes)\n\t\t_ = uc.CacheStore.Set(ctx, cacheKey, cacheBytes, cacheTTL)\n\t}\n")
@@ -324,12 +328,13 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 
 		case ir.StepEmit:
 			if ctx.useOutbox {
+				sb.WriteString(fmt.Sprintf("%soutboxEvID%d := fmt.Sprintf(\"%%d\", time.Now().UnixNano())\n", indent, idx))
 				sb.WriteString(fmt.Sprintf("%sif uc.OutboxStore != nil {\n", indent))
 				sb.WriteString(fmt.Sprintf("%s\tpayloadBytes, _ := json.Marshal(%s.%s{\n", indent, lay.DomainPkg, s.EventName))
 				lay.emitGoFieldInits(sb, s.Fields, indent+"\t\t")
 				sb.WriteString(fmt.Sprintf("%s\t})\n", indent))
 				sb.WriteString(fmt.Sprintf("%s\t_ = uc.OutboxStore.Stage(ctx, nil, runtime.OutboxEvent{\n", indent))
-				sb.WriteString(fmt.Sprintf("%s\t\tID: fmt.Sprintf(\"%%d\", time.Now().UnixNano()),\n", indent))
+				sb.WriteString(fmt.Sprintf("%s\t\tID: outboxEvID%d,\n", indent, idx))
 				sb.WriteString(fmt.Sprintf("%s\t\tTopic: %q,\n", indent, s.EventName))
 				sb.WriteString(fmt.Sprintf("%s\t\tEventName: %q,\n", indent, s.EventName))
 				sb.WriteString(fmt.Sprintf("%s\t\tPayload: payloadBytes,\n", indent))
@@ -340,7 +345,11 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 			sb.WriteString(fmt.Sprintf("%s*postCommitEvents = append(*postCommitEvents, func() {\n", indent))
 			sb.WriteString(fmt.Sprintf("%s\tif uc.Events != nil {\n%s\t\t_ = uc.Events.Publish(ctx, %q, %s.%s{\n", indent, indent, s.EventName, lay.DomainPkg, s.EventName))
 			lay.emitGoFieldInits(sb, s.Fields, indent+"\t\t\t")
-			sb.WriteString(fmt.Sprintf("%s\t\t})\n%s\t}\n%s})\n", indent, indent, indent))
+			sb.WriteString(fmt.Sprintf("%s\t\t})\n", indent))
+			if ctx.useOutbox {
+				sb.WriteString(fmt.Sprintf("%s\t\tif uc.OutboxStore != nil {\n%s\t\t\t_ = uc.OutboxStore.MarkPublished(ctx, outboxEvID%d)\n%s\t\t}\n", indent, indent, idx, indent))
+			}
+			sb.WriteString(fmt.Sprintf("%s\t}\n%s})\n", indent, indent))
 
 		case ir.StepSlot:
 			var callArgs []string

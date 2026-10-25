@@ -29,51 +29,34 @@ const (
 	SeverityWarning = ir.SeverityWarning
 )
 
-// Check scans workspaceDir for .fdn and .fdn.json Blueprints, parses them, and runs all semantic validation passes.
-func Check(workspaceDir string) (*SemanticIR, []Diagnostic) {
-	files, err := findFDNFiles(workspaceDir)
-	if err != nil {
-		return nil, []Diagnostic{{
-			Code:     "FDN0001",
-			Severity: SeverityError,
-			Message:  fmt.Sprintf("failed to scan workspace: %v", err),
-			Span:     Span{File: workspaceDir, Line: 1, Column: 1},
-		}}
-	}
-	if len(files) == 0 {
+// SourceFile represents an in-memory or loaded Blueprint source document.
+type SourceFile struct {
+	Path    string
+	Content string
+}
+
+// Compile validates an in-memory collection of Blueprint source files and returns their canonical SemanticIR.
+// It performs no filesystem I/O, allowing pure in-process compilation for testing, IDEs, or language servers.
+func Compile(sources []SourceFile) (*SemanticIR, []Diagnostic) {
+	if len(sources) == 0 {
 		return nil, []Diagnostic{{
 			Code:     "FDN0002",
 			Severity: SeverityError,
 			Message:  "no .fdn Blueprint files found in workspace",
-			Span:     Span{File: workspaceDir, Line: 1, Column: 1},
+			Span:     Span{File: "workspace", Line: 1, Column: 1},
 		}}
 	}
 
 	sem := &SemanticIR{}
 	var diags []Diagnostic
 
-	for _, f := range files {
-		src, readErr := os.ReadFile(f)
-		if readErr != nil {
-			diags = append(diags, Diagnostic{
-				Code:     "FDN0001",
-				Severity: SeverityError,
-				Message:  fmt.Sprintf("failed to read file: %v", readErr),
-				Span:     Span{File: f, Line: 1, Column: 1},
-			})
-			continue
-		}
-		rel, relErr := filepath.Rel(workspaceDir, f)
-		if relErr != nil {
-			rel = filepath.Base(f)
-		}
-		rel = filepath.ToSlash(rel)
-
+	for _, sf := range sources {
+		rel := filepath.ToSlash(sf.Path)
 		var fileIR *SemanticIR
 		var fileDiags []Diagnostic
 		if strings.HasSuffix(rel, ".fdn.json") {
 			fileIR = &SemanticIR{}
-			if uErr := json.Unmarshal(src, fileIR); uErr != nil {
+			if uErr := json.Unmarshal([]byte(sf.Content), fileIR); uErr != nil {
 				fileDiags = append(fileDiags, Diagnostic{
 					Code:     "FDN0006",
 					Severity: SeverityError,
@@ -83,7 +66,7 @@ func Check(workspaceDir string) (*SemanticIR, []Diagnostic) {
 				fileIR = nil
 			}
 		} else {
-			fileIR, fileDiags = frontend.ParseFile(rel, string(src))
+			fileIR, fileDiags = frontend.ParseFile(rel, sf.Content)
 		}
 		diags = append(diags, fileDiags...)
 		if fileIR != nil {
@@ -110,6 +93,57 @@ func Check(workspaceDir string) (*SemanticIR, []Diagnostic) {
 
 	sem.Canonicalize()
 	return sem, nil
+}
+
+// Check scans workspaceDir for .fdn and .fdn.json Blueprints, parses them, and runs all semantic validation passes.
+func Check(workspaceDir string) (*SemanticIR, []Diagnostic) {
+	files, err := findFDNFiles(workspaceDir)
+	if err != nil {
+		return nil, []Diagnostic{{
+			Code:     "FDN0001",
+			Severity: SeverityError,
+			Message:  fmt.Sprintf("failed to scan workspace: %v", err),
+			Span:     Span{File: workspaceDir, Line: 1, Column: 1},
+		}}
+	}
+	if len(files) == 0 {
+		return nil, []Diagnostic{{
+			Code:     "FDN0002",
+			Severity: SeverityError,
+			Message:  "no .fdn Blueprint files found in workspace",
+			Span:     Span{File: workspaceDir, Line: 1, Column: 1},
+		}}
+	}
+
+	var sources []SourceFile
+	var diags []Diagnostic
+
+	for _, f := range files {
+		src, readErr := os.ReadFile(f)
+		if readErr != nil {
+			diags = append(diags, Diagnostic{
+				Code:     "FDN0001",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("failed to read file: %v", readErr),
+				Span:     Span{File: f, Line: 1, Column: 1},
+			})
+			continue
+		}
+		rel, relErr := filepath.Rel(workspaceDir, f)
+		if relErr != nil {
+			rel = filepath.Base(f)
+		}
+		sources = append(sources, SourceFile{
+			Path:    rel,
+			Content: string(src),
+		})
+	}
+
+	if len(diags) > 0 {
+		return nil, diags
+	}
+
+	return Compile(sources)
 }
 
 func findFDNFiles(dir string) ([]string, error) {
@@ -186,21 +220,7 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 	reg := defaultRegistry()
 
 	for _, target := range bp.Targets {
-		key := arch.TargetKey{
-			Kind:         target.Kind,
-			Language:     target.Language,
-			Architecture: target.Architecture,
-		}
-		lowerer, ok := reg.lowerers[key]
-		if !ok {
-			return nil, []Diagnostic{{
-				Code:     "FDN0300",
-				Severity: SeverityError,
-				Message:  fmt.Sprintf("unsupported target combination: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
-				Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-			}}
-		}
-		archIR, lowDiags := lowerer.Lower(sem, bp, target)
+		archIR, lowDiags := arch.Lower(sem, bp, target)
 		if len(lowDiags) > 0 {
 			return nil, lowDiags
 		}
@@ -209,6 +229,11 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 		}
 		res.Architectures = append(res.Architectures, archIR)
 
+		key := arch.TargetKey{
+			Kind:         target.Kind,
+			Language:     target.Language,
+			Architecture: target.Architecture,
+		}
 		emitter, ok := reg.emitters[key]
 		if !ok {
 			return nil, []Diagnostic{{

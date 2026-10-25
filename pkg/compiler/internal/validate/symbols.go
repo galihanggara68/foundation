@@ -14,6 +14,24 @@ type Pass interface {
 	Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagnostic
 }
 
+// Validate executes the canonical multi-pass semantic and architectural invariant validation pipeline.
+// Pass ordering, symbol resolution, and symbol table lifecycle are fully encapsulated within this entry point.
+func Validate(sem *ir.SemanticIR) []ir.Diagnostic {
+	sym := NewSymbolTable()
+	passes := []Pass{
+		DeclarationPass{},
+		ActionTypeCheckPass{},
+		TerminationPass{},
+		InvariantPass{},
+		ScenarioTypeCheckPass{},
+	}
+	var diags []ir.Diagnostic
+	for _, pass := range passes {
+		diags = append(diags, pass.Validate(sem, sym)...)
+	}
+	return diags
+}
+
 var scalarTypes = map[string]bool{
 	"uuid":      true,
 	"string":    true,

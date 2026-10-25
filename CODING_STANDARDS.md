@@ -30,9 +30,9 @@ This document defines the architectural, SOLID, Clean Code, and Deep Module stan
   - **Middle-End Lowerers (`arch.PatternLowerer`)**: Architecture lowering is dispatched through an `arch.PatternLowerer` strategy keyed by `arch.TargetKey` (`Kind`, `Language`, `Architecture`). Adding `layered` or `clean` lowering must not require modifying `hexagonal` lowering logic.
   - **Backend Emitters (`emit.TargetEmitter`)**: Code generation is dispatched through an `emit.TargetEmitter` strategy keyed by `arch.TargetKey`, with each target isolated in its own subpackage under `pkg/compiler/internal/emit/<target>`.
 - **Dependency Inversion Principle (DIP)**:
-  - High-level compiler orchestration (`Check`, `Build` in `pkg/compiler`) depends on the `validate.Pass`, `arch.PatternLowerer`, and `emit.TargetEmitter` abstractions rather than hardcoded concrete target branches.
+  - High-level compiler orchestration (`Check`, `Build` in `pkg/compiler`) depends on the `validate.Validate`, `arch.Lower`, and `emit.TargetEmitter` abstractions rather than hardcoded concrete target branches.
 - **Interface Segregation & Liskov Substitution (ISP & LSP)**:
-  - Keep internal interfaces narrow (1–2 methods, such as `Validate(*ir.SemanticIR, *SymbolTable) []ir.Diagnostic`, `Lower(...)`, `Emit(...)`) so every implementation fulfills the full contract without no-op methods or refused bequests.
+  - Keep internal interfaces narrow (1–2 methods, such as `validate.Validate(*ir.SemanticIR) []ir.Diagnostic`, `arch.Lower(...)`, `emit.TargetEmitter.Emit(...)`) so every implementation fulfills the full contract without no-op methods or refused bequests.
 
 ---
 

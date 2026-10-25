@@ -20,8 +20,7 @@ entity Product {
 		t.Fatalf("unexpected parse diags: %+v", parseDiags)
 	}
 
-	sym := validate.NewSymbolTable()
-	diags := validate.DeclarationPass{}.Validate(sem, sym)
+	diags := validate.Validate(sem)
 	found := false
 	for _, d := range diags {
 		if d.Code == "FDN0205" {
@@ -47,8 +46,7 @@ entity Product {
 		t.Fatalf("unexpected parse diags: %+v", parseDiags)
 	}
 
-	sym := validate.NewSymbolTable()
-	diags := validate.DeclarationPass{}.Validate(sem, sym)
+	diags := validate.Validate(sem)
 	found := false
 	for _, d := range diags {
 		if d.Code == "FDN0215" {
@@ -73,8 +71,7 @@ value PriceSnapshot {
 		t.Fatalf("unexpected parse diags: %+v", parseDiags)
 	}
 
-	sym := validate.NewSymbolTable()
-	diags := validate.DeclarationPass{}.Validate(sem, sym)
+	diags := validate.Validate(sem)
 	found := false
 	for _, d := range diags {
 		if d.Code == "FDN0215" {

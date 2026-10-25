@@ -111,7 +111,7 @@ func TestMemoryOutboxStore_StageAndRelay(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
-	if err := store.Stage(ctx, nil, ev); err != nil {
+	if err := store.Stage(ctx, ev); err != nil {
 		t.Fatalf("failed to stage: %v", err)
 	}
 

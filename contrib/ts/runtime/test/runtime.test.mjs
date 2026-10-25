@@ -56,7 +56,7 @@ test("MemoryOutboxStore stage and relay", async () => {
     createdAt: new Date(),
   };
 
-  await store.stage(null, ev);
+  await store.stage(ev);
 
   const published = [];
   await store.relay(async (e) => {
@@ -166,7 +166,7 @@ test("PostgresOutboxStore stage and relay", async () => {
     createdAt: new Date(),
   };
 
-  await store.stage(null, ev);
+  await store.stage(ev);
 
   const published = [];
   await store.relay(async (e) => {

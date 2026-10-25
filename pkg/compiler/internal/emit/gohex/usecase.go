@@ -333,7 +333,7 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 				sb.WriteString(fmt.Sprintf("%s\tpayloadBytes, _ := json.Marshal(%s.%s{\n", indent, lay.DomainPkg, s.EventName))
 				lay.emitGoFieldInits(sb, s.Fields, indent+"\t\t")
 				sb.WriteString(fmt.Sprintf("%s\t})\n", indent))
-				sb.WriteString(fmt.Sprintf("%s\t_ = uc.OutboxStore.Stage(ctx, nil, runtime.OutboxEvent{\n", indent))
+				sb.WriteString(fmt.Sprintf("%s\t_ = uc.OutboxStore.Stage(ctx, runtime.OutboxEvent{\n", indent))
 				sb.WriteString(fmt.Sprintf("%s\t\tID: outboxEvID%d,\n", indent, idx))
 				sb.WriteString(fmt.Sprintf("%s\t\tTopic: %q,\n", indent, s.EventName))
 				sb.WriteString(fmt.Sprintf("%s\t\tEventName: %q,\n", indent, s.EventName))

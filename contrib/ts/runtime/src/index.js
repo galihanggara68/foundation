@@ -65,7 +65,7 @@ export class MemoryOutboxStore {
     this.records = [];
   }
 
-  async stage(tx, event) {
+  async stage(event) {
     this.records.push({ event, published: false });
   }
 
@@ -159,12 +159,11 @@ export class PostgresOutboxStore {
     this.db = db;
   }
 
-  async stage(tx, event) {
-    const client = (tx && typeof tx.query === "function") ? tx : this.db;
+  async stage(event) {
     const createdAt = event.createdAt || new Date();
     const query = `INSERT INTO outbox_events (id, topic, event_name, payload, created_at, published)
 VALUES ($1, $2, $3, $4, $5, FALSE)`;
-    await client.query(query, [event.id, event.topic, event.eventName, event.payload, createdAt]);
+    await this.db.query(query, [event.id, event.topic, event.eventName, event.payload, createdAt]);
   }
 
   async relay(publisher) {

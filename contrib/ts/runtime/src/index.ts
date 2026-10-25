@@ -19,7 +19,7 @@ export interface OutboxEvent {
 }
 
 export interface OutboxStore {
-  stage(tx: unknown, event: OutboxEvent): Promise<void>;
+  stage(event: OutboxEvent): Promise<void>;
   relay(publisher: (event: OutboxEvent) => Promise<void>): Promise<void>;
   markPublished(id: string): Promise<void>;
 }
@@ -113,7 +113,7 @@ interface MemoryOutboxRecord {
 export class MemoryOutboxStore implements OutboxStore {
   private records: MemoryOutboxRecord[] = [];
 
-  async stage(_tx: unknown, event: OutboxEvent) {
+  async stage(event: OutboxEvent) {
     this.records.push({ event, published: false });
   }
 
@@ -213,12 +213,11 @@ export class PostgresOutboxStore implements OutboxStore {
     this.db = db;
   }
 
-  async stage(tx: unknown, event: OutboxEvent): Promise<void> {
-    const client = (tx && typeof (tx as any).query === "function") ? (tx as PgQueryable) : this.db;
+  async stage(event: OutboxEvent): Promise<void> {
     const createdAt = event.createdAt || new Date();
     const query = `INSERT INTO outbox_events (id, topic, event_name, payload, created_at, published)
 VALUES ($1, $2, $3, $4, $5, FALSE)`;
-    await client.query(query, [event.id, event.topic, event.eventName, event.payload, createdAt]);
+    await this.db.query(query, [event.id, event.topic, event.eventName, event.payload, createdAt]);
   }
 
   async relay(publisher: (event: OutboxEvent) => Promise<void>): Promise<void> {

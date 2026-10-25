@@ -1,6 +1,7 @@
 package arch
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
@@ -9,6 +10,31 @@ import (
 // PatternLowerer lowers a validated SemanticIR + TargetConfig into an ArchitectureIR (Strategy pattern).
 type PatternLowerer interface {
 	Lower(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig) (*ArchitectureIR, []ir.Diagnostic)
+}
+
+var defaultLowerers = map[TargetKey]PatternLowerer{
+	{Kind: "backend", Language: "go", Architecture: "hexagonal"}:     GoHexagonalLowerer{},
+	{Kind: "backend", Language: "go", Architecture: "layered"}:       GoLayeredLowerer{},
+	{Kind: "backend", Language: "typescript", Architecture: "clean"}: TSCleanLowerer{},
+}
+
+// Lower lowers a validated SemanticIR + TargetConfig into an ArchitectureIR using the matching PatternLowerer strategy.
+func Lower(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig) (*ArchitectureIR, []ir.Diagnostic) {
+	key := TargetKey{
+		Kind:         target.Kind,
+		Language:     target.Language,
+		Architecture: target.Architecture,
+	}
+	lowerer, ok := defaultLowerers[key]
+	if !ok {
+		return nil, []ir.Diagnostic{{
+			Code:     "FDN0300",
+			Severity: ir.SeverityError,
+			Message:  fmt.Sprintf("unsupported target combination: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
+			Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+		}}
+	}
+	return lowerer.Lower(sem, bp, target)
 }
 
 // RepoMethodKind identifies the operation type of a lowered repository port method.

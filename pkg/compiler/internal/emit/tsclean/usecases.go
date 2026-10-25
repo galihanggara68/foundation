@@ -385,7 +385,7 @@ func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[stri
 				sb.WriteString(fmt.Sprintf("%s  const payload = {\n", indent))
 				emitTSFieldInits(sb, s.Fields, indent+"    ")
 				sb.WriteString(fmt.Sprintf("%s  } satisfies domain.%s;\n", indent, s.EventName))
-				sb.WriteString(fmt.Sprintf("%s  await this.outboxStore.stage(undefined, {\n", indent))
+				sb.WriteString(fmt.Sprintf("%s  await this.outboxStore.stage({\n", indent))
 				sb.WriteString(fmt.Sprintf("%s    id: String(Date.now()),\n", indent))
 				sb.WriteString(fmt.Sprintf("%s    topic: %q,\n", indent, s.EventName))
 				sb.WriteString(fmt.Sprintf("%s    eventName: %q,\n", indent, s.EventName))

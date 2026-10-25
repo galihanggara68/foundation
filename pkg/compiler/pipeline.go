@@ -10,8 +10,6 @@ import (
 )
 
 type compilerRegistry struct {
-	passes   []validate.Pass
-	lowerers map[arch.TargetKey]arch.PatternLowerer
 	emitters map[arch.TargetKey]emit.TargetEmitter
 }
 
@@ -20,18 +18,6 @@ func defaultRegistry() *compilerRegistry {
 	goLayeredKey := arch.TargetKey{Kind: "backend", Language: "go", Architecture: "layered"}
 	tsCleanKey := arch.TargetKey{Kind: "backend", Language: "typescript", Architecture: "clean"}
 	return &compilerRegistry{
-		passes: []validate.Pass{
-			validate.DeclarationPass{},
-			validate.ActionTypeCheckPass{},
-			validate.TerminationPass{},
-			validate.InvariantPass{},
-			validate.ScenarioTypeCheckPass{},
-		},
-		lowerers: map[arch.TargetKey]arch.PatternLowerer{
-			goHexKey:     arch.GoHexagonalLowerer{},
-			goLayeredKey: arch.GoLayeredLowerer{},
-			tsCleanKey:   arch.TSCleanLowerer{},
-		},
 		emitters: map[arch.TargetKey]emit.TargetEmitter{
 			goHexKey:     gohex.Emitter{},
 			goLayeredKey: gohex.LayeredEmitter{},
@@ -41,11 +27,5 @@ func defaultRegistry() *compilerRegistry {
 }
 
 func validateSemanticIR(sem *ir.SemanticIR) []ir.Diagnostic {
-	sym := validate.NewSymbolTable()
-	reg := defaultRegistry()
-	var diags []ir.Diagnostic
-	for _, pass := range reg.passes {
-		diags = append(diags, pass.Validate(sem, sym)...)
-	}
-	return diags
+	return validate.Validate(sem)
 }

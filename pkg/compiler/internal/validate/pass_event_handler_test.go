@@ -24,8 +24,7 @@ action HandleUnknown(ev: OrderPlaced) -> bool
 		t.Fatalf("unexpected parse diags: %+v", parseDiags)
 	}
 
-	sym := validate.NewSymbolTable()
-	diags := validate.DeclarationPass{}.Validate(sem, sym)
+	diags := validate.Validate(sem)
 	found := false
 	for _, d := range diags {
 		if d.Code == "FDN0203" {
@@ -55,8 +54,7 @@ action HandleOrder() -> bool
 		t.Fatalf("unexpected parse diags: %+v", parseDiags)
 	}
 
-	sym := validate.NewSymbolTable()
-	diags := validate.DeclarationPass{}.Validate(sem, sym)
+	diags := validate.Validate(sem)
 	found := false
 	for _, d := range diags {
 		if d.Code == "FDN0204" {

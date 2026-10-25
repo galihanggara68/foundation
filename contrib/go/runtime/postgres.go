@@ -122,8 +122,8 @@ func NewPostgresOutboxStore(db *sql.DB) *PostgresOutboxStore {
 	return &PostgresOutboxStore{db: db}
 }
 
-func (s *PostgresOutboxStore) Stage(ctx context.Context, tx any, event OutboxEvent) error {
-	exec := resolveDBTX(ctx, s.db, tx)
+func (s *PostgresOutboxStore) Stage(ctx context.Context, event OutboxEvent) error {
+	exec := resolveDBTX(ctx, s.db, nil)
 	createdAt := event.CreatedAt
 	if createdAt.IsZero() {
 		createdAt = time.Now()

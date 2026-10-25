@@ -50,7 +50,7 @@ type OutboxEvent struct {
 
 // OutboxStore provides transactional staging and relaying of outbox events.
 type OutboxStore interface {
-	Stage(ctx context.Context, tx any, event OutboxEvent) error
+	Stage(ctx context.Context, event OutboxEvent) error
 	Relay(ctx context.Context, publisher func(ctx context.Context, event OutboxEvent) error) error
 	MarkPublished(ctx context.Context, id string) error
 }
@@ -209,7 +209,7 @@ func NewMemoryOutboxStore() *MemoryOutboxStore {
 	return &MemoryOutboxStore{}
 }
 
-func (s *MemoryOutboxStore) Stage(ctx context.Context, tx any, event OutboxEvent) error {
+func (s *MemoryOutboxStore) Stage(ctx context.Context, event OutboxEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

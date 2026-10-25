@@ -65,7 +65,7 @@ Deliver the Core Runtime Integrity & Durability milestone (Phases 0, 1, and 2) a
 ### 1. Module Boundaries & Package Organization
 - **Contrib Runtimes**: Placed in the project monorepo under `contrib/go/runtime` and `contrib/ts/runtime`. Each provides an identical driver abstraction:
   - `IdempotencyStore`: `GetOrLock(ctx, key, ttl) -> (Status, Value, UnlockFunc)`
-  - `OutboxStore`: `Stage(ctx, tx, event) -> error` and `Relay(ctx) -> error`
+  - `OutboxStore`: `Stage(ctx, event) -> error` and `Relay(ctx) -> error`
   - `CacheStore`: `Get(ctx, key)`, `Set(ctx, key, val, ttl)`, `Delete(ctx, key)`
 - **Stage 1 (Frontend & Validation)**:
   - Lexer/Parser: Update grammar to flag `@cron` as an illegal/reserved trait token (`FDN0115`).

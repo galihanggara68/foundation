@@ -46,6 +46,9 @@ func (p *parser) parseScenario() (ir.ScenarioDecl, bool) {
 			if !ok {
 				return ir.ScenarioDecl{}, false
 			}
+			if p.cur().kind == tokIdent && p.cur().text == "with" {
+				p.advance()
+			}
 			fields, ok := p.parseFieldInitBlock()
 			if !ok {
 				return ir.ScenarioDecl{}, false

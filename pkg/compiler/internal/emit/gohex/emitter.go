@@ -30,6 +30,8 @@ type goLayout struct {
 	PostgresTxFile  string
 	HTTPPkg         string
 	HTTPDir         string
+	AuthnPkg        string
+	AuthnDir        string
 	// UnifiedRepositories marks layouts whose memory/postgres adapters live in the
 	// same package as the repository ports (layered); hexagonal keeps them separate.
 	UnifiedRepositories bool
@@ -56,6 +58,8 @@ func hexagonalLayout() goLayout {
 		PostgresTxFile:  "transaction_manager.go",
 		HTTPPkg:         "httpadapter",
 		HTTPDir:         "internal/adapters/http",
+		AuthnPkg:        "authn",
+		AuthnDir:        "internal/adapters/authn",
 	}
 }
 
@@ -80,6 +84,8 @@ func layeredLayout() goLayout {
 		PostgresTxFile:  "postgres_tx.go",
 		HTTPPkg:         "handlers",
 		HTTPDir:         "internal/handlers",
+		AuthnPkg:        "authn",
+		AuthnDir:        "internal/authn",
 
 		UnifiedRepositories: true,
 	}
@@ -160,11 +166,14 @@ github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
 
 	for _, e := range archIR.DomainEntities {
 		relPath := fmt.Sprintf("%s/%s_entity.go", lay.DomainDir, strings.ToLower(e.Name))
-		if d := addGoFile(relPath, "package "+lay.DomainPkg+"\n\n"+lay.emitGoStructDef(e.Name, e.Fields)); d != nil {
+		if d := addGoFile(relPath, lay.emitGoEntityFile(e)); d != nil {
 			return nil, nil, []ir.Diagnostic{*d}
 		}
 	}
 
+	if d := addGoFile(lay.DomainDir+"/decimal.go", emitGoDecimalDef(lay.DomainPkg)); d != nil {
+		return nil, nil, []ir.Diagnostic{*d}
+	}
 	if d := addGoFile(lay.DomainDir+"/values.go", lay.emitGoDomainValues(archIR)); d != nil {
 		return nil, nil, []ir.Diagnostic{*d}
 	}
@@ -185,6 +194,15 @@ github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
 	for _, p := range archIR.Ports {
 		relPath := fmt.Sprintf("%s/%s_repository.go", lay.PortsDir, strings.ToLower(p.EntityName))
 		if d := addGoFile(relPath, lay.emitGoSinglePort(archIR.Module, p)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
+		}
+	}
+
+	if archIR.HasActorPort {
+		if d := addGoFile(lay.PortsDir+"/actor_resolver.go", lay.emitGoActorResolverPort(archIR.Module)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
+		}
+		if d := addGoFile(lay.AuthnDir+"/authn_adapter.go", lay.emitGoAuthnAdapters(archIR)); d != nil {
 			return nil, nil, []ir.Diagnostic{*d}
 		}
 	}
@@ -292,12 +310,17 @@ func (lay goLayout) goType(fdnType string, inDomainPkg bool) string {
 		return "[]" + lay.goType(strings.TrimPrefix(fdnType, "[]"), inDomainPkg)
 	}
 	switch fdnType {
-	case "uuid", "string", "timestamp":
+	case "uuid", "string":
 		return "string"
+	case "timestamp":
+		return "time.Time"
 	case "int":
 		return "int"
 	case "decimal":
-		return "float64"
+		if inDomainPkg {
+			return "Decimal"
+		}
+		return lay.DomainPkg + ".Decimal"
 	case "bool":
 		return "bool"
 	default:

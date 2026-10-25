@@ -79,6 +79,9 @@ type ArchitectureIR struct {
 	DomainErrors   []ir.ErrorDecl     `json:"domain_errors,omitempty"`
 	DomainEvents   []ir.EventDecl     `json:"domain_events,omitempty"`
 	DomainPolicies []ir.PolicyDecl    `json:"domain_policies,omitempty"`
+	DomainActor    *ir.ActorDecl      `json:"domain_actor,omitempty"`
+	AuthnAdapter   string             `json:"authn_adapter,omitempty"`
+	HasActorPort   bool               `json:"has_actor_port,omitempty"`
 	Slots          []ir.SlotDecl      `json:"slots,omitempty"`
 	Ports          []RepositoryPortIR `json:"ports"`
 	UseCases       []UseCaseIR        `json:"use_cases"`
@@ -133,6 +136,11 @@ func (uc UseCaseIR) HasTrait(name string) (ir.TraitDecl, bool) {
 		}
 	}
 	return ir.TraitDecl{}, false
+}
+
+// HasActor reports whether the architecture requires Actor resolution.
+func (a *ArchitectureIR) HasActor() bool {
+	return a.HasActorPort
 }
 
 // EntityByName looks up a lowered EntityDecl by Entity name (zero value when absent).

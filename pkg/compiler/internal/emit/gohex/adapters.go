@@ -214,6 +214,10 @@ import (
 
 func (lay goLayout) emitGoChiRouter(archIR *arch.ArchitectureIR) string {
 	var sb strings.Builder
+	portsImport := ""
+	if archIR.HasActorPort {
+		portsImport = fmt.Sprintf("\t\"%s/%s\"\n", archIR.Module, lay.PortsDir)
+	}
 	sb.WriteString(fmt.Sprintf(`package %s
 
 import (
@@ -225,7 +229,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"%s/%s"
-	"%s/%s"
+%s	"%s/%s"
 )
 
 var (
@@ -235,18 +239,27 @@ var (
 
 type Server struct {
 	router *chi.Mux
-`, lay.HTTPPkg, archIR.Module, lay.DomainDir, archIR.Module, lay.UseCasesDir))
+`, lay.HTTPPkg, archIR.Module, lay.DomainDir, portsImport, archIR.Module, lay.UseCasesDir))
 
+	if archIR.HasActorPort {
+		sb.WriteString(fmt.Sprintf("\tactorResolver %s.ActorResolver\n", lay.PortsPkg))
+	}
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("\t%s *%s.%s\n", uc.ActionName, lay.UseCasesPkg, uc.Name))
 	}
 	sb.WriteString("}\n\n")
 
 	var ctorArgs []string
+	if archIR.HasActorPort {
+		ctorArgs = append(ctorArgs, fmt.Sprintf("actorResolver %s.ActorResolver", lay.PortsPkg))
+	}
 	for _, uc := range archIR.UseCases {
 		ctorArgs = append(ctorArgs, fmt.Sprintf("%s *%s.%s", strings.ToLower(uc.ActionName), lay.UseCasesPkg, uc.Name))
 	}
 	sb.WriteString(fmt.Sprintf("func NewServer(%s) *Server {\n\ts := &Server{\n\t\trouter: chi.NewRouter(),\n", strings.Join(ctorArgs, ", ")))
+	if archIR.HasActorPort {
+		sb.WriteString("\t\tactorResolver: actorResolver,\n")
+	}
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.ActionName, strings.ToLower(uc.ActionName)))
 	}
@@ -280,8 +293,11 @@ type Server struct {
 			}
 		}
 		sb.WriteString(fmt.Sprintf("func (s *Server) handle%s(w http.ResponseWriter, r *http.Request) {\n", h.ActionName))
-		sb.WriteString(fmt.Sprintf("\tctx := %s.WithActor(r.Context(), %s.Actor{\n\t\tID: r.Header.Get(\"X-Actor-ID\"),\n\t\tRole: r.Header.Get(\"X-Actor-Role\"),\n\t\tIsVerified: r.Header.Get(\"X-Actor-Verified\") == \"true\",\n\t})\n",
-			lay.DomainPkg, lay.DomainPkg))
+		if archIR.HasActorPort {
+			sb.WriteString(fmt.Sprintf("\tactor, err := s.actorResolver.ResolveActor(r.Context(), r)\n\tif err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n\tctx := %s.WithActor(r.Context(), actor)\n", lay.DomainPkg))
+		} else {
+			sb.WriteString("\tctx := r.Context()\n")
+		}
 		var callArgs []string
 		callArgs = append(callArgs, "ctx")
 
@@ -349,7 +365,7 @@ type Server struct {
 			status = http.StatusBadRequest
 		case "conflict":
 			status = http.StatusConflict
-		case "unauthorized":
+		case "unauthenticated", "unauthorized":
 			status = http.StatusUnauthorized
 		case "forbidden":
 			status = http.StatusForbidden

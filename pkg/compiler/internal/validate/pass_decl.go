@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -86,12 +87,55 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		}
 	}
 
+	if len(sem.Actors) > 1 {
+		for i := 1; i < len(sem.Actors); i++ {
+			diags = append(diags, ir.Diagnostic{
+				Code:     "FDN0104",
+				Severity: ir.SeverityError,
+				Message:  "duplicate actor declaration across blueprint files; only one actor is permitted",
+				Span:     sem.Actors[i].Span,
+			})
+		}
+	}
+
+	if sem.Actor != nil {
+		validateFields(sem.Actor.Fields)
+		checkNoVersionTrait("actor", sem.Actor.Name, sem.Actor.Fields)
+	}
 	for _, v := range sem.Values {
 		validateFields(v.Fields)
 		checkNoVersionTrait("value", v.Name, v.Fields)
 	}
+	tablesSeen := make(map[string]string)
 	for _, e := range sem.Entities {
 		validateFields(e.Fields)
+		for _, tr := range e.Traits {
+			if tr.Name == "table" {
+				tblName := strings.Trim(tr.Args["_"], `"'`)
+				if tblName == "" {
+					tblName = strings.Trim(tr.Args["name"], `"'`)
+				}
+				if tblName == "" {
+					diags = append(diags, ir.Diagnostic{
+						Code:     "FDN0216",
+						Severity: ir.SeverityError,
+						Message:  fmt.Sprintf("entity %q has @table trait with empty table name", e.Name),
+						Span:     tr.Span,
+					})
+				}
+			}
+		}
+		physTable := arch.EntityTableName(e)
+		if prevEnt, exists := tablesSeen[physTable]; exists {
+			diags = append(diags, ir.Diagnostic{
+				Code:     "FDN0216",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("duplicate physical table name %q declared on entity %q (conflicts with entity %q)", physTable, e.Name, prevEnt),
+				Span:     e.Span,
+			})
+		} else {
+			tablesSeen[physTable] = e.Name
+		}
 		versionCount := 0
 		for _, f := range e.Fields {
 			for _, tr := range f.Traits {

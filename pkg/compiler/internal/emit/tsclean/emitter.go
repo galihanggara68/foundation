@@ -106,10 +106,17 @@ func tsType(fdnType string, inDomainFile bool) string {
 		return tsType(strings.TrimPrefix(fdnType, "[]"), inDomainFile) + "[]"
 	}
 	switch fdnType {
-	case "uuid", "string", "timestamp":
+	case "uuid", "string":
 		return "string"
-	case "int", "decimal":
+	case "timestamp":
+		return "Date"
+	case "int":
 		return "number"
+	case "decimal":
+		if inDomainFile {
+			return "Decimal"
+		}
+		return "domain.Decimal"
 	case "bool":
 		return "boolean"
 	case "":

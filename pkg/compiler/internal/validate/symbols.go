@@ -18,6 +18,7 @@ type Pass interface {
 // Pass ordering, symbol resolution, and symbol table lifecycle are fully encapsulated within this entry point.
 func Validate(sem *ir.SemanticIR) []ir.Diagnostic {
 	sym := NewSymbolTable()
+	sym.SetActor(sem.Actor)
 	passes := []Pass{
 		DeclarationPass{},
 		ActionTypeCheckPass{},
@@ -42,12 +43,13 @@ var scalarTypes = map[string]bool{
 }
 
 var validErrorKinds = map[string]bool{
-	"not_found":    true,
-	"validation":   true,
-	"conflict":     true,
-	"unauthorized": true,
-	"forbidden":    true,
-	"internal":     true,
+	"not_found":       true,
+	"validation":      true,
+	"conflict":        true,
+	"unauthenticated": true,
+	"unauthorized":    true,
+	"forbidden":       true,
+	"internal":        true,
 }
 
 // SymbolTable indexes declared domain constructs for fast, DRY lookup across validation passes.
@@ -70,18 +72,36 @@ func NewSymbolTable() *SymbolTable {
 		entities: make(map[string]ir.EntityDecl),
 		values:   make(map[string]ir.ValueDecl),
 		errors: map[string]ir.ErrorDecl{
-			"Conflict": {Name: "Conflict", Kind: "conflict", Message: "optimistic concurrency conflict"},
+			"Conflict":        {Name: "Conflict", Kind: "conflict", Message: "optimistic concurrency conflict"},
+			"Unauthenticated": {Name: "Unauthenticated", Kind: "unauthenticated", Message: "unauthenticated actor"},
 		},
 		events:   make(map[string]ir.EventDecl),
 		policies: make(map[string]ir.PolicyDecl),
-		slots:    make(map[string]ir.SlotDecl),
-		actions:  make(map[string]ir.ActionDecl),
-		actorFields: map[string]ir.FieldDecl{
-			"id":          {Name: "id", Type: "uuid"},
-			"role":        {Name: "role", Type: "string"},
-			"is_verified": {Name: "is_verified", Type: "bool"},
-			"tenant_id":   {Name: "tenant_id", Type: "uuid"},
-		},
+		slots:       make(map[string]ir.SlotDecl),
+		actions:     make(map[string]ir.ActionDecl),
+		actorFields: defaultActorFields(),
+	}
+}
+
+func defaultActorFields() map[string]ir.FieldDecl {
+	return map[string]ir.FieldDecl{
+		"id":          {Name: "id", Type: "uuid"},
+		"role":        {Name: "role", Type: "string"},
+		"verified":    {Name: "verified", Type: "bool"},
+		"is_verified": {Name: "is_verified", Type: "bool"},
+		"tenant_id":   {Name: "tenant_id", Type: "uuid"},
+	}
+}
+
+// SetActor configures the actor fields from a custom actor declaration or restores the implicit baseline.
+func (s *SymbolTable) SetActor(actor *ir.ActorDecl) {
+	if actor == nil {
+		s.actorFields = defaultActorFields()
+		return
+	}
+	s.actorFields = make(map[string]ir.FieldDecl)
+	for _, f := range actor.Fields {
+		s.actorFields[f.Name] = f
 	}
 }
 

@@ -4,6 +4,8 @@ import "sort"
 
 // SemanticIR represents the validated, architecture-agnostic domain representation.
 type SemanticIR struct {
+	Actor     *ActorDecl     `json:"actor,omitempty"`
+	Actors    []ActorDecl    `json:"actors,omitempty"`
 	Enums     []EnumDecl     `json:"enums,omitempty"`
 	Values    []ValueDecl    `json:"values,omitempty"`
 	Entities  []EntityDecl   `json:"entities,omitempty"`
@@ -15,8 +17,15 @@ type SemanticIR struct {
 	Scenarios []ScenarioDecl `json:"scenarios,omitempty"`
 }
 
+type ActorDecl struct {
+	Name   string      `json:"name"`
+	Fields []FieldDecl `json:"fields"`
+	Span   Span        `json:"span"`
+}
+
 // Canonicalize sorts all top-level slices deterministically by name.
 func (s *SemanticIR) Canonicalize() {
+	sort.SliceStable(s.Actors, func(i, j int) bool { return s.Actors[i].Name < s.Actors[j].Name })
 	sort.SliceStable(s.Enums, func(i, j int) bool { return s.Enums[i].Name < s.Enums[j].Name })
 	sort.SliceStable(s.Values, func(i, j int) bool { return s.Values[i].Name < s.Values[j].Name })
 	sort.SliceStable(s.Entities, func(i, j int) bool { return s.Entities[i].Name < s.Entities[j].Name })

@@ -63,7 +63,7 @@ void assert;
 	for _, sc := range archIR.Scenarios {
 		sb.WriteString(fmt.Sprintf("test(%q, async () => {\n", sc.Name))
 		sb.WriteString("  const c = createTestContainer();\n")
-		sb.WriteString("  let actor: domain.Actor = { id: \"\", role: \"\", is_verified: false };\n")
+		sb.WriteString("  let actor: domain.Actor = { id: \"\", role: \"\", verified: false, is_verified: false };\n")
 
 		for _, g := range sc.Givens {
 			if g.EntityName == "actor" {

@@ -70,6 +70,10 @@ func Compile(sources []SourceFile) (*SemanticIR, []Diagnostic) {
 		}
 		diags = append(diags, fileDiags...)
 		if fileIR != nil {
+			sem.Actors = append(sem.Actors, fileIR.Actors...)
+			if sem.Actor == nil && len(fileIR.Actors) > 0 {
+				sem.Actor = &fileIR.Actors[0]
+			}
 			sem.Enums = append(sem.Enums, fileIR.Enums...)
 			sem.Values = append(sem.Values, fileIR.Values...)
 			sem.Entities = append(sem.Entities, fileIR.Entities...)

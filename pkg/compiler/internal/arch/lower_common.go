@@ -202,5 +202,28 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 		arch.Ports = append(arch.Ports, *portMap[name])
 	}
 
+	arch.DomainActor = sem.Actor
+	arch.AuthnAdapter = bp.Authn
+
+	hasActor := false
+	for _, pol := range sem.Policies {
+		for _, p := range pol.Params {
+			if p.Type == "Actor" || p.Name == "actor" {
+				hasActor = true
+			}
+		}
+		ir.WalkExpr(pol.Body, func(e ir.Expr) {
+			if (e.Kind == ir.ExprIdent && e.Value == "actor") || (e.Kind == ir.ExprField && e.Target == "actor") {
+				hasActor = true
+			}
+		})
+	}
+	for _, uc := range arch.UseCases {
+		if uc.UsesActor {
+			hasActor = true
+		}
+	}
+	arch.HasActorPort = hasActor
+
 	return arch
 }

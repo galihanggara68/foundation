@@ -21,6 +21,23 @@ func (lay goLayout) emitGoDomainEnums(archIR *arch.ArchitectureIR) string {
 	return sb.String()
 }
 
+func (lay goLayout) emitGoEntityFile(e ir.EntityDecl) string {
+	var sb strings.Builder
+	sb.WriteString("package " + lay.DomainPkg + "\n\n")
+	hasTime := false
+	for _, f := range e.Fields {
+		if f.Type == "timestamp" {
+			hasTime = true
+			break
+		}
+	}
+	if hasTime {
+		sb.WriteString("import \"time\"\n\n")
+	}
+	sb.WriteString(lay.emitGoStructDef(e.Name, e.Fields))
+	return sb.String()
+}
+
 func (lay goLayout) emitGoStructDef(name string, fields []ir.FieldDecl) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("type %s struct {\n", name))
@@ -45,13 +62,22 @@ import "context"
 
 type actorCtxKey struct{}
 
-type Actor struct {
-	ID         string `+"`json:\"id\"`"+`
-	Role       string `+"`json:\"role\"`"+`
-	IsVerified bool   `+"`json:\"is_verified\"`"+`
-	TenantID   string `+"`json:\"tenant_id\"`"+`
-}
+`, lay.DomainPkg))
 
+	if archIR.DomainActor != nil {
+		sb.WriteString(lay.emitGoStructDef("Actor", archIR.DomainActor.Fields))
+	} else {
+		sb.WriteString(`type Actor struct {
+	ID         string ` + "`json:\"id\"`" + `
+	Role       string ` + "`json:\"role\"`" + `
+	Verified   bool   ` + "`json:\"verified\"`" + `
+	IsVerified bool   ` + "`json:\"is_verified\"`" + `
+	TenantID   string ` + "`json:\"tenant_id\"`" + `
+}
+`)
+	}
+
+	sb.WriteString(fmt.Sprintf(`
 func WithActor(ctx context.Context, actor Actor) context.Context {
 	return context.WithValue(ctx, actorCtxKey{}, actor)
 }
@@ -63,7 +89,7 @@ func ActorFromContext(ctx context.Context) Actor {
 	return Actor{}
 }
 
-`, lay.DomainPkg))
+`))
 	for _, v := range archIR.DomainValues {
 		sb.WriteString(lay.emitGoStructDef(v.Name, v.Fields))
 		sb.WriteString("\n")
@@ -115,9 +141,15 @@ var ErrConflict = &DomainError{
 	Message: "optimistic concurrency conflict",
 }
 
+var ErrUnauthenticated = &DomainError{
+	Code:    "Unauthenticated",
+	Kind:    "unauthenticated",
+	Message: "unauthenticated actor",
+}
+
 `, lay.DomainPkg))
 	for _, errDecl := range archIR.DomainErrors {
-		if errDecl.Name == "Conflict" {
+		if errDecl.Name == "Conflict" || errDecl.Name == "Unauthenticated" {
 			continue
 		}
 		sb.WriteString(fmt.Sprintf("var Err%s = &DomainError{\n\tCode: %q,\n\tKind: %q,\n\tMessage: %q,\n}\n\n",

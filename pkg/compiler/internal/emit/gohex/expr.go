@@ -26,8 +26,14 @@ func (lay goLayout) emitGoExpr(e ir.Expr, inDomainPkg bool) string {
 	switch e.Kind {
 	case ir.ExprString:
 		return fmt.Sprintf("%q", e.Value)
-	case ir.ExprInt, ir.ExprFloat, ir.ExprBool:
+	case ir.ExprInt, ir.ExprBool:
 		return e.Value
+	case ir.ExprFloat:
+		prefix := lay.DomainPkg + "."
+		if inDomainPkg {
+			prefix = ""
+		}
+		return fmt.Sprintf("%sMustNewDecimal(%q)", prefix, e.Value)
 	case ir.ExprEnumLit:
 		prefix := lay.DomainPkg + "."
 		if inDomainPkg {
@@ -56,13 +62,56 @@ func (lay goLayout) emitGoExpr(e ir.Expr, inDomainPkg bool) string {
 	case ir.ExprBinary:
 		leftStr := lay.emitGoExpr(*e.Left, inDomainPkg)
 		rightStr := lay.emitGoExpr(*e.Right, inDomainPkg)
-		if (e.Left.InferredType == "decimal" && e.Right.InferredType == "int") ||
-			(e.Left.InferredType == "int" && e.Right.InferredType == "decimal") {
+
+		if e.Left.InferredType == "timestamp" && e.Right.InferredType == "timestamp" {
+			switch e.Op {
+			case "<":
+				return fmt.Sprintf("%s.Before(%s)", leftStr, rightStr)
+			case ">":
+				return fmt.Sprintf("%s.After(%s)", leftStr, rightStr)
+			case "<=":
+				return fmt.Sprintf("!%s.After(%s)", leftStr, rightStr)
+			case ">=":
+				return fmt.Sprintf("!%s.Before(%s)", leftStr, rightStr)
+			case "==":
+				return fmt.Sprintf("%s.Equal(%s)", leftStr, rightStr)
+			case "!=":
+				return fmt.Sprintf("!%s.Equal(%s)", leftStr, rightStr)
+			}
+		}
+
+		if e.Left.InferredType == "decimal" || e.Right.InferredType == "decimal" {
+			decPrefix := lay.DomainPkg + "."
+			if inDomainPkg {
+				decPrefix = ""
+			}
 			if e.Left.InferredType == "int" {
-				leftStr = fmt.Sprintf("float64(%s)", leftStr)
+				leftStr = fmt.Sprintf("%sNewDecimalFromInt(int64(%s))", decPrefix, leftStr)
 			}
 			if e.Right.InferredType == "int" {
-				rightStr = fmt.Sprintf("float64(%s)", rightStr)
+				rightStr = fmt.Sprintf("%sNewDecimalFromInt(int64(%s))", decPrefix, rightStr)
+			}
+			switch e.Op {
+			case "+":
+				return fmt.Sprintf("%s.Add(%s)", leftStr, rightStr)
+			case "-":
+				return fmt.Sprintf("%s.Sub(%s)", leftStr, rightStr)
+			case "*":
+				return fmt.Sprintf("%s.Mul(%s)", leftStr, rightStr)
+			case "/":
+				return fmt.Sprintf("%s.Div(%s)", leftStr, rightStr)
+			case "==":
+				return fmt.Sprintf("%s.Equal(%s)", leftStr, rightStr)
+			case "!=":
+				return fmt.Sprintf("!%s.Equal(%s)", leftStr, rightStr)
+			case ">":
+				return fmt.Sprintf("%s.GreaterThan(%s)", leftStr, rightStr)
+			case ">=":
+				return fmt.Sprintf("%s.GreaterThanOrEqual(%s)", leftStr, rightStr)
+			case "<":
+				return fmt.Sprintf("%s.LessThan(%s)", leftStr, rightStr)
+			case "<=":
+				return fmt.Sprintf("%s.LessThanOrEqual(%s)", leftStr, rightStr)
 			}
 		}
 		return fmt.Sprintf("(%s %s %s)", leftStr, e.Op, rightStr)

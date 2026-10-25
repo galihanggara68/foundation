@@ -10,11 +10,68 @@ import (
 
 func emitTSDomain(archIR *arch.ArchitectureIR) string {
 	var sb strings.Builder
-	sb.WriteString(`export interface Actor {
+	if archIR.DomainActor != nil {
+		sb.WriteString(fmt.Sprintf("export interface Actor {\n"))
+		for _, f := range archIR.DomainActor.Fields {
+			opt := ""
+			if f.Optional {
+				opt = "?"
+			}
+			sb.WriteString(fmt.Sprintf("  %s%s: %s;\n", f.Name, opt, tsType(f.Type, true)))
+		}
+		sb.WriteString("}\n\n")
+	} else {
+		sb.WriteString(`export interface Actor {
   id: string;
   role: string;
-  is_verified: boolean;
+  verified?: boolean;
+  is_verified?: boolean;
   tenant_id?: string;
+}
+
+`)
+	}
+
+	sb.WriteString(`export class Decimal {
+  readonly units: bigint;
+
+  constructor(value: string | number | bigint) {
+    if (typeof value === "bigint") {
+      this.units = value;
+    } else {
+      const s = String(value).trim();
+      const neg = s.startsWith("-");
+      const clean = (neg || s.startsWith("+")) ? s.substring(1) : s;
+      const parts = clean.split(".");
+      const whole = BigInt(parts[0] || "0");
+      const fracStr = (parts[1] || "").substring(0, 4).padEnd(4, "0");
+      const frac = BigInt(fracStr || "0");
+      const u = whole * 10000n + frac;
+      this.units = neg ? -u : u;
+    }
+  }
+
+  add(other: Decimal): Decimal { return new Decimal(this.units + other.units); }
+  sub(other: Decimal): Decimal { return new Decimal(this.units - other.units); }
+  mul(other: Decimal): Decimal { return new Decimal((this.units * other.units) / 10000n); }
+  div(other: Decimal): Decimal {
+    if (other.units === 0n) return new Decimal(0n);
+    return new Decimal((this.units * 10000n) / other.units);
+  }
+  equals(other: Decimal): boolean { return this.units === other.units; }
+  greaterThan(other: Decimal): boolean { return this.units > other.units; }
+  lessThan(other: Decimal): boolean { return this.units < other.units; }
+  greaterThanOrEqual(other: Decimal): boolean { return this.units >= other.units; }
+  lessThanOrEqual(other: Decimal): boolean { return this.units <= other.units; }
+  toNumber(): number { return Number(this.units) / 10000; }
+  toString(): string {
+    const isNeg = this.units < 0n;
+    const abs = isNeg ? -this.units : this.units;
+    const whole = abs / 10000n;
+    const frac = abs % 10000n;
+    return (isNeg ? "-" : "") + whole.toString() + "." + frac.toString().padStart(4, "0");
+  }
+  toJSON(): string { return this.toString(); }
 }
 
 export class DomainError extends Error {
@@ -29,11 +86,12 @@ export class DomainError extends Error {
 }
 
 export const ErrConflict = new DomainError("Conflict", "conflict", "optimistic concurrency conflict");
+export const ErrUnauthenticated = new DomainError("Unauthenticated", "unauthenticated", "unauthenticated actor");
 
 `)
 
 	for _, errDecl := range archIR.DomainErrors {
-		if errDecl.Name == "Conflict" {
+		if errDecl.Name == "Conflict" || errDecl.Name == "Unauthenticated" {
 			continue
 		}
 		sb.WriteString(fmt.Sprintf("export const Err%s = new DomainError(%q, %q, %q);\n",

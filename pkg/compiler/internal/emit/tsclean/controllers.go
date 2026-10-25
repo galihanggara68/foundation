@@ -10,6 +10,9 @@ import (
 func emitTSExpressController(archIR *arch.ArchitectureIR) string {
 	var sb strings.Builder
 	sb.WriteString("import * as domain from \"../entities/domain.ts\";\n")
+	if archIR.HasActorPort {
+		sb.WriteString("import * as ports from \"../usecases/ports.ts\";\n")
+	}
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("import { %s } from \"../usecases/%s_usecase.ts\";\n", uc.Name, strings.ToLower(uc.ActionName)))
 	}
@@ -47,6 +50,7 @@ function writeError(res: ExpressResponse, err: unknown): void {
       case "conflict":
         status = 409;
         break;
+      case "unauthenticated":
       case "unauthorized":
         status = 401;
         break;
@@ -63,15 +67,24 @@ function writeError(res: ExpressResponse, err: unknown): void {
 export class ExpressController {
 `)
 
+	if archIR.HasActorPort {
+		sb.WriteString("  readonly actorResolver: ports.ActorResolverGateway;\n")
+	}
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("  readonly %s: %s;\n", toCamelCase(uc.ActionName), uc.Name))
 	}
 	sb.WriteString("\n  constructor(\n")
 	var ctorParams []string
+	if archIR.HasActorPort {
+		ctorParams = append(ctorParams, "    actorResolver: ports.ActorResolverGateway")
+	}
 	for _, uc := range archIR.UseCases {
 		ctorParams = append(ctorParams, fmt.Sprintf("    %s: %s", toCamelCase(uc.ActionName), uc.Name))
 	}
 	sb.WriteString(strings.Join(ctorParams, ",\n") + "\n  ) {\n")
+	if archIR.HasActorPort {
+		sb.WriteString("    this.actorResolver = actorResolver;\n")
+	}
 	for _, uc := range archIR.UseCases {
 		c := toCamelCase(uc.ActionName)
 		sb.WriteString(fmt.Sprintf("    this.%s = %s;\n", c, c))
@@ -86,14 +99,25 @@ export class ExpressController {
 	sb.WriteString("  }\n\n")
 
 	for _, h := range archIR.HTTPHandlers {
+		var targetUC *arch.UseCaseIR
+		for i := range archIR.UseCases {
+			if archIR.UseCases[i].ActionName == h.ActionName {
+				targetUC = &archIR.UseCases[i]
+				break
+			}
+		}
 		sb.WriteString(fmt.Sprintf("  async handle%s(req: ExpressRequest, res: ExpressResponse): Promise<void> {\n", h.ActionName))
-		sb.WriteString(`    const actor: domain.Actor = {
+		if archIR.HasActorPort {
+			sb.WriteString("    try {\n      const actor = (await this.actorResolver.resolveActor(req.headers)) as unknown as domain.Actor;\n")
+		} else {
+			sb.WriteString(`    const actor: domain.Actor = {
       id: req.headers["x-actor-id"] ?? "",
       role: req.headers["x-actor-role"] ?? "",
       is_verified: req.headers["x-actor-verified"] === "true",
     };
     try {
 `)
+		}
 		pathParamSet := make(map[string]bool)
 		for _, pp := range h.PathParams {
 			pathParamSet[pp] = true
@@ -110,14 +134,6 @@ export class ExpressController {
 		}
 		if h.Method != "GET" && h.ExpectedVersionParam != "" {
 			sb.WriteString(fmt.Sprintf("      if (req.headers[\"if-match\"] && req.headers[\"if-match\"] !== \"*\") {\n        const cleanMatch = req.headers[\"if-match\"].replace(/\"/g, \"\");\n        if (String(%s) !== cleanMatch) {\n          throw domain.ErrConflict;\n        }\n      }\n", h.ExpectedVersionParam))
-		}
-
-		var targetUC *arch.UseCaseIR
-		for i := range archIR.UseCases {
-			if archIR.UseCases[i].ActionName == h.ActionName {
-				targetUC = &archIR.UseCases[i]
-				break
-			}
 		}
 
 		status := 200
@@ -144,7 +160,7 @@ func emitTSContainer(archIR *arch.ArchitectureIR) string {
 	sb.WriteString(`import * as memory from "../gateways/memory_repositories.ts";
 import * as postgres from "../gateways/postgres_repositories.ts";
 import { ExpressController } from "../controllers/express_router.ts";
-import { createMemoryDriver, createPostgresDriver } from "@foundation-contrib/runtime";
+import { createMemoryDriver, createPostgresDriver, DevHeadersResolver, JWTOIDCResolver } from "@foundation-contrib/runtime";
 `)
 	for _, sl := range archIR.Slots {
 		sb.WriteString(fmt.Sprintf("import { create%sSlot } from \"../slots/%s_stub.ts\";\n", sl.Name, strings.ToLower(sl.Name)))
@@ -198,6 +214,14 @@ import { createMemoryDriver, createPostgresDriver } from "@foundation-contrib/ru
 	}
 	for _, eh := range archIR.EventHandlers {
 		sb.WriteString(fmt.Sprintf("  events.subscribe(%q, async (payload) => {\n    await %s.execute({ id: \"system\", role: \"system\", is_verified: true }, payload as any);\n  });\n", eh.EventName, toCamelCase(eh.ActionName)))
+	}
+	if archIR.HasActorPort {
+		if archIR.AuthnAdapter == "jwt-oidc" {
+			sb.WriteString("  const actorResolver = new JWTOIDCResolver(process.env.AUTH_ISSUER || \"\", process.env.AUTH_AUDIENCE || \"\");\n")
+		} else {
+			sb.WriteString("  const actorResolver = new DevHeadersResolver();\n")
+		}
+		ctrlArgs = append([]string{"actorResolver"}, ctrlArgs...)
 	}
 	sb.WriteString(fmt.Sprintf("  const controller = new ExpressController(%s);\n", strings.Join(ctrlArgs, ", ")))
 	sb.WriteString("  return {\n")
@@ -255,6 +279,10 @@ import { createMemoryDriver, createPostgresDriver } from "@foundation-contrib/ru
 	}
 	for _, eh := range archIR.EventHandlers {
 		sb.WriteString(fmt.Sprintf("  events.subscribe(%q, async (payload) => {\n    await %s.execute({ id: \"system\", role: \"system\", is_verified: true }, payload as any);\n  });\n", eh.EventName, toCamelCase(eh.ActionName)))
+	}
+	if archIR.HasActorPort {
+		sb.WriteString("  const actorResolver = new DevHeadersResolver();\n")
+		pgCtrlArgs = append([]string{"actorResolver"}, pgCtrlArgs...)
 	}
 	sb.WriteString(fmt.Sprintf("  const controller = new ExpressController(%s);\n", strings.Join(pgCtrlArgs, ", ")))
 	sb.WriteString("  return { controller };\n}\n")

@@ -35,9 +35,15 @@ func (lay goLayout) emitGoBootstrap(archIR *arch.ArchitectureIR) string {
 	if len(archIR.Slots) > 0 {
 		sb.WriteString(fmt.Sprintf("\t\"%s/internal/slots\"\n", archIR.Module))
 	}
+	if archIR.HasActorPort {
+		sb.WriteString(fmt.Sprintf("\t\"%s/%s\"\n", archIR.Module, lay.AuthnDir))
+	}
 	sb.WriteString(fmt.Sprintf("\t\"%s/%s\"\n", archIR.Module, lay.UseCasesDir))
 	sb.WriteString(")\n\ntype Container struct {\n")
 
+	if archIR.HasActorPort {
+		sb.WriteString(fmt.Sprintf("\tActorResolver %s.ActorResolver\n", lay.PortsPkg))
+	}
 	for _, p := range archIR.Ports {
 		sb.WriteString(fmt.Sprintf("\t%sRepo *%s.InMemory%sRepository\n", p.EntityName, lay.MemoryPkg, p.EntityName))
 	}
@@ -55,6 +61,9 @@ func (lay goLayout) emitGoBootstrap(archIR *arch.ArchitectureIR) string {
 	sb.WriteString(fmt.Sprintf("\tHTTPServer *%s.Server\n}\n\n", lay.HTTPPkg))
 
 	sb.WriteString("type PostgresContainer struct {\n")
+	if archIR.HasActorPort {
+		sb.WriteString(fmt.Sprintf("\tActorResolver %s.ActorResolver\n", lay.PortsPkg))
+	}
 	for _, p := range archIR.Ports {
 		sb.WriteString(fmt.Sprintf("\t%sRepo %s.%sRepository\n", p.EntityName, lay.PortsPkg, p.EntityName))
 	}
@@ -73,6 +82,9 @@ func (lay goLayout) emitGoBootstrap(archIR *arch.ArchitectureIR) string {
 
 	sb.WriteString("func NewTestContainer() *Container {\n")
 	sb.WriteString("\truntimeDriver := runtime.NewMemoryDriver()\n\t_ = runtimeDriver\n")
+	if archIR.HasActorPort {
+		sb.WriteString("\tactorResolver := authn.NewDevHeadersActorResolver()\n\t_ = actorResolver\n")
+	}
 	var snapRepos []string
 	for _, p := range archIR.Ports {
 		rVar := strings.ToLower(p.EntityName) + "Repo"
@@ -98,6 +110,9 @@ func (lay goLayout) emitGoBootstrap(archIR *arch.ArchitectureIR) string {
 			sb.WriteString(fmt.Sprintf("\t\t_, err := %s.Execute(ctx, ev)\n\t\treturn err\n", actionVar))
 			sb.WriteString("\t})\n")
 		}
+	}
+	if archIR.HasActorPort {
+		srvArgs = append([]string{"actorResolver"}, srvArgs...)
 	}
 	sb.WriteString(fmt.Sprintf("\tsrv := %s.NewServer(%s)\n", lay.HTTPPkg, strings.Join(srvArgs, ", ")))
 	sb.WriteString("\treturn &Container{\n")
@@ -141,6 +156,9 @@ func (lay goLayout) emitGoUseCaseWiring(sb *strings.Builder, archIR *arch.Archit
 }
 
 func emitGoContainerStructFields(sb *strings.Builder, archIR *arch.ArchitectureIR) {
+	if archIR.HasActorPort {
+		sb.WriteString("\t\tActorResolver: actorResolver,\n")
+	}
 	for _, p := range archIR.Ports {
 		sb.WriteString(fmt.Sprintf("\t\t%sRepo: %sRepo,\n", p.EntityName, strings.ToLower(p.EntityName)))
 	}
@@ -162,6 +180,13 @@ func (lay goLayout) emitGoPostgresBootstrapFunc(archIR *arch.ArchitectureIR) str
 	var sb strings.Builder
 	sb.WriteString("func NewPostgresContainer(db *sql.DB) *PostgresContainer {\n")
 	sb.WriteString("\truntimeDriver := runtime.NewPostgresDriver(db)\n\t_ = runtimeDriver\n")
+	if archIR.HasActorPort {
+		if archIR.AuthnAdapter == "jwt-oidc" {
+			sb.WriteString("\tactorResolver := authn.NewJWTOIDCActorResolver(\"\", \"\")\n\t_ = actorResolver\n")
+		} else {
+			sb.WriteString("\tactorResolver := authn.NewDevHeadersActorResolver()\n\t_ = actorResolver\n")
+		}
+	}
 	for _, p := range archIR.Ports {
 		rVar := strings.ToLower(p.EntityName) + "Repo"
 		sb.WriteString(fmt.Sprintf("\t%s := %s.NewPostgres%sRepository(db)\n\t_ = %s\n", rVar, lay.PostgresPkg, p.EntityName, rVar))
@@ -183,6 +208,9 @@ func (lay goLayout) emitGoPostgresBootstrapFunc(archIR *arch.ArchitectureIR) str
 			sb.WriteString(fmt.Sprintf("\t\t_, err := %s.Execute(ctx, ev)\n\t\treturn err\n", actionVar))
 			sb.WriteString("\t})\n")
 		}
+	}
+	if archIR.HasActorPort {
+		srvArgs = append([]string{"actorResolver"}, srvArgs...)
 	}
 	sb.WriteString(fmt.Sprintf("\tsrv := %s.NewServer(%s)\n", lay.HTTPPkg, strings.Join(srvArgs, ", ")))
 	sb.WriteString("\treturn &PostgresContainer{\n")

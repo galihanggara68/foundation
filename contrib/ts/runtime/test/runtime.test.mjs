@@ -73,6 +73,7 @@ test("MemoryOutboxStore stage and relay", async () => {
   assert.strictEqual(published2.length, 0);
 });
 
+
 test("PostgresIdempotencyStore lifecycle", async () => {
   const table = new Map();
   const fakeDB = {
@@ -181,4 +182,45 @@ test("PostgresOutboxStore stage and relay", async () => {
   });
   assert.strictEqual(published2.length, 0);
 });
+
+test("DevHeadersResolver extracts claims and detects missing headers", async () => {
+  const { DevHeadersResolver } = await import("../src/index.js");
+  const resolver = new DevHeadersResolver();
+
+  const headers = {
+    "x-actor-id": "act-1",
+    "x-actor-role": "admin",
+    "x-actor-verified": "true",
+    "x-actor-tenant-id": "t-1",
+  };
+
+  const claims = await resolver.resolveActor(headers);
+  assert.strictEqual(claims.id, "act-1");
+  assert.strictEqual(claims.role, "admin");
+  assert.strictEqual(claims.verified, true);
+  assert.strictEqual(claims.tenant_id, "t-1");
+
+  await assert.rejects(
+    async () => resolver.resolveActor({}),
+    /unauthenticated/
+  );
+});
+
+test("JWTOIDCResolver verifies token payload", async () => {
+  const { JWTOIDCResolver } = await import("../src/index.js");
+  const resolver = new JWTOIDCResolver("https://auth.example.com", "api");
+
+  const payload = Buffer.from(JSON.stringify({ sub: "jwt-user-1", role: "user", iss: "https://auth.example.com", aud: "api" })).toString("base64url");
+  const token = `header.${payload}.sig`;
+
+  const claims = await resolver.resolveActor({ authorization: `Bearer ${token}` });
+  assert.strictEqual(claims.id, "jwt-user-1");
+  assert.strictEqual(claims.role, "user");
+
+  await assert.rejects(
+    async () => resolver.resolveActor({}),
+    /unauthenticated/
+  );
+});
+
 

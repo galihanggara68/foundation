@@ -61,15 +61,18 @@ func (lay goLayout) emitGoSinglePostgresRepo(archIR *arch.ArchitectureIR, p arch
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"errors"
+	"fmt"
+	"time"
 	"%s/%s"
 )
 
 `, lay.PostgresPkg, archIR.Module, lay.DomainDir))
 
 	ent := archIR.EntityByName(p.EntityName)
-	tableName := arch.ToSnakeCase(p.EntityName)
+	tableName := arch.EntityTableName(ent)
 
 	var colNames []string
 	var scanTargets []string
@@ -86,7 +89,7 @@ import (
 
 	repoStruct := "Postgres" + p.EntityName + "Repository"
 	sb.WriteString(fmt.Sprintf("type %s struct {\n\tdb *sql.DB\n}\n\n", repoStruct))
-	sb.WriteString(fmt.Sprintf("func New%s(db *sql.DB) *%s {\n\t_ = errors.Is\n\treturn &%s{db: db}\n}\n\n", repoStruct, repoStruct, repoStruct))
+	sb.WriteString(fmt.Sprintf("func New%s(db *sql.DB) *%s {\n\t_ = errors.Is\n\t_ = time.Now\n\treturn &%s{db: db}\n}\n\n", repoStruct, repoStruct, repoStruct))
 
 	colsCSV := strings.Join(colNames, ", ")
 
@@ -97,8 +100,24 @@ import (
 				tableName, colsCSV, strings.Join(placeholders, ", "), colsCSV)
 			sb.WriteString(fmt.Sprintf("func (r *%s) Create(ctx context.Context, entity %s.%s) (%s.%s, error) {\n",
 				repoStruct, lay.DomainPkg, p.EntityName, lay.DomainPkg, p.EntityName))
+			hasUUIDPK := false
+			for _, f := range ent.Fields {
+				if f.HasTrait("pk") && f.Type == "uuid" {
+					hasUUIDPK = true
+					break
+				}
+			}
+			if hasUUIDPK {
+				sb.WriteString(fmt.Sprintf("\tif entity.%s == \"\" {\n\t\tvar b [16]byte\n\t\t_, _ = rand.Read(b[:])\n\t\tb[6] = (b[6] & 0x0f) | 0x40\n\t\tb[8] = (b[8] & 0x3f) | 0x80\n\t\tentity.%s = fmt.Sprintf(\"%%08x-%%04x-%%04x-%%04x-%%012x\", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])\n\t}\n", pkExport, pkExport))
+			}
 			if _, vExport, hasV := arch.EntityVersionField(ent); hasV {
 				sb.WriteString(fmt.Sprintf("\tif entity.%s == 0 {\n\t\tentity.%s = 1\n\t}\n", vExport, vExport))
+			}
+			for _, f := range ent.Fields {
+				if f.HasTrait("auto_now_add") && f.Type == "timestamp" {
+					fExp := arch.ExportIdent(f.Name)
+					sb.WriteString(fmt.Sprintf("\tif entity.%s.IsZero() {\n\t\tentity.%s = time.Now().UTC()\n\t}\n", fExp, fExp))
+				}
 			}
 			sb.WriteString(fmt.Sprintf("\tvar out %s.%s\n", lay.DomainPkg, p.EntityName))
 			sb.WriteString(fmt.Sprintf("\trow := connFromContext(ctx, r.db).QueryRowContext(ctx, %q, %s)\n",

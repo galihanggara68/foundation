@@ -289,3 +289,5 @@ export function createPostgresDriver(db: PgQueryable): Driver {
   return new PostgresDriver(db);
 }
 
+export * from "./authn.js";
+

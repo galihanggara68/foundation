@@ -22,6 +22,10 @@ export interface TransactionManager {
   withinTransaction<T>(fn: () => Promise<T>): Promise<T>;
 }
 
+export interface ActorResolverGateway {
+  resolveActor(headers: Record<string, string | undefined>): Promise<Record<string, unknown>>;
+}
+
 `)
 
 	for _, p := range archIR.Ports {

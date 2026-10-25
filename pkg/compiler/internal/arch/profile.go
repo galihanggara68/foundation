@@ -21,6 +21,7 @@ type BuildProfile struct {
 	Project      ProjectConfig      `json:"project"`
 	Storage      StorageConfig      `json:"storage"`
 	Dependencies DependenciesConfig `json:"dependencies"`
+	Authn        string             `json:"authn,omitempty"`
 	Targets      []TargetConfig     `json:"targets"`
 }
 
@@ -76,6 +77,15 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 		}
 		indent := len(rawLine) - len(strings.TrimLeft(rawLine, " \t"))
 
+		if indent == 0 && strings.HasPrefix(trimmed, "authn:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			val := strings.TrimSpace(parts[1])
+			if val != "" {
+				bp.Authn = val
+				continue
+			}
+		}
+
 		if indent == 0 && strings.HasSuffix(trimmed, ":") {
 			if curTarget != nil {
 				bp.Targets = append(bp.Targets, *curTarget)
@@ -86,6 +96,11 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 		}
 
 		switch section {
+		case "authn":
+			k, v, ok := splitKV(trimmed)
+			if ok && (k == "adapter" || k == "provider") {
+				bp.Authn = v
+			}
 		case "project":
 			k, v, ok := splitKV(trimmed)
 			if !ok {
@@ -144,6 +159,17 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 
 	if bp.Project.Module == "" {
 		bp.Project.Module = "example.com/" + bp.Project.Name
+	}
+
+	if bp.Authn == "" {
+		bp.Authn = "dev-headers"
+	} else if bp.Authn != "dev-headers" && bp.Authn != "jwt-oidc" {
+		return nil, []ir.Diagnostic{{
+			Code:     "FDN0310",
+			Severity: ir.SeverityError,
+			Message:  fmt.Sprintf("invalid authn adapter %q; expected 'dev-headers' or 'jwt-oidc'", bp.Authn),
+			Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+		}}
 	}
 
 	if bp.Dependencies.Runtime != "" {

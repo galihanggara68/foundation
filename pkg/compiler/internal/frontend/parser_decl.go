@@ -36,6 +36,14 @@ func (p *parser) parseEnum() (ir.EnumDecl, bool) {
 	}, true
 }
 
+func (p *parser) parseActor() (ir.ActorDecl, bool) {
+	name, _, fields, span, ok := p.parseNamedStruct()
+	if !ok {
+		return ir.ActorDecl{}, false
+	}
+	return ir.ActorDecl{Name: name, Fields: fields, Span: span}, true
+}
+
 func (p *parser) parseEvent() (ir.EventDecl, bool) {
 	name, _, fields, span, ok := p.parseNamedStruct()
 	if !ok {

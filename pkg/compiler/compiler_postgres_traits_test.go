@@ -81,13 +81,13 @@ targets:
 	schemaSQL := string(schemaBytes)
 
 	expectedDDLFragments := []string{
-		"CREATE TABLE customer (",
+		"CREATE TABLE customers (",
 		"id UUID PRIMARY KEY",
 		"email TEXT NOT NULL UNIQUE",
 		"full_name TEXT NOT NULL",
-		"CREATE INDEX idx_customer_full_name ON customer (full_name);",
-		"CREATE TABLE invoice (",
-		"customer_id UUID NOT NULL REFERENCES customer(id)",
+		"CREATE INDEX idx_customers_full_name ON customers (full_name);",
+		"CREATE TABLE invoices (",
+		"customer_id UUID NOT NULL REFERENCES customers(id)",
 		"amount NUMERIC(10, 2) NOT NULL",
 		"status TEXT NOT NULL DEFAULT 'draft'",
 		"notes TEXT",
@@ -103,7 +103,7 @@ targets:
 	if err != nil {
 		t.Fatalf("expected migrations/0001_initial.up.sql: %v", err)
 	}
-	if !strings.Contains(string(mig1UpBytes), "CREATE TABLE customer") {
+	if !strings.Contains(string(mig1UpBytes), "CREATE TABLE customers") {
 		t.Errorf("expected 0001_initial.up.sql to create tables, got:\n%s", string(mig1UpBytes))
 	}
 
@@ -155,10 +155,10 @@ action CreateCustomer(email: string, display_name: string) -> Customer {
 		t.Fatalf("expected migrations/0002_migration.up.sql: %v", err)
 	}
 	mig2Up := string(mig2UpBytes)
-	if !strings.Contains(mig2Up, "ALTER TABLE customer RENAME COLUMN full_name TO display_name;") {
+	if !strings.Contains(mig2Up, "ALTER TABLE customers RENAME COLUMN full_name TO display_name;") {
 		t.Errorf("expected RENAME COLUMN in 0002_migration.up.sql, got:\n%s", mig2Up)
 	}
-	if !strings.Contains(mig2Up, "ALTER TABLE customer ADD COLUMN phone_number TEXT;") {
+	if !strings.Contains(mig2Up, "ALTER TABLE customers ADD COLUMN phone_number TEXT;") {
 		t.Errorf("expected ADD COLUMN phone_number in 0002_migration.up.sql, got:\n%s", mig2Up)
 	}
 
@@ -167,7 +167,7 @@ action CreateCustomer(email: string, display_name: string) -> Customer {
 		t.Fatalf("expected migrations/0002_migration.down.sql: %v", err)
 	}
 	mig2Down := string(mig2DownBytes)
-	if !strings.Contains(mig2Down, "ALTER TABLE customer RENAME COLUMN display_name TO full_name;") {
+	if !strings.Contains(mig2Down, "ALTER TABLE customers RENAME COLUMN display_name TO full_name;") {
 		t.Errorf("expected reverse RENAME COLUMN in 0002_migration.down.sql, got:\n%s", mig2Down)
 	}
 

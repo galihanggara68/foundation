@@ -128,7 +128,7 @@ targets:
 	_, _ = db.Exec(`
 DROP TABLE IF EXISTS outbox_events CASCADE;
 DROP TABLE IF EXISTS idempotency_keys CASCADE;
-DROP TABLE IF EXISTS wallet CASCADE;
+DROP TABLE IF EXISTS wallets CASCADE;
 `)
 	if _, err := db.Exec(string(schemaSQL)); err != nil {
 		t.Fatalf("failed to apply generated schema.sql: %v", err)
@@ -136,7 +136,7 @@ DROP TABLE IF EXISTS wallet CASCADE;
 
 	// Seed initial wallet: id = 11111111-1111-1111-1111-111111111111, balance = 500
 	walletID := "11111111-1111-1111-1111-111111111111"
-	if _, err := db.Exec("INSERT INTO wallet (id, balance) VALUES ($1, $2)", walletID, 500); err != nil {
+	if _, err := db.Exec("INSERT INTO wallets (id, balance) VALUES ($1, $2)", walletID, 500); err != nil {
 		t.Fatalf("seed wallet: %v", err)
 	}
 
@@ -194,7 +194,7 @@ DROP TABLE IF EXISTS wallet CASCADE;
 
 	// Verify rollback atomicity in PostgreSQL: wallet balance still 500, no outbox, no idempotency
 	var balance int
-	if err := db.QueryRow("SELECT balance FROM wallet WHERE id = $1", walletID).Scan(&balance); err != nil {
+	if err := db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance); err != nil {
 		t.Fatalf("query wallet: %v", err)
 	}
 	if balance != 500 {
@@ -230,7 +230,7 @@ DROP TABLE IF EXISTS wallet CASCADE;
 	}
 
 	// Verify wallet balance is 300
-	if err := db.QueryRow("SELECT balance FROM wallet WHERE id = $1", walletID).Scan(&balance); err != nil {
+	if err := db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance); err != nil {
 		t.Fatalf("query wallet: %v", err)
 	}
 	if balance != 300 {
@@ -274,7 +274,7 @@ DROP TABLE IF EXISTS wallet CASCADE;
 	}
 
 	// Balance should STILL be 300 (not 100!)
-	if err := db.QueryRow("SELECT balance FROM wallet WHERE id = $1", walletID).Scan(&balance); err != nil {
+	if err := db.QueryRow("SELECT balance FROM wallets WHERE id = $1", walletID).Scan(&balance); err != nil {
 		t.Fatalf("query wallet: %v", err)
 	}
 	if balance != 300 {

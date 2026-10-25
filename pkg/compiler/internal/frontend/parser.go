@@ -100,6 +100,13 @@ func (p *parser) parseBlueprint() *ir.SemanticIR {
 			continue
 		}
 		switch t.text {
+		case "actor":
+			if act, ok := p.parseActor(); ok {
+				sem.Actors = append(sem.Actors, act)
+				if sem.Actor == nil {
+					sem.Actor = &act
+				}
+			}
 		case "enum":
 			if e, ok := p.parseEnum(); ok {
 				sem.Enums = append(sem.Enums, e)

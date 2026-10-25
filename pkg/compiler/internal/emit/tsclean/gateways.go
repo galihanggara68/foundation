@@ -244,7 +244,7 @@ export class PostgresTransactionManager implements ports.TransactionManager {
 
 	for _, p := range archIR.Ports {
 		ent := archIR.EntityByName(p.EntityName)
-		tableName := arch.ToSnakeCase(p.EntityName)
+		tableName := arch.EntityTableName(ent)
 		var colNames []string
 		var placeholders []string
 		var fieldVals []string

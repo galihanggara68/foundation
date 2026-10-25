@@ -34,6 +34,12 @@ func WalkStepsAndExprs(steps []StepDecl, onStep func(StepDecl), onExpr func(Expr
 		} else if s.WhereValue != nil {
 			WalkExpr(*s.WhereValue, onExpr)
 		}
+		if s.LimitExpr != nil {
+			WalkExpr(*s.LimitExpr, onExpr)
+		}
+		if s.CursorExpr != nil {
+			WalkExpr(*s.CursorExpr, onExpr)
+		}
 		for _, arg := range s.PolicyArgs {
 			WalkExpr(arg, onExpr)
 		}

@@ -41,8 +41,13 @@ func StepRepoMethodName(kind RepoMethodKind, preds []ir.WherePredicate, fallback
 	prefix := "FindBy"
 	if kind == RepoMethodDelete {
 		prefix = "DeleteBy"
+	} else if kind == RepoMethodFindMany {
+		prefix = "FindManyBy"
 	}
 	if len(preds) == 0 {
+		if kind == RepoMethodFindMany {
+			return "FindMany"
+		}
 		if fallbackField != "" {
 			return prefix + ExportIdent(fallbackField)
 		}
@@ -102,5 +107,39 @@ func BuildRepoMethodIR(kind RepoMethodKind, entityName string, preds []ir.WhereP
 		WhereField:      whereField,
 		WhereType:       whereType,
 		WherePredicates: repoPreds,
+	}
+}
+
+// BuildFindManyRepoMethodIR constructs a normalized RepositoryMethodIR for a keyset-paginated read.
+func BuildFindManyRepoMethodIR(entityName string, preds []ir.WherePredicate, orderByField string, orderByDesc bool, limit int, entityFields map[string]string) RepositoryMethodIR {
+	var repoPreds []RepoWherePredicateIR
+	for _, p := range preds {
+		fType := ""
+		if entityFields != nil {
+			fType = entityFields[p.Field]
+		}
+		repoPreds = append(repoPreds, RepoWherePredicateIR{
+			Field: p.Field,
+			Op:    p.Op,
+			Type:  fType,
+		})
+	}
+
+	orderType := ""
+	if entityFields != nil {
+		orderType = entityFields[orderByField]
+	}
+
+	methodName := StepRepoMethodName(RepoMethodFindMany, preds, "")
+
+	return RepositoryMethodIR{
+		Kind:            RepoMethodFindMany,
+		Name:            methodName,
+		EntityName:      entityName,
+		WherePredicates: repoPreds,
+		OrderByField:    orderByField,
+		OrderByDesc:     orderByDesc,
+		OrderByType:     orderType,
+		Limit:           limit,
 	}
 }

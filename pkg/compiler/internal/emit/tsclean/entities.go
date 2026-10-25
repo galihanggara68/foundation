@@ -85,6 +85,13 @@ export class DomainError extends Error {
   }
 }
 
+export interface PageInfo {
+  next_cursor: string;
+  prev_cursor: string;
+  has_next: boolean;
+  has_prev: boolean;
+}
+
 export const ErrConflict = new DomainError("Conflict", "conflict", "optimistic concurrency conflict");
 export const ErrUnauthenticated = new DomainError("Unauthenticated", "unauthenticated", "unauthenticated actor");
 

@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
@@ -49,6 +50,10 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 		next := p.cur()
 		if next.kind == tokIdent && next.text == "query" {
 			p.advance()
+			if p.cur().kind == tokIdent && p.cur().text == "many" {
+				p.advance()
+				return p.parseQueryManyStep(varTok, t.span)
+			}
 			if _, ok := p.expectIdentText("one"); !ok {
 				return ir.StepDecl{}, false
 			}
@@ -277,3 +282,78 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 		return ir.StepDecl{}, false
 	}
 }
+
+func (p *parser) parseQueryManyStep(varTok token, span ir.Span) (ir.StepDecl, bool) {
+	entTok, ok := p.expect(tokIdent)
+	if !ok {
+		return ir.StepDecl{}, false
+	}
+	step := ir.StepDecl{
+		Kind:       ir.StepQueryMany,
+		VarName:    varTok.text,
+		EntityName: entTok.text,
+		Span:       span,
+	}
+
+	for {
+		if p.cur().kind != tokIdent {
+			break
+		}
+		txt := p.cur().text
+		if txt == "where" && step.WhereExpr == nil {
+			p.advance()
+			whereExpr, ok := p.parseExpr()
+			if !ok {
+				return ir.StepDecl{}, false
+			}
+			populateStepWhere(&step, whereExpr)
+			continue
+		}
+		if txt == "order_by" && step.OrderByField == "" {
+			p.advance()
+			fTok, ok := p.expect(tokIdent)
+			if ok {
+				step.OrderByField = fTok.text
+				if p.cur().kind == tokIdent && p.cur().text == "desc" {
+					step.OrderByDesc = true
+					p.advance()
+				} else if p.cur().kind == tokIdent && p.cur().text == "asc" {
+					step.OrderByDesc = false
+					p.advance()
+				}
+			}
+			continue
+		}
+		if txt == "limit" && step.LimitExpr == nil && step.Limit == 0 {
+			p.advance()
+			if p.cur().kind == tokNumber {
+				numTok := p.advance()
+				val, _ := strconv.Atoi(numTok.text)
+				step.Limit = val
+				step.LimitExpr = &ir.Expr{Kind: ir.ExprInt, Value: numTok.text, Span: numTok.span}
+			} else {
+				limitExpr, ok := p.parseExpr()
+				if ok {
+					step.LimitExpr = &limitExpr
+					if limitExpr.Kind == ir.ExprInt {
+						val, _ := strconv.Atoi(limitExpr.Value)
+						step.Limit = val
+					}
+				}
+			}
+			continue
+		}
+		if txt == "cursor" && step.CursorExpr == nil {
+			p.advance()
+			cursorExpr, ok := p.parseExpr()
+			if ok {
+				step.CursorExpr = &cursorExpr
+			}
+			continue
+		}
+		break
+	}
+
+	return step, true
+}
+

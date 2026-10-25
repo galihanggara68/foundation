@@ -96,6 +96,28 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 		}
 		scope[s.VarName] = ent.Name
 
+	case ir.StepQueryMany:
+		ent, ok := sym.entities[s.EntityName]
+		if !ok {
+			*diags = append(*diags, ir.Diagnostic{
+				Code:     "FDN0203",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("unknown entity %q in query many", s.EntityName),
+				Span:     s.Span,
+			})
+			return
+		}
+		if s.WhereExpr != nil || len(s.WherePredicates) > 0 {
+			validateStepWhere("query many", s, scope, sym, diags)
+		}
+		if s.CursorExpr != nil {
+			inferExprType(s.CursorExpr, scope, sym, diags)
+		}
+		if s.LimitExpr != nil {
+			inferExprType(s.LimitExpr, scope, sym, diags)
+		}
+		scope[s.VarName] = "[]" + ent.Name
+
 	case ir.StepCreate:
 		ent, ok := sym.entities[s.EntityName]
 		if !ok {

@@ -3,9 +3,10 @@ package ir
 type StepKind string
 
 const (
-	StepLet     StepKind = "let"
-	StepQuery   StepKind = "query"
-	StepCreate  StepKind = "create"
+	StepLet       StepKind = "let"
+	StepQuery     StepKind = "query"
+	StepQueryMany StepKind = "query_many"
+	StepCreate    StepKind = "create"
 	StepUpdate  StepKind = "update"
 	StepDelete  StepKind = "delete"
 	StepRequire StepKind = "require"
@@ -84,6 +85,11 @@ type StepDecl struct {
 	WhereValue      *Expr            `json:"where_value,omitempty"`
 	WherePredicates []WherePredicate `json:"where_predicates,omitempty"`
 	WhereExpr       *Expr            `json:"where_expr,omitempty"`
+	OrderByField    string           `json:"order_by_field,omitempty"`
+	OrderByDesc     bool             `json:"order_by_desc,omitempty"`
+	Limit           int              `json:"limit,omitempty"`
+	LimitExpr       *Expr            `json:"limit_expr,omitempty"`
+	CursorExpr      *Expr            `json:"cursor_expr,omitempty"`
 	ElseError       string           `json:"else_error,omitempty"`
 	Fields     []FieldInitDecl `json:"fields,omitempty"`
 	Expr       *Expr           `json:"expr,omitempty"`

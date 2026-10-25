@@ -41,10 +41,11 @@ func Lower(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig) (*Architec
 type RepoMethodKind string
 
 const (
-	RepoMethodCreate RepoMethodKind = "create"
-	RepoMethodFind   RepoMethodKind = "find"
-	RepoMethodUpdate RepoMethodKind = "update"
-	RepoMethodDelete RepoMethodKind = "delete"
+	RepoMethodCreate   RepoMethodKind = "create"
+	RepoMethodFind     RepoMethodKind = "find"
+	RepoMethodFindMany RepoMethodKind = "find_many"
+	RepoMethodUpdate   RepoMethodKind = "update"
+	RepoMethodDelete   RepoMethodKind = "delete"
 )
 
 type MigrationFileIR struct {
@@ -113,6 +114,10 @@ type RepositoryMethodIR struct {
 	WhereField      string                 `json:"where_field,omitempty"`
 	WhereType       string                 `json:"where_type,omitempty"`
 	WherePredicates []RepoWherePredicateIR `json:"where_predicates,omitempty"`
+	OrderByField    string                 `json:"order_by_field,omitempty"`
+	OrderByDesc     bool                   `json:"order_by_desc,omitempty"`
+	OrderByType     string                 `json:"order_by_type,omitempty"`
+	Limit           int                    `json:"limit,omitempty"`
 }
 
 type RepositoryPortIR struct {
@@ -126,6 +131,7 @@ type UseCaseIR struct {
 	ActionName           string         `json:"action_name"`
 	Params               []ir.ParamDecl `json:"params"`
 	ReturnType           string         `json:"return_type"`
+	IsListReturning      bool           `json:"is_list_returning,omitempty"`
 	Traits               []ir.TraitDecl `json:"traits,omitempty"`
 	Steps                []ir.StepDecl  `json:"steps"`
 	RepoDeps             []string       `json:"repo_deps"`

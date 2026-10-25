@@ -78,3 +78,48 @@ func (lay goLayout) formatInMemoryCheck(fieldAccess, op, paramVar, typeName stri
 	}
 	return fmt.Sprintf("%s %s %s", fieldAccess, op, paramVar)
 }
+
+func (lay goLayout) emitGoCursorHelpers(pkg string) string {
+	return fmt.Sprintf(`package %s
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+)
+
+func encodeCursor(val any, field string) string {
+	b, _ := json.Marshal(map[string]any{field: val})
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func decodeCursor(cursor string, field string) any {
+	if cursor == "" {
+		return nil
+	}
+	b, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		b, err = base64.URLEncoding.DecodeString(cursor)
+		if err != nil {
+			return nil
+		}
+	}
+	var m map[string]any
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(&m); err != nil {
+		return nil
+	}
+	val := m[field]
+	if num, ok := val.(json.Number); ok {
+		if i, err := num.Int64(); err == nil {
+			return i
+		}
+		if f, err := num.Float64(); err == nil {
+			return f
+		}
+	}
+	return val
+}
+`, pkg)
+}

@@ -90,6 +90,34 @@ func ActorFromContext(ctx context.Context) Actor {
 }
 
 `))
+	sb.WriteString(`type PageInfo struct {
+	NextCursor string ` + "`json:\"next_cursor\"`" + `
+	PrevCursor string ` + "`json:\"prev_cursor\"`" + `
+	HasNext    bool   ` + "`json:\"has_next\"`" + `
+	HasPrev    bool   ` + "`json:\"has_prev\"`" + `
+}
+
+`)
+
+	for _, uc := range archIR.UseCases {
+		if uc.IsListReturning {
+			entName := strings.TrimPrefix(uc.ReturnType, "[]")
+			sb.WriteString(fmt.Sprintf(`type %sResult struct {
+	Items    []*%s   `+"`json:\"items\"`"+`
+	PageInfo PageInfo `+"`json:\"page_info\"`"+`
+}
+
+func (r *%sResult) Count() int {
+	if r == nil {
+		return 0
+	}
+	return len(r.Items)
+}
+
+`, uc.ActionName, entName, uc.ActionName))
+		}
+	}
+
 	for _, v := range archIR.DomainValues {
 		sb.WriteString(lay.emitGoStructDef(v.Name, v.Fields))
 		sb.WriteString("\n")
@@ -198,6 +226,15 @@ import (
 		case arch.RepoMethodFind:
 			sb.WriteString(fmt.Sprintf("\t%s(ctx context.Context, %s) (*%s.%s, error)\n",
 				m.Name, lay.formatRepoParams(m), lay.DomainPkg, m.EntityName))
+		case arch.RepoMethodFindMany:
+			whereParams := lay.formatRepoParams(m)
+			callParams := "ctx context.Context"
+			if whereParams != "" {
+				callParams += ", " + whereParams
+			}
+			callParams += ", cursor string, limit int, direction string"
+			sb.WriteString(fmt.Sprintf("\t%s(%s) ([]*%s.%s, *%s.PageInfo, error)\n",
+				m.Name, callParams, lay.DomainPkg, m.EntityName, lay.DomainPkg))
 		}
 	}
 	sb.WriteString("}\n")

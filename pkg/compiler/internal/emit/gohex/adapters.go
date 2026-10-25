@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
-	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
 func (lay goLayout) emitGoMemoryEventPublisher() string {
@@ -114,7 +113,11 @@ func (tm *InMemoryTransactionManager) WithinTransaction(ctx context.Context, fn 
 func (lay goLayout) emitGoSingleMemoryRepo(archIR *arch.ArchitectureIR, p arch.RepositoryPortIR) string {
 	var sb strings.Builder
 	hasTime := false
+	hasFindMany := false
 	for _, m := range p.Methods {
+		if m.Kind == arch.RepoMethodFindMany {
+			hasFindMany = true
+		}
 		for _, wp := range m.WherePredicates {
 			if wp.Type == "timestamp" {
 				hasTime = true
@@ -128,16 +131,20 @@ func (lay goLayout) emitGoSingleMemoryRepo(archIR *arch.ArchitectureIR, p arch.R
 	if hasTime {
 		timeImport = "\t\"time\"\n"
 	}
+	findManyImports := ""
+	if hasFindMany {
+		findManyImports = "\t\"sort\"\n\t\"strings\"\n"
+	}
 	sb.WriteString(fmt.Sprintf(`package %s
 
 import (
 	"context"
-	"fmt"
-	"sync"
+%s	"fmt"
+%s	"sync"
 %s	"%s/%s"
 )
 
-`, lay.MemoryPkg, timeImport, archIR.Module, lay.DomainDir))
+`, lay.MemoryPkg, findManyImports, "", timeImport, archIR.Module, lay.DomainDir))
 
 	repoStruct := "InMemory" + p.EntityName + "Repository"
 	sb.WriteString(fmt.Sprintf("type %s struct {\n\tmu sync.RWMutex\n\tentities []%s.%s\n\tseq int\n}\n\n", repoStruct, lay.DomainPkg, p.EntityName))
@@ -146,6 +153,7 @@ import (
 	sb.WriteString(fmt.Sprintf("func (r *%s) snapshot() func() {\n\tr.mu.RLock()\n\tsaved := append([]%s.%s(nil), r.entities...)\n\tsavedSeq := r.seq\n\tr.mu.RUnlock()\n\treturn func() {\n\t\tr.mu.Lock()\n\t\tr.entities = saved\n\t\tr.seq = savedSeq\n\t\tr.mu.Unlock()\n\t}\n}\n\n", repoStruct, lay.DomainPkg, p.EntityName))
 
 	ent := archIR.EntityByName(p.EntityName)
+	pkField, _ := arch.EntityPKField(ent)
 	hasID := false
 	for _, f := range ent.Fields {
 		if f.Name == "id" && f.Type == "uuid" {
@@ -251,187 +259,143 @@ import (
 			}
 			sb.WriteString(fmt.Sprintf("\t\tif %s {\n\t\t\tcopyItem := item\n\t\t\treturn &copyItem, nil\n\t\t}\n", strings.Join(checks, " && ")))
 			sb.WriteString("\t}\n\treturn nil, nil\n}\n\n")
-		}
-	}
 
-	return sb.String()
-}
-
-func (lay goLayout) emitGoChiRouter(archIR *arch.ArchitectureIR) string {
-	var sb strings.Builder
-	portsImport := ""
-	if archIR.HasActorPort {
-		portsImport = fmt.Sprintf("\t\"%s/%s\"\n", archIR.Module, lay.PortsDir)
-	}
-	sb.WriteString(fmt.Sprintf(`package %s
-
-import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"net/http"
-	"strings"
-
-	"github.com/go-chi/chi/v5"
-	"%s/%s"
-%s	"%s/%s"
-)
-
-var (
-	_ = fmt.Sprintf
-	_ = strings.Trim
-)
-
-type Server struct {
-	router *chi.Mux
-`, lay.HTTPPkg, archIR.Module, lay.DomainDir, portsImport, archIR.Module, lay.UseCasesDir))
-
-	if archIR.HasActorPort {
-		sb.WriteString(fmt.Sprintf("\tactorResolver %s.ActorResolver\n", lay.PortsPkg))
-	}
-	for _, uc := range archIR.UseCases {
-		sb.WriteString(fmt.Sprintf("\t%s *%s.%s\n", uc.ActionName, lay.UseCasesPkg, uc.Name))
-	}
-	sb.WriteString("}\n\n")
-
-	var ctorArgs []string
-	if archIR.HasActorPort {
-		ctorArgs = append(ctorArgs, fmt.Sprintf("actorResolver %s.ActorResolver", lay.PortsPkg))
-	}
-	for _, uc := range archIR.UseCases {
-		ctorArgs = append(ctorArgs, fmt.Sprintf("%s *%s.%s", strings.ToLower(uc.ActionName), lay.UseCasesPkg, uc.Name))
-	}
-	sb.WriteString(fmt.Sprintf("func NewServer(%s) *Server {\n\ts := &Server{\n\t\trouter: chi.NewRouter(),\n", strings.Join(ctorArgs, ", ")))
-	if archIR.HasActorPort {
-		sb.WriteString("\t\tactorResolver: actorResolver,\n")
-	}
-	for _, uc := range archIR.UseCases {
-		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.ActionName, strings.ToLower(uc.ActionName)))
-	}
-	sb.WriteString("\t}\n\ts.routes()\n\treturn s\n}\n\n")
-
-	sb.WriteString("func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {\n\ts.router.ServeHTTP(w, r)\n}\n\n")
-
-	sb.WriteString("func (s *Server) routes() {\n")
-	for _, h := range archIR.HTTPHandlers {
-		methodFunc := "Post"
-		switch h.Method {
-		case "GET":
-			methodFunc = "Get"
-		case "POST":
-			methodFunc = "Post"
-		case "PUT":
-			methodFunc = "Put"
-		case "DELETE":
-			methodFunc = "Delete"
-		}
-		sb.WriteString(fmt.Sprintf("\ts.router.%s(%q, s.handle%s)\n", methodFunc, h.Path, h.ActionName))
-	}
-	sb.WriteString("}\n\n")
-
-	for _, h := range archIR.HTTPHandlers {
-		var targetUC *arch.UseCaseIR
-		for i := range archIR.UseCases {
-			if archIR.UseCases[i].ActionName == h.ActionName {
-				targetUC = &archIR.UseCases[i]
-				break
+		case arch.RepoMethodFindMany:
+			whereParams := lay.formatRepoParams(m)
+			callParams := "_ context.Context"
+			if whereParams != "" {
+				callParams += ", " + whereParams
 			}
-		}
-		sb.WriteString(fmt.Sprintf("func (s *Server) handle%s(w http.ResponseWriter, r *http.Request) {\n", h.ActionName))
-		if archIR.HasActorPort {
-			sb.WriteString(fmt.Sprintf("\tactor, err := s.actorResolver.ResolveActor(r.Context(), r)\n\tif err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n\tctx := %s.WithActor(r.Context(), actor)\n", lay.DomainPkg))
-		} else {
-			sb.WriteString("\tctx := r.Context()\n")
-		}
-		var callArgs []string
-		callArgs = append(callArgs, "ctx")
+			callParams += ", cursor string, limit int, direction string"
 
-		pathParamSet := make(map[string]bool)
-		for _, pp := range h.PathParams {
-			pathParamSet[pp] = true
-		}
+			orderCol := m.OrderByField
+			if orderCol == "" {
+				orderCol = pkField
+			}
+			orderColExport := arch.ExportIdent(orderCol)
+			orderDesc := m.OrderByDesc
 
-		var bodyParams []ir.ParamDecl
-		for _, p := range h.Params {
-			if pathParamSet[p.Name] {
-				sb.WriteString(fmt.Sprintf("\t%s := chi.URLParam(r, %q)\n", p.Name, p.Name))
-				callArgs = append(callArgs, p.Name)
+			sb.WriteString(fmt.Sprintf("func (r *%s) %s(%s) ([]*%s.%s, *%s.PageInfo, error) {\n",
+				repoStruct, m.Name, callParams, lay.DomainPkg, p.EntityName, lay.DomainPkg))
+			sb.WriteString("\tr.mu.RLock()\n\tdefer r.mu.RUnlock()\n")
+			sb.WriteString(fmt.Sprintf("\tvar filtered []%s.%s\n", lay.DomainPkg, p.EntityName))
+			sb.WriteString("\tfor _, item := range r.entities {\n")
+
+			var conds []string
+			fieldCounts := make(map[string]int)
+			for _, wp := range m.WherePredicates {
+				fieldCounts[wp.Field]++
+			}
+			for _, wp := range m.WherePredicates {
+				pName := wp.Field
+				if fieldCounts[wp.Field] > 1 {
+					pName += "_" + strings.ToLower(arch.OpSuffix(wp.Op))
+				}
+				conds = append(conds, lay.formatInMemoryCheck("item."+arch.ExportIdent(wp.Field), wp.Op, pName, wp.Type))
+			}
+			if len(conds) > 0 {
+				sb.WriteString(fmt.Sprintf("\t\tif %s {\n\t\t\tfiltered = append(filtered, item)\n\t\t}\n", strings.Join(conds, " && ")))
 			} else {
-				bodyParams = append(bodyParams, p)
-			}
-		}
-
-		if len(bodyParams) == 1 && !isScalarType(bodyParams[0].Type) {
-			p := bodyParams[0]
-			sb.WriteString(fmt.Sprintf("\tvar %s %s\n", p.Name, lay.goType(p.Type, false)))
-			sb.WriteString(fmt.Sprintf("\tif err := json.NewDecoder(r.Body).Decode(&%s); err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n", p.Name))
-			callArgs = append(callArgs, p.Name)
-		} else if len(bodyParams) > 0 {
-			sb.WriteString("\tvar reqBody struct {\n")
-			for _, p := range bodyParams {
-				sb.WriteString(fmt.Sprintf("\t\t%s %s `json:%q`\n", arch.ExportIdent(p.Name), lay.goType(p.Type, false), p.Name))
+				sb.WriteString("\t\tfiltered = append(filtered, item)\n")
 			}
 			sb.WriteString("\t}\n")
-			sb.WriteString("\tif err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n")
-			for _, p := range bodyParams {
-				sb.WriteString(fmt.Sprintf("\t%s := reqBody.%s\n", p.Name, arch.ExportIdent(p.Name)))
-				callArgs = append(callArgs, p.Name)
+
+			sb.WriteString("\tsort.SliceStable(filtered, func(i, j int) bool {\n")
+			switch m.OrderByType {
+			case "int":
+				if orderDesc {
+					sb.WriteString(fmt.Sprintf("\t\treturn filtered[i].%s > filtered[j].%s\n", orderColExport, orderColExport))
+				} else {
+					sb.WriteString(fmt.Sprintf("\t\treturn filtered[i].%s < filtered[j].%s\n", orderColExport, orderColExport))
+				}
+			case "timestamp":
+				if orderDesc {
+					sb.WriteString(fmt.Sprintf("\t\treturn filtered[i].%s.After(filtered[j].%s)\n", orderColExport, orderColExport))
+				} else {
+					sb.WriteString(fmt.Sprintf("\t\treturn filtered[i].%s.Before(filtered[j].%s)\n", orderColExport, orderColExport))
+				}
+			case "decimal":
+				if orderDesc {
+					sb.WriteString(fmt.Sprintf("\t\treturn filtered[i].%s.GreaterThan(filtered[j].%s)\n", orderColExport, orderColExport))
+				} else {
+					sb.WriteString(fmt.Sprintf("\t\treturn filtered[i].%s.LessThan(filtered[j].%s)\n", orderColExport, orderColExport))
+				}
+			default:
+				if orderDesc {
+					sb.WriteString(fmt.Sprintf("\t\treturn filtered[i].%s > filtered[j].%s\n", orderColExport, orderColExport))
+				} else {
+					sb.WriteString(fmt.Sprintf("\t\treturn filtered[i].%s < filtered[j].%s\n", orderColExport, orderColExport))
+				}
 			}
-		}
+			sb.WriteString("\t})\n")
 
-		if h.Method != "GET" && h.ExpectedVersionParam != "" {
-			sb.WriteString(fmt.Sprintf("\tif ifMatch := r.Header.Get(\"If-Match\"); ifMatch != \"\" && ifMatch != \"*\" {\n\t\tcleanMatch := strings.Trim(ifMatch, \"\\\"\")\n\t\tif fmt.Sprintf(\"%%d\", %s) != cleanMatch {\n\t\t\twriteError(w, %s.ErrConflict)\n\t\t\treturn\n\t\t}\n\t}\n", h.ExpectedVersionParam, lay.DomainPkg))
-		}
-
-		sb.WriteString(fmt.Sprintf("\tres, err := s.%s.Execute(%s)\n", h.ActionName, strings.Join(callArgs, ", ")))
-		sb.WriteString("\tif err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n")
-		if h.Method == "GET" && targetUC != nil {
-			retEnt := archIR.EntityByName(targetUC.ReturnType)
-			if _, vExp, hasV := arch.EntityVersionField(retEnt); hasV {
-				sb.WriteString(fmt.Sprintf("\tw.Header().Set(\"ETag\", fmt.Sprintf(\"\\\"%%d\\\"\", res.%s))\n", vExp))
+			sb.WriteString(fmt.Sprintf("\tcurVal := decodeCursor(cursor, %q)\n", orderCol))
+			sb.WriteString(fmt.Sprintf("\tvar seeked []%s.%s\n", lay.DomainPkg, p.EntityName))
+			sb.WriteString("\tif curVal != nil && cursor != \"\" {\n")
+			if m.OrderByType == "int" {
+				sb.WriteString("\t\tvar targetVal int64\n")
+				sb.WriteString("\t\tswitch v := curVal.(type) {\n\t\tcase int64:\n\t\t\ttargetVal = v\n\t\tcase int:\n\t\t\ttargetVal = int64(v)\n\t\tcase float64:\n\t\t\ttargetVal = int64(v)\n\t\t}\n")
+				sb.WriteString("\t\tif direction == \"prev\" {\n")
+				sb.WriteString("\t\t\tfor i := len(filtered) - 1; i >= 0; i-- {\n")
+				sb.WriteString(fmt.Sprintf("\t\t\t\titemVal := int64(filtered[i].%s)\n", orderColExport))
+				if orderDesc {
+					sb.WriteString("\t\t\t\tif itemVal > targetVal {\n\t\t\t\t\tseeked = append(seeked, filtered[i])\n\t\t\t\t}\n")
+				} else {
+					sb.WriteString("\t\t\t\tif itemVal < targetVal {\n\t\t\t\t\tseeked = append(seeked, filtered[i])\n\t\t\t\t}\n")
+				}
+				sb.WriteString("\t\t\t}\n\t\t} else {\n")
+				sb.WriteString("\t\t\tfor _, item := range filtered {\n")
+				sb.WriteString(fmt.Sprintf("\t\t\t\titemVal := int64(item.%s)\n", orderColExport))
+				if orderDesc {
+					sb.WriteString("\t\t\t\tif itemVal < targetVal {\n\t\t\t\t\tseeked = append(seeked, item)\n\t\t\t\t}\n")
+				} else {
+					sb.WriteString("\t\t\t\tif itemVal > targetVal {\n\t\t\t\t\tseeked = append(seeked, item)\n\t\t\t\t}\n")
+				}
+				sb.WriteString("\t\t\t}\n\t\t}\n")
+			} else {
+				sb.WriteString("\t\ttargetVal := fmt.Sprintf(\"%v\", curVal)\n")
+				sb.WriteString("\t\tif direction == \"prev\" {\n")
+				sb.WriteString("\t\t\tfor i := len(filtered) - 1; i >= 0; i-- {\n")
+				sb.WriteString(fmt.Sprintf("\t\t\t\titemVal := fmt.Sprintf(\"%%v\", filtered[i].%s)\n", orderColExport))
+				if orderDesc {
+					sb.WriteString("\t\t\t\tif itemVal > targetVal {\n\t\t\t\t\tseeked = append(seeked, filtered[i])\n\t\t\t\t}\n")
+				} else {
+					sb.WriteString("\t\t\t\tif itemVal < targetVal {\n\t\t\t\t\tseeked = append(seeked, filtered[i])\n\t\t\t\t}\n")
+				}
+				sb.WriteString("\t\t\t}\n\t\t} else {\n")
+				sb.WriteString("\t\t\tfor _, item := range filtered {\n")
+				sb.WriteString(fmt.Sprintf("\t\t\t\titemVal := fmt.Sprintf(\"%%v\", item.%s)\n", orderColExport))
+				if orderDesc {
+					sb.WriteString("\t\t\t\tif itemVal < targetVal {\n\t\t\t\t\tseeked = append(seeked, item)\n\t\t\t\t}\n")
+				} else {
+					sb.WriteString("\t\t\t\tif itemVal > targetVal {\n\t\t\t\t\tseeked = append(seeked, item)\n\t\t\t\t}\n")
+				}
+				sb.WriteString("\t\t\t}\n\t\t}\n")
 			}
-		}
-		status := "http.StatusOK"
-		if h.Method == "POST" {
-			status = "http.StatusCreated"
-		}
-		sb.WriteString(fmt.Sprintf("\tw.Header().Set(\"Content-Type\", \"application/json\")\n\tw.WriteHeader(%s)\n\t_ = json.NewEncoder(w).Encode(res)\n}\n\n", status))
-	}
+			sb.WriteString("\t} else {\n\t\tseeked = filtered\n\t}\n")
 
-	sb.WriteString(fmt.Sprintf(`func writeError(w http.ResponseWriter, err error) {
-	w.Header().Set("Content-Type", "application/json")
-	var domErr *%s.DomainError
-	if errors.As(err, &domErr) {
-		status := http.StatusInternalServerError
-		switch domErr.Kind {
-		case "not_found":
-			status = http.StatusNotFound
-		case "validation":
-			status = http.StatusBadRequest
-		case "conflict":
-			status = http.StatusConflict
-		case "unauthenticated", "unauthorized":
-			status = http.StatusUnauthorized
-		case "forbidden":
-			status = http.StatusForbidden
+			sb.WriteString("\thasNext := false\n\thasPrev := false\n")
+			sb.WriteString("\tif curVal != nil && cursor != \"\" && direction == \"prev\" {\n")
+			sb.WriteString("\t\thasPrev = len(seeked) > limit\n\t\tif hasPrev {\n\t\t\tseeked = seeked[:limit]\n\t\t}\n")
+			sb.WriteString("\t\thasNext = true\n")
+			sb.WriteString("\t\tfor i, j := 0, len(seeked)-1; i < j; i, j = i+1, j-1 {\n\t\t\tseeked[i], seeked[j] = seeked[j], seeked[i]\n\t\t}\n")
+			sb.WriteString("\t} else {\n")
+			sb.WriteString("\t\thasNext = len(seeked) > limit\n\t\tif hasNext {\n\t\t\tseeked = seeked[:limit]\n\t\t}\n")
+			sb.WriteString("\t\tif cursor != \"\" {\n\t\t\thasPrev = true\n\t\t}\n\t}\n")
+
+			sb.WriteString(fmt.Sprintf("\tvar items []*%s.%s\n", lay.DomainPkg, p.EntityName))
+			sb.WriteString("\tfor i := range seeked {\n\t\tcopied := seeked[i]\n\t\titems = append(items, &copied)\n\t}\n")
+
+			sb.WriteString("\tnextCursor := \"\"\n\tprevCursor := \"\"\n")
+			sb.WriteString("\tif len(items) > 0 {\n")
+			sb.WriteString(fmt.Sprintf("\t\tif hasNext {\n\t\t\tnextCursor = encodeCursor(items[len(items)-1].%s, %q)\n\t\t}\n", orderColExport, orderCol))
+			sb.WriteString(fmt.Sprintf("\t\tif hasPrev {\n\t\t\tprevCursor = encodeCursor(items[0].%s, %q)\n\t\t}\n", orderColExport, orderCol))
+			sb.WriteString("\t}\n")
+
+			sb.WriteString(fmt.Sprintf("\treturn items, &%s.PageInfo{\n\t\tNextCursor: nextCursor,\n\t\tPrevCursor: prevCursor,\n\t\tHasNext: hasNext,\n\t\tHasPrev: hasPrev,\n\t}, nil\n}\n\n", lay.DomainPkg))
 		}
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(domErr)
-		return
 	}
-	w.WriteHeader(http.StatusBadRequest)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-}
-`, lay.DomainPkg))
 
 	return sb.String()
 }
 
-func isScalarType(t string) bool {
-	switch t {
-	case "uuid", "string", "int", "decimal", "bool", "timestamp":
-		return true
-	default:
-		return false
-	}
-}

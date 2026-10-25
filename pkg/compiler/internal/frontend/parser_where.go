@@ -1,6 +1,8 @@
 package frontend
 
-import "github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+import (
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+)
 
 func isComparisonOp(op string) bool {
 	switch op {

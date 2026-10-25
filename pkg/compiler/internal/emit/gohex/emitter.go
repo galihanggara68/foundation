@@ -261,6 +261,24 @@ github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
 		}
 	}
 
+	hasFindMany := false
+	for _, p := range archIR.Ports {
+		for _, m := range p.Methods {
+			if m.Kind == arch.RepoMethodFindMany {
+				hasFindMany = true
+				break
+			}
+		}
+	}
+	if hasFindMany {
+		if d := addGoFile(lay.MemoryDir+"/cursor.go", lay.emitGoCursorHelpers(lay.MemoryPkg)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
+		}
+		if d := addGoFile(lay.PostgresDir+"/cursor.go", lay.emitGoCursorHelpers(lay.PostgresPkg)); d != nil {
+			return nil, nil, []ir.Diagnostic{*d}
+		}
+	}
+
 	for _, p := range archIR.Ports {
 		memPath := fmt.Sprintf("%s/%s%s", lay.MemoryDir, strings.ToLower(p.EntityName), lay.MemoryRepoSuf)
 		if d := addGoFile(memPath, lay.emitGoSingleMemoryRepo(archIR, p)); d != nil {

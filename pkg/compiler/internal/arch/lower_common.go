@@ -87,6 +87,16 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 				if s.Kind == ir.StepEmit {
 					emitsEvents = true
 				}
+				if s.Kind == ir.StepQueryMany {
+					addPortMethod(BuildFindManyRepoMethodIR(
+						s.EntityName,
+						s.WherePredicates,
+						s.OrderByField,
+						s.OrderByDesc,
+						s.Limit,
+						entityFields[s.EntityName],
+					))
+				}
 				if s.Kind == ir.StepQuery || s.Kind == ir.StepUpdate {
 					fType := ""
 					if entityFields[s.EntityName] != nil {
@@ -138,11 +148,13 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 			}
 		}
 
+		isListRet := strings.HasPrefix(a.ReturnType, "[]")
 		arch.UseCases = append(arch.UseCases, UseCaseIR{
 			Name:                 a.Name + useCaseSuffix,
 			ActionName:           a.Name,
 			Params:               a.Params,
 			ReturnType:           a.ReturnType,
+			IsListReturning:      isListRet,
 			Traits:               a.Traits,
 			Steps:                a.Steps,
 			RepoDeps:             deps,
@@ -153,6 +165,9 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 		})
 
 		httpMethod := "POST"
+		if isListRet {
+			httpMethod = "GET"
+		}
 		httpPath := "/" + strings.ToLower(a.Name)
 		isInternal := false
 		isEventHandler := false

@@ -5,63 +5,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
-	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
-	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
-
-func emitTSPorts(archIR *arch.ArchitectureIR) string {
-	var sb strings.Builder
-	sb.WriteString(`import * as domain from "../entities/domain.ts";
-
-export interface EventPublisher {
-  publish(eventType: string, payload: unknown): Promise<void>;
-  subscribe(eventType: string, handler: (payload: unknown) => Promise<void>): void;
-}
-
-export interface TransactionManager {
-  withinTransaction<T>(fn: () => Promise<T>): Promise<T>;
-}
-
-export interface ActorResolverGateway {
-  resolveActor(headers: Record<string, string | undefined>): Promise<Record<string, unknown>>;
-}
-
-`)
-
-	for _, p := range archIR.Ports {
-		sb.WriteString(fmt.Sprintf("export interface %s {\n", p.InterfaceName))
-		for _, m := range p.Methods {
-			switch m.Kind {
-			case arch.RepoMethodCreate:
-				sb.WriteString(fmt.Sprintf("  create(entity: Partial<domain.%s>): Promise<domain.%s>;\n", m.EntityName, m.EntityName))
-			case arch.RepoMethodUpdate:
-				sb.WriteString(fmt.Sprintf("  update(entity: domain.%s): Promise<void>;\n", m.EntityName))
-			case arch.RepoMethodDelete:
-				sb.WriteString(fmt.Sprintf("  %s(%s): Promise<void>;\n",
-					toCamelCase(m.Name), formatTSRepoParams(m)))
-			case arch.RepoMethodFind:
-				sb.WriteString(fmt.Sprintf("  %s(%s): Promise<domain.%s | null>;\n",
-					toCamelCase(m.Name), formatTSRepoParams(m), m.EntityName))
-			}
-		}
-		sb.WriteString("}\n\n")
-	}
-
-	for _, sl := range archIR.Slots {
-		sb.WriteString(fmt.Sprintf("export interface %sSlot {\n", sl.Name))
-		for _, m := range sl.Methods {
-			var params []string
-			for _, p := range m.Params {
-				params = append(params, fmt.Sprintf("%s: %s", p.Name, tsType(p.Type, false)))
-			}
-			retTS := tsType(m.ReturnType, false)
-			sb.WriteString(fmt.Sprintf("  %s(%s): Promise<%s>;\n", toCamelCase(m.Name), strings.Join(params, ", "), retTS))
-		}
-		sb.WriteString("}\n\n")
-	}
-
-	return sb.String()
-}
 
 func emitTSUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
 	var sb strings.Builder
@@ -79,6 +23,9 @@ func emitTSUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
 	sb.WriteString("\n")
 
 	retTS := tsType(uc.ReturnType, false)
+	if uc.IsListReturning {
+		retTS = fmt.Sprintf("{ items: %s; page_info: domain.PageInfo }", tsType(uc.ReturnType, false))
+	}
 
 	sb.WriteString(fmt.Sprintf("export class %s {\n", uc.Name))
 	for _, dep := range uc.RepoDeps {
@@ -264,169 +211,13 @@ func emitTSUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
 		useOutbox:   isOutbox && uc.EmitsEvents,
 		stepCounter: &stepCounter,
 	}
+	sb.WriteString("    let _pageInfo: domain.PageInfo | undefined;\n")
 	emitTSSteps(&sb, uc.Steps, declaredVars, "    ", ctx)
-	sb.WriteString(fmt.Sprintf("    return %s;\n  }\n}\n", tsZeroVal(uc.ReturnType, archIR, false)))
+	if uc.IsListReturning {
+		sb.WriteString("    return { items: [], page_info: _pageInfo ?? { next_cursor: \"\", prev_cursor: \"\", has_next: false, has_prev: false } };\n  }\n}\n")
+	} else {
+		sb.WriteString(fmt.Sprintf("    return %s;\n  }\n}\n", tsZeroVal(uc.ReturnType, archIR, false)))
+	}
 
 	return sb.String()
-}
-
-type stepEmitCtx struct {
-	arch        *arch.ArchitectureIR
-	useCase     arch.UseCaseIR
-	useOutbox   bool
-	stepCounter *int
-}
-
-func emitTSSteps(sb *strings.Builder, steps []ir.StepDecl, declaredVars map[string]bool, indent string, ctx stepEmitCtx) {
-	for _, s := range steps {
-		*ctx.stepCounter++
-		idx := *ctx.stepCounter
-		switch s.Kind {
-		case ir.StepRequire:
-			var args []string
-			for _, arg := range s.PolicyArgs {
-				args = append(args, emitTSExpr(arg, false))
-			}
-			sb.WriteString(fmt.Sprintf("%sif (!domain.%s(%s)) {\n%s  throw domain.Err%s;\n%s}\n",
-				indent, s.PolicyName, strings.Join(args, ", "), indent, s.ElseError, indent))
-
-		case ir.StepGuard:
-			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("%sif (!(%s)) {\n%s  throw domain.Err%s;\n%s}\n",
-					indent, emitTSExpr(*s.Expr, false), indent, s.ElseError, indent))
-			}
-
-		case ir.StepLet:
-			if s.Expr != nil {
-				prefix := "let "
-				if declaredVars[s.VarName] {
-					prefix = ""
-				} else {
-					declaredVars[s.VarName] = true
-				}
-				sb.WriteString(fmt.Sprintf("%s%s%s = %s;\n", indent, prefix, s.VarName, emitTSExpr(*s.Expr, false)))
-			}
-
-		case ir.StepCreate:
-			declaredVars[s.VarName] = true
-			sb.WriteString(fmt.Sprintf("%sconst %s = await this.%sRepo.create({\n", indent, s.VarName, toCamelCase(s.EntityName)))
-			emitTSFieldInits(sb, s.Fields, indent+"  ")
-			sb.WriteString(fmt.Sprintf("%s});\n", indent))
-
-		case ir.StepQuery:
-			declaredVars[s.VarName] = true
-			mName, wExpr := formatTSStepRepoCall(arch.RepoMethodFind, s)
-			sb.WriteString(fmt.Sprintf("%sconst %sOrNull = await this.%sRepo.%s(%s);\n",
-				indent, s.VarName, toCamelCase(s.EntityName), mName, wExpr))
-			if s.ElseError != "" {
-				sb.WriteString(fmt.Sprintf("%sif (!%sOrNull) {\n%s  throw domain.Err%s;\n%s}\n",
-					indent, s.VarName, indent, s.ElseError, indent))
-			}
-			sb.WriteString(fmt.Sprintf("%sconst %s = %sOrNull!;\n", indent, s.VarName, s.VarName))
-
-		case ir.StepUpdate:
-			mName, wExpr := formatTSStepRepoCall(arch.RepoMethodFind, s)
-			updVar := fmt.Sprintf("updTarget%d", idx)
-			sb.WriteString(fmt.Sprintf("%sconst %s = await this.%sRepo.%s(%s);\n",
-				indent, updVar, toCamelCase(s.EntityName), mName, wExpr))
-			if s.ElseError != "" {
-				sb.WriteString(fmt.Sprintf("%sif (!%s) {\n%s  throw domain.Err%s;\n%s}\n",
-					indent, updVar, indent, s.ElseError, indent))
-			}
-			sb.WriteString(fmt.Sprintf("%sif (%s) {\n", indent, updVar))
-			for _, fi := range s.Fields {
-				sb.WriteString(fmt.Sprintf("%s  %s.%s = %s;\n", indent, updVar, fi.Name, emitTSExpr(fi.Value, false)))
-			}
-			ent := ctx.arch.EntityByName(s.EntityName)
-			if vField, _, hasV := arch.EntityVersionField(ent); hasV && ctx.useCase.ExpectedVersionParam != "" {
-				sb.WriteString(fmt.Sprintf("%s  %s.%s = %s;\n", indent, updVar, vField, ctx.useCase.ExpectedVersionParam))
-			}
-			sb.WriteString(fmt.Sprintf("%s  await this.%sRepo.update(%s);\n%s}\n",
-				indent, toCamelCase(s.EntityName), updVar, indent))
-
-		case ir.StepDelete:
-			mName, wExpr := formatTSStepRepoCall(arch.RepoMethodDelete, s)
-			sb.WriteString(fmt.Sprintf("%sawait this.%sRepo.%s(%s);\n",
-				indent, toCamelCase(s.EntityName), mName, wExpr))
-
-		case ir.StepIf:
-			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("%sif (%s) {\n", indent, emitTSExpr(*s.Expr, false)))
-				emitTSSteps(sb, s.ThenSteps, emit.CloneBoolMap(declaredVars), indent+"  ", ctx)
-				if len(s.ElseSteps) > 0 {
-					sb.WriteString(fmt.Sprintf("%s} else {\n", indent))
-					emitTSSteps(sb, s.ElseSteps, emit.CloneBoolMap(declaredVars), indent+"  ", ctx)
-				}
-				sb.WriteString(fmt.Sprintf("%s}\n", indent))
-			}
-
-		case ir.StepMatch:
-			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("%sswitch (%s) {\n", indent, emitTSExpr(*s.Expr, false)))
-				for _, arm := range s.MatchArms {
-					sb.WriteString(fmt.Sprintf("%s  case %q: {\n", indent, arm.Variant))
-					emitTSSteps(sb, arm.Steps, emit.CloneBoolMap(declaredVars), indent+"    ", ctx)
-					sb.WriteString(fmt.Sprintf("%s    break;\n%s  }\n", indent, indent))
-				}
-				sb.WriteString(fmt.Sprintf("%s}\n", indent))
-			}
-
-		case ir.StepFor:
-			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("%sfor (const %s of %s) {\n", indent, s.IterVar, emitTSExpr(*s.Expr, false)))
-				loopVars := emit.CloneBoolMap(declaredVars)
-				loopVars[s.IterVar] = true
-				emitTSSteps(sb, s.ThenSteps, loopVars, indent+"  ", ctx)
-				sb.WriteString(fmt.Sprintf("%s}\n", indent))
-			}
-
-		case ir.StepEmit:
-			if ctx.useOutbox {
-				sb.WriteString(fmt.Sprintf("%sif (this.outboxStore) {\n", indent))
-				sb.WriteString(fmt.Sprintf("%s  const payload = {\n", indent))
-				emitTSFieldInits(sb, s.Fields, indent+"    ")
-				sb.WriteString(fmt.Sprintf("%s  } satisfies domain.%s;\n", indent, s.EventName))
-				sb.WriteString(fmt.Sprintf("%s  await this.outboxStore.stage({\n", indent))
-				sb.WriteString(fmt.Sprintf("%s    id: String(Date.now()),\n", indent))
-				sb.WriteString(fmt.Sprintf("%s    topic: %q,\n", indent, s.EventName))
-				sb.WriteString(fmt.Sprintf("%s    eventName: %q,\n", indent, s.EventName))
-				sb.WriteString(fmt.Sprintf("%s    payload: new TextEncoder().encode(JSON.stringify(payload)),\n", indent))
-				sb.WriteString(fmt.Sprintf("%s    createdAt: new Date(),\n", indent))
-				sb.WriteString(fmt.Sprintf("%s  });\n%s}\n", indent, indent))
-			}
-			sb.WriteString(fmt.Sprintf("%spostCommitEvents.push(async () => {\n", indent))
-			sb.WriteString(fmt.Sprintf("%s  if (this.events) {\n%s    await this.events.publish(%q, {\n", indent, indent, s.EventName))
-			emitTSFieldInits(sb, s.Fields, indent+"      ")
-			sb.WriteString(fmt.Sprintf("%s    } satisfies domain.%s);\n%s  }\n%s});\n", indent, s.EventName, indent, indent))
-
-		case ir.StepSlot:
-			var callArgs []string
-			for _, arg := range s.SlotArgs {
-				callArgs = append(callArgs, emitTSExpr(arg, false))
-			}
-			callExpr := fmt.Sprintf("await this.%sSlot.%s(%s)", toCamelCase(s.SlotName), toCamelCase(s.SlotMethod), strings.Join(callArgs, ", "))
-			if s.ElseError != "" {
-				if s.VarName != "" {
-					declaredVars[s.VarName] = true
-					sb.WriteString(fmt.Sprintf("%slet %s: Awaited<ReturnType<ports.%sSlot[%q]>>;\n",
-						indent, s.VarName, s.SlotName, toCamelCase(s.SlotMethod)))
-					sb.WriteString(fmt.Sprintf("%stry {\n%s  %s = %s;\n%s} catch {\n%s  throw domain.Err%s;\n%s}\n",
-						indent, indent, s.VarName, callExpr, indent, indent, s.ElseError, indent))
-				} else {
-					sb.WriteString(fmt.Sprintf("%stry {\n%s  %s;\n%s} catch {\n%s  throw domain.Err%s;\n%s}\n",
-						indent, indent, callExpr, indent, indent, s.ElseError, indent))
-				}
-			} else if s.VarName != "" {
-				declaredVars[s.VarName] = true
-				sb.WriteString(fmt.Sprintf("%sconst %s = %s;\n", indent, s.VarName, callExpr))
-			} else {
-				sb.WriteString(fmt.Sprintf("%s%s;\n", indent, callExpr))
-			}
-
-		case ir.StepReturn:
-			if s.Expr != nil {
-				sb.WriteString(fmt.Sprintf("%sreturn %s;\n", indent, emitTSExpr(*s.Expr, false)))
-			}
-		}
-	}
 }

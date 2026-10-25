@@ -23,6 +23,8 @@ func Validate(sem *ir.SemanticIR) []ir.Diagnostic {
 		DeclarationPass{},
 		ActionTypeCheckPass{},
 		SargableWherePass{},
+		QueryManyUniqueOrderPass{},
+		QueryManyLimitCapPass{},
 		TerminationPass{},
 		InvariantPass{},
 		ScenarioTypeCheckPass{},
@@ -123,7 +125,7 @@ func (s *SymbolTable) isKnownType(t string) bool {
 	if strings.HasPrefix(t, "[]") {
 		return s.isKnownType(strings.TrimPrefix(t, "[]"))
 	}
-	if scalarTypes[t] || t == "Actor" {
+	if scalarTypes[t] || t == "Actor" || t == "PageInfo" || strings.HasSuffix(t, "Result") {
 		return true
 	}
 	if _, ok := s.enums[t]; ok {
@@ -143,6 +145,21 @@ func (s *SymbolTable) isKnownType(t string) bool {
 
 func (s *SymbolTable) fieldsOf(typeName string) map[string]ir.FieldDecl {
 	m := make(map[string]ir.FieldDecl)
+	if strings.HasSuffix(typeName, "Result") {
+		actName := strings.TrimSuffix(typeName, "Result")
+		if act, ok := s.actions[actName]; ok && strings.HasPrefix(act.ReturnType, "[]") {
+			m["items"] = ir.FieldDecl{Name: "items", Type: act.ReturnType}
+			m["page_info"] = ir.FieldDecl{Name: "page_info", Type: "PageInfo"}
+			return m
+		}
+	}
+	if typeName == "PageInfo" {
+		m["next_cursor"] = ir.FieldDecl{Name: "next_cursor", Type: "string"}
+		m["prev_cursor"] = ir.FieldDecl{Name: "prev_cursor", Type: "string"}
+		m["has_next"] = ir.FieldDecl{Name: "has_next", Type: "bool"}
+		m["has_prev"] = ir.FieldDecl{Name: "has_prev", Type: "bool"}
+		return m
+	}
 	if e, ok := s.entities[typeName]; ok {
 		for _, f := range e.Fields {
 			m[f.Name] = f

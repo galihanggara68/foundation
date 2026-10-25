@@ -2,6 +2,7 @@ package validate
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
@@ -116,8 +117,11 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 			}
 		}
 
-		expectScope := map[string]string{
-			"result": act.ReturnType,
+		expectScope := map[string]string{}
+		if strings.HasPrefix(act.ReturnType, "[]") {
+			expectScope["result"] = act.Name + "Result"
+		} else {
+			expectScope["result"] = act.ReturnType
 		}
 		for k := range sc.Expects {
 			ex := &sc.Expects[k]

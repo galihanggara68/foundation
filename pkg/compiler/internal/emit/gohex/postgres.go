@@ -222,6 +222,91 @@ import (
 				query, strings.Join(argVars, ", ")))
 			sb.WriteString(fmt.Sprintf("\tif err := row.Scan(%s); err != nil {\n\t\tif errors.Is(err, sql.ErrNoRows) {\n\t\t\treturn nil, nil\n\t\t}\n\t\treturn nil, err\n\t}\n\treturn &out, nil\n}\n\n",
 				strings.Join(scanTargets, ", ")))
+
+		case arch.RepoMethodFindMany:
+			whereParams := lay.formatRepoParams(m)
+			callParams := "ctx context.Context"
+			if whereParams != "" {
+				callParams += ", " + whereParams
+			}
+			callParams += ", cursor string, limit int, direction string"
+
+			orderCol := m.OrderByField
+			if orderCol == "" {
+				orderCol = pkField
+			}
+			orderColExport := arch.ExportIdent(orderCol)
+			orderDesc := m.OrderByDesc
+
+			sb.WriteString(fmt.Sprintf("func (r *%s) %s(%s) ([]*%s.%s, *%s.PageInfo, error) {\n",
+				repoStruct, m.Name, callParams, lay.DomainPkg, p.EntityName, lay.DomainPkg))
+			sb.WriteString(fmt.Sprintf("\tcurVal := decodeCursor(cursor, %q)\n", orderCol))
+			sb.WriteString("\tvar conds []string\n\tvar args []any\n")
+
+			fieldCounts := make(map[string]int)
+			for _, wp := range m.WherePredicates {
+				fieldCounts[wp.Field]++
+			}
+			for _, wp := range m.WherePredicates {
+				pName := wp.Field
+				if fieldCounts[wp.Field] > 1 {
+					pName += "_" + strings.ToLower(arch.OpSuffix(wp.Op))
+				}
+				sb.WriteString(fmt.Sprintf("\targs = append(args, %s)\n", pName))
+				sb.WriteString(fmt.Sprintf("\tconds = append(conds, fmt.Sprintf(\"%s %s $%%d\", len(args)))\n", wp.Field, arch.SQLComparisonOp(wp.Op)))
+			}
+
+			sb.WriteString("\torderClause := \"\"\n")
+			sb.WriteString("\tif direction == \"prev\" && curVal != nil && cursor != \"\" {\n")
+			if orderDesc {
+				sb.WriteString(fmt.Sprintf("\t\targs = append(args, curVal)\n\t\tconds = append(conds, fmt.Sprintf(\"%s > $%%d\", len(args)))\n\t\torderClause = \"ORDER BY %s ASC\"\n", orderCol, orderCol))
+			} else {
+				sb.WriteString(fmt.Sprintf("\t\targs = append(args, curVal)\n\t\tconds = append(conds, fmt.Sprintf(\"%s < $%%d\", len(args)))\n\t\torderClause = \"ORDER BY %s DESC\"\n", orderCol, orderCol))
+			}
+			sb.WriteString("\t} else if curVal != nil && cursor != \"\" {\n")
+			if orderDesc {
+				sb.WriteString(fmt.Sprintf("\t\targs = append(args, curVal)\n\t\tconds = append(conds, fmt.Sprintf(\"%s < $%%d\", len(args)))\n\t\torderClause = \"ORDER BY %s DESC\"\n", orderCol, orderCol))
+			} else {
+				sb.WriteString(fmt.Sprintf("\t\targs = append(args, curVal)\n\t\tconds = append(conds, fmt.Sprintf(\"%s > $%%d\", len(args)))\n\t\torderClause = \"ORDER BY %s ASC\"\n", orderCol, orderCol))
+			}
+			sb.WriteString("\t} else {\n")
+			if orderDesc {
+				sb.WriteString(fmt.Sprintf("\t\torderClause = \"ORDER BY %s DESC\"\n", orderCol))
+			} else {
+				sb.WriteString(fmt.Sprintf("\t\torderClause = \"ORDER BY %s ASC\"\n", orderCol))
+			}
+			sb.WriteString("\t}\n")
+
+			sb.WriteString("\twhereSQL := \"\"\n")
+			sb.WriteString("\tif len(conds) > 0 {\n\t\twhereSQL = \" WHERE \" + strings.Join(conds, \" AND \")\n\t}\n")
+			sb.WriteString("\targs = append(args, limit+1)\n")
+			sb.WriteString(fmt.Sprintf("\tquery := fmt.Sprintf(\"SELECT %s FROM %s%%s %%s LIMIT $%%d\", whereSQL, orderClause, len(args))\n", colsCSV, tableName))
+			sb.WriteString("\trows, err := connFromContext(ctx, r.db).QueryContext(ctx, query, args...)\n")
+			sb.WriteString("\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n")
+			sb.WriteString("\tdefer rows.Close()\n")
+			sb.WriteString(fmt.Sprintf("\tvar items []*%s.%s\n", lay.DomainPkg, p.EntityName))
+			sb.WriteString("\tfor rows.Next() {\n")
+			sb.WriteString(fmt.Sprintf("\t\tvar out %s.%s\n", lay.DomainPkg, p.EntityName))
+			sb.WriteString(fmt.Sprintf("\t\tif err := rows.Scan(%s); err != nil {\n\t\t\treturn nil, nil, err\n\t\t}\n", strings.Join(scanTargets, ", ")))
+			sb.WriteString("\t\titems = append(items, &out)\n\t}\n")
+			sb.WriteString("\tif err := rows.Err(); err != nil {\n\t\treturn nil, nil, err\n\t}\n")
+
+			sb.WriteString("\thasNext := false\n\thasPrev := false\n")
+			sb.WriteString("\tif direction == \"prev\" && curVal != nil && cursor != \"\" {\n")
+			sb.WriteString("\t\thasPrev = len(items) > limit\n\t\tif hasPrev {\n\t\t\titems = items[:limit]\n\t\t}\n")
+			sb.WriteString("\t\thasNext = true\n")
+			sb.WriteString("\t\tfor i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {\n\t\t\titems[i], items[j] = items[j], items[i]\n\t\t}\n")
+			sb.WriteString("\t} else {\n")
+			sb.WriteString("\t\thasNext = len(items) > limit\n\t\tif hasNext {\n\t\t\titems = items[:limit]\n\t\t}\n")
+			sb.WriteString("\t\tif cursor != \"\" {\n\t\t\thasPrev = true\n\t\t}\n\t}\n")
+
+			sb.WriteString("\tnextCursor := \"\"\n\tprevCursor := \"\"\n")
+			sb.WriteString("\tif len(items) > 0 {\n")
+			sb.WriteString(fmt.Sprintf("\t\tif hasNext {\n\t\t\tnextCursor = encodeCursor(items[len(items)-1].%s, %q)\n\t\t}\n", orderColExport, orderCol))
+			sb.WriteString(fmt.Sprintf("\t\tif hasPrev {\n\t\t\tprevCursor = encodeCursor(items[0].%s, %q)\n\t\t}\n", orderColExport, orderCol))
+			sb.WriteString("\t}\n")
+
+			sb.WriteString(fmt.Sprintf("\treturn items, &%s.PageInfo{\n\t\tNextCursor: nextCursor,\n\t\tPrevCursor: prevCursor,\n\t\tHasNext: hasNext,\n\t\tHasPrev: hasPrev,\n\t}, nil\n}\n\n", lay.DomainPkg))
 		}
 	}
 

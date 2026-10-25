@@ -127,6 +127,14 @@ export class ExpressController {
 		for _, p := range h.Params {
 			if pathParamSet[p.Name] {
 				sb.WriteString(fmt.Sprintf("      const %s = req.params[%q] as %s;\n", p.Name, p.Name, tsType(p.Type, false)))
+			} else if h.Method == "GET" {
+				if p.Type == "int" {
+					sb.WriteString(fmt.Sprintf("      const %s = req.query[%q] ? Number(req.query[%q]) : 0;\n", p.Name, p.Name, p.Name))
+				} else if p.Type == "bool" {
+					sb.WriteString(fmt.Sprintf("      const %s = req.query[%q] === \"true\";\n", p.Name, p.Name))
+				} else {
+					sb.WriteString(fmt.Sprintf("      const %s = (req.query[%q] as string) ?? \"\";\n", p.Name, p.Name))
+				}
 			} else {
 				sb.WriteString(fmt.Sprintf("      const %s = req.body as %s;\n", p.Name, tsType(p.Type, false)))
 			}

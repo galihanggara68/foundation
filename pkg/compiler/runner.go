@@ -26,6 +26,9 @@ func Test(workspaceDir string) []Diagnostic {
 	}
 
 	for _, target := range bp.Targets {
+		if target.Kind == "sdk" {
+			continue
+		}
 		runner, ok := testRunners[target.Language]
 		if !ok {
 			return []Diagnostic{{

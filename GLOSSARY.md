@@ -87,6 +87,14 @@ _Avoid_: Template engine, custom script, codegen hook
 The standardized JSON schema contract governing wire communication between the Foundation compiler and external generator plugins over standard I/O.
 _Avoid_: Plugin API, RPC protocol
 
+**Generator Pipeline**:
+An ordered sequence of External Generator Plugins invoked over standard I/O that iteratively transforms, augments, or replaces an in-memory virtual file tree before disk reconciliation.
+_Avoid_: Plugin chain, codegen pipeline, filter pipe
+
+**Scaffolding Pre-population**:
+The compiler capability that pre-populates a GenerationRequest's virtual file tree with built-in emitter files (`scaffold: builtin`) before invoking external plugins, enabling partial overrides (such as Rich DDD or custom middleware) without rewriting complete backends.
+_Avoid_: Template priming, base generation
+
 **SDK Client**:
 A strongly-typed, zero-boilerplate client package emitted directly from a Blueprint's exposed Actions, Value types, and Error contracts for consumption by external services or frontends.
 _Avoid_: API wrapper, frontend stub

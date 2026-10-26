@@ -11,7 +11,7 @@ import {
   type ExpressResponse,
   type ExpressRouterLike,
 } from "../controllers/express_router.ts";
-import { createPostgresContainer } from "./container.ts";
+import { createPostgresContainer, createTestContainer } from "./container.ts";
 
 // adaptExpress bridges the real express application to the ExpressRouterLike port the
 // controllers depend on, keeping the HTTP framework an exchangeable composition detail.
@@ -30,13 +30,26 @@ function adaptExpress(app: Express): ExpressRouterLike {
 }
 
 const app: Express = express();
-const db = new Pool({
-  connectionString: process.env.DATABASE_URL ?? "postgres://localhost:5432/foundation",
-});
-const { controller } = createPostgresContainer(db);
+app.use(express.json());
+
+let controller: { registerRoutes(router: ExpressRouterLike): void };
+if (process.env.DATABASE_URL) {
+  const db = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+  controller = createPostgresContainer(db).controller;
+} else {
+  controller = createTestContainer().controller;
+}
 controller.registerRoutes(adaptExpress(app));
 
 const port = Number(process.env.PORT ?? "8080");
-app.listen(port);
+const server = app.listen(port);
+
+process.on("SIGTERM", () => {
+  server.close(() => {
+    process.exit(0);
+  });
+});
 `
 }

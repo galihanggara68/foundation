@@ -125,7 +125,7 @@ type Server struct {
 				}
 				callArgs = append(callArgs, p.Name)
 			}
-		} else if len(bodyParams) == 1 && !isScalarType(bodyParams[0].Type) {
+		} else if len(bodyParams) == 1 && !arch.IsScalarType(bodyParams[0].Type) {
 			p := bodyParams[0]
 			sb.WriteString(fmt.Sprintf("\tvar %s %s\n", p.Name, lay.goType(p.Type, false)))
 			sb.WriteString(fmt.Sprintf("\tif err := json.NewDecoder(r.Body).Decode(&%s); err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n", p.Name))
@@ -189,13 +189,4 @@ type Server struct {
 `, lay.DomainPkg))
 
 	return sb.String()
-}
-
-func isScalarType(t string) bool {
-	switch t {
-	case "uuid", "string", "int", "decimal", "bool", "timestamp":
-		return true
-	default:
-		return false
-	}
 }

@@ -103,6 +103,21 @@ type ArchitectureIR struct {
 	Scenarios      []ir.ScenarioDecl  `json:"scenarios,omitempty"`
 }
 
+// HasTypeNamed reports whether a domain value or entity with the given name exists in the ArchitectureIR.
+func (a *ArchitectureIR) HasTypeNamed(name string) bool {
+	for _, v := range a.DomainValues {
+		if v.Name == name {
+			return true
+		}
+	}
+	for _, e := range a.DomainEntities {
+		if e.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 type EventHandlerIR struct {
 	ActionName string `json:"action_name"`
 	EventName  string `json:"event_name"`

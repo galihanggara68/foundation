@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+var _ = time.RFC3339
+
 // PageInfo represents keyset pagination cursor and navigation metadata.
 type PageInfo struct {
 	NextCursor string ` + "`json:\"next_cursor,omitempty\"`" + `
@@ -59,13 +61,16 @@ type PageInfo struct {
 
 	// Emit Action Inputs
 	for _, h := range archIR.HTTPHandlers {
-		sb.WriteString(fmt.Sprintf("// %sInput holds the request parameters for %s.\ntype %sInput struct {\n", h.ActionName, h.ActionName, h.ActionName))
-		for _, p := range h.Params {
-			pName := arch.ExportIdent(p.Name)
-			pType := toGoType(p.Type)
-			sb.WriteString(fmt.Sprintf("\t%s %s `json:%q`\n", pName, pType, p.Name))
+		inputName := h.ActionName + "Input"
+		if !archIR.HasTypeNamed(inputName) {
+			sb.WriteString(fmt.Sprintf("// %sInput holds the request parameters for %s.\ntype %sInput struct {\n", h.ActionName, h.ActionName, h.ActionName))
+			for _, p := range h.Params {
+				pName := arch.ExportIdent(p.Name)
+				pType := toGoType(p.Type)
+				sb.WriteString(fmt.Sprintf("\t%s %s `json:%q`\n", pName, pType, p.Name))
+			}
+			sb.WriteString("}\n\n")
 		}
-		sb.WriteString("}\n\n")
 
 		// If list-returning, emit ActionResponse
 		if h.IsListReturning {

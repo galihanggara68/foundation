@@ -83,7 +83,11 @@ func (lay goLayout) emitGoBootstrap(archIR *arch.ArchitectureIR) string {
 	sb.WriteString("func NewTestContainer() *Container {\n")
 	sb.WriteString("\truntimeDriver := runtime.NewMemoryDriver()\n\t_ = runtimeDriver\n")
 	if archIR.HasActorPort {
-		sb.WriteString("\tactorResolver := authn.NewDevHeadersActorResolver()\n\t_ = actorResolver\n")
+		if archIR.AuthnAdapter == "jwt-oidc" {
+			sb.WriteString("\tactorResolver := authn.NewJWTOIDCActorResolver(\"\", \"\")\n\t_ = actorResolver\n")
+		} else {
+			sb.WriteString("\tactorResolver := authn.NewDevHeadersActorResolver()\n\t_ = actorResolver\n")
+		}
 	}
 	var snapRepos []string
 	for _, p := range archIR.Ports {

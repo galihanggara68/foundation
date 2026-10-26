@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
 func emitTSExpressController(archIR *arch.ArchitectureIR) string {
@@ -21,6 +22,7 @@ func emitTSExpressController(archIR *arch.ArchitectureIR) string {
 export interface ExpressRequest {
   headers: Record<string, string | undefined>;
   params: Record<string, string>;
+  query: Record<string, string | string[] | undefined>;
   body: unknown;
 }
 
@@ -61,7 +63,8 @@ function writeError(res: ExpressResponse, err: unknown): void {
     res.status(status).json({ code: err.code, kind: err.kind, message: err.message });
     return;
   }
-  res.status(400).json({ error: String(err) });
+  const msg = err instanceof Error ? err.message : String(err);
+  res.status(400).json({ error: msg });
 }
 
 export class ExpressController {
@@ -108,7 +111,15 @@ export class ExpressController {
 		}
 		sb.WriteString(fmt.Sprintf("  async handle%s(req: ExpressRequest, res: ExpressResponse): Promise<void> {\n", h.ActionName))
 		if archIR.HasActorPort {
-			sb.WriteString("    try {\n      const actor = (await this.actorResolver.resolveActor(req.headers)) as unknown as domain.Actor;\n")
+			sb.WriteString(`    let actor: domain.Actor;
+    try {
+      actor = (await this.actorResolver.resolveActor(req.headers)) as unknown as domain.Actor;
+    } catch {
+      writeError(res, domain.ErrUnauthenticated);
+      return;
+    }
+    try {
+`)
 		} else {
 			sb.WriteString(`    const actor: domain.Actor = {
       id: req.headers["x-actor-id"] ?? "",
@@ -122,6 +133,14 @@ export class ExpressController {
 		for _, pp := range h.PathParams {
 			pathParamSet[pp] = true
 		}
+		var bodyParams []ir.ParamDecl
+		for _, p := range h.Params {
+			if !pathParamSet[p.Name] && h.Method != "GET" {
+				bodyParams = append(bodyParams, p)
+			}
+		}
+		singleObjectBody := len(bodyParams) == 1 && !arch.IsScalarType(bodyParams[0].Type)
+
 		var callArgs []string
 		callArgs = append(callArgs, "actor")
 		for _, p := range h.Params {
@@ -135,8 +154,10 @@ export class ExpressController {
 				} else {
 					sb.WriteString(fmt.Sprintf("      const %s = (req.query[%q] as string) ?? \"\";\n", p.Name, p.Name))
 				}
-			} else {
+			} else if singleObjectBody {
 				sb.WriteString(fmt.Sprintf("      const %s = req.body as %s;\n", p.Name, tsType(p.Type, false)))
+			} else {
+				sb.WriteString(fmt.Sprintf("      const %s = (req.body as any)?.[%q] as %s;\n", p.Name, p.Name, tsType(p.Type, false)))
 			}
 			callArgs = append(callArgs, p.Name)
 		}

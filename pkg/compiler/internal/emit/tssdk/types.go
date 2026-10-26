@@ -52,14 +52,17 @@ func emitTypes(archIR *arch.ArchitectureIR) string {
 
 	// Emit Action Inputs & Responses
 	for _, h := range archIR.HTTPHandlers {
-		sb.WriteString(fmt.Sprintf("// %sInput holds request parameters for %s.\nexport interface %sInput {\n",
-			h.ActionName, h.ActionName, h.ActionName))
-		for _, p := range h.Params {
-			pName := arch.ToSnakeCase(p.Name)
-			pType := toTSType(p.Type)
-			sb.WriteString(fmt.Sprintf("  %s: %s;\n", pName, pType))
+		inputName := h.ActionName + "Input"
+		if !archIR.HasTypeNamed(inputName) {
+			sb.WriteString(fmt.Sprintf("// %sInput holds request parameters for %s.\nexport interface %sInput {\n",
+				h.ActionName, h.ActionName, h.ActionName))
+			for _, p := range h.Params {
+				pName := arch.ToSnakeCase(p.Name)
+				pType := toTSType(p.Type)
+				sb.WriteString(fmt.Sprintf("  %s: %s;\n", pName, pType))
+			}
+			sb.WriteString("}\n\n")
 		}
-		sb.WriteString("}\n\n")
 
 		if h.IsListReturning {
 			itemType := toTSType(strings.TrimPrefix(h.ReturnType, "[]"))

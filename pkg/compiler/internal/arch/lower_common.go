@@ -285,3 +285,13 @@ func LowerActionHTTP(a ir.ActionDecl) (HTTPHandlerIR, bool) {
 		ExpectedVersionParam: expectedVersionParam,
 	}, true
 }
+
+// IsScalarType reports whether t is a primitive scalar type in Foundation.
+func IsScalarType(t string) bool {
+	switch t {
+	case "uuid", "string", "int", "decimal", "bool", "timestamp", "float":
+		return true
+	default:
+		return false
+	}
+}

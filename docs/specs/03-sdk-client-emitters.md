@@ -1,5 +1,5 @@
 ---
-status: ready-for-agent
+status: done
 ---
 
 # Specification 03: Strongly-Typed Go & TypeScript SDK Client Emitters (Phase 5)

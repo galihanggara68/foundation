@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test & Verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Verify Code Formatting
+        run: |
+          unformatted=$(gofmt -l cmd/ pkg/ contrib/)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted with gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Verify File Size Discipline (<= 450 lines)
+        run: |
+          oversized=$(find cmd/ pkg/ -name "*.go" -exec wc -l {} + | awk '$1 > 450 && $2 != "total" {print $1, $2}')
+          if [ -n "$oversized" ]; then
+            echo "The following files exceed 450 lines (CODING_STANDARDS.md):"
+            echo "$oversized"
+            exit 1
+          fi
+
+      - name: Go Vet
+        run: |
+          go vet ./...
+          (cd contrib/go/runtime && go vet ./...)
+
+      - name: Run Core Compiler Tests
+        run: go test -v -race ./...
+
+      - name: Run Contrib Runtime Tests
+        run: |
+          cd contrib/go/runtime
+          go test -v -race ./...
+
+      - name: Build Foundation CLI
+        run: go build -v -o /dev/null ./cmd/foundation

@@ -84,4 +84,3 @@ func formatTSStepRepoCall(kind arch.RepoMethodKind, s ir.StepDecl) (string, stri
 	}
 	return mName, strings.Join(argExprs, ", ")
 }
-

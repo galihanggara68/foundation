@@ -158,20 +158,20 @@ type GivenSeedDecl struct {
 }
 
 type ExpectDecl struct {
-	Left          Expr            `json:"left"`
-	Op            string          `json:"op"`
-	Right         Expr            `json:"right"`
-	ErrorRaised   string          `json:"error_raised,omitempty"`
-	EmittedEvent  string          `json:"emitted_event,omitempty"`
-	EmittedFields []FieldInitDecl `json:"emitted_fields,omitempty"`
+	Left            Expr             `json:"left"`
+	Op              string           `json:"op"`
+	Right           Expr             `json:"right"`
+	ErrorRaised     string           `json:"error_raised,omitempty"`
+	EmittedEvent    string           `json:"emitted_event,omitempty"`
+	EmittedFields   []FieldInitDecl  `json:"emitted_fields,omitempty"`
 	StoredEntity    string           `json:"stored_entity,omitempty"`
 	WhereField      string           `json:"where_field,omitempty"`
 	WhereValue      *Expr            `json:"where_value,omitempty"`
 	WherePredicates []WherePredicate `json:"where_predicates,omitempty"`
 	WhereExpr       *Expr            `json:"where_expr,omitempty"`
 	StoredFields    []FieldInitDecl  `json:"stored_fields,omitempty"`
-	NotStored     bool            `json:"not_stored,omitempty"`
-	Span          Span            `json:"span"`
+	NotStored       bool             `json:"not_stored,omitempty"`
+	Span            Span             `json:"span"`
 }
 
 type ScenarioDecl struct {

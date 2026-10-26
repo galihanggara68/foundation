@@ -358,4 +358,3 @@ function decodeCursor(cursor: string, field: string): unknown {
 
 	return sb.String()
 }
-

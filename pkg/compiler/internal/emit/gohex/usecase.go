@@ -234,4 +234,3 @@ func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.Use
 	sb.WriteString("}\n")
 	return sb.String()
 }
-

@@ -356,4 +356,3 @@ func (p *parser) parseQueryManyStep(varTok token, span ir.Span) (ir.StepDecl, bo
 
 	return step, true
 }
-

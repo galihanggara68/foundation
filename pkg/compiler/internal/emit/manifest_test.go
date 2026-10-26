@@ -16,7 +16,7 @@ func TestReconcileManifest_ProtectsLockfilesFromConflictAndPruning(t *testing.T)
 		"go.sum": []byte("some-dep v1.0.0 h1:xyz=\n"),
 	}
 
-	diags := emit.ReconcileManifest(dir, initialTracked, nil, false)
+	diags := emit.ReconcileManifest(dir, initialTracked, nil, "", false)
 	if len(diags) > 0 {
 		t.Fatalf("unexpected diags on initial reconcile: %v", diags)
 	}
@@ -32,7 +32,7 @@ func TestReconcileManifest_ProtectsLockfilesFromConflictAndPruning(t *testing.T)
 		"go.mod": []byte("module example.com/test\n\ngo 1.23\n"),
 	}
 
-	diags2 := emit.ReconcileManifest(dir, nextTracked, nil, false)
+	diags2 := emit.ReconcileManifest(dir, nextTracked, nil, "", false)
 	if len(diags2) > 0 {
 		t.Fatalf("expected lockfile to be exempt from conflict, but got diags: %v", diags2)
 	}
@@ -43,7 +43,7 @@ func TestReconcileManifest_ProtectsLockfilesFromConflictAndPruning(t *testing.T)
 		"go.sum": []byte("stub\n"),
 	}
 
-	diags3 := emit.ReconcileManifest(dir, nextTrackedWithStub, nil, false)
+	diags3 := emit.ReconcileManifest(dir, nextTrackedWithStub, nil, "", false)
 	if len(diags3) > 0 {
 		t.Fatalf("expected stub lockfile to not error, got: %v", diags3)
 	}

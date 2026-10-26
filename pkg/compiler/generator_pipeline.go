@@ -141,6 +141,7 @@ func executeGeneratorPipeline(
 		Emission: emit.Emission{
 			TrackedFiles: tracked,
 			StubFiles:    stubs,
+			TestCommand:  lastTestCommand,
 		},
 		TestCommand: lastTestCommand,
 	}, allDiags

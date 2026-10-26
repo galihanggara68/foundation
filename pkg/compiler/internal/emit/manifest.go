@@ -18,6 +18,7 @@ import (
 type Emission struct {
 	TrackedFiles map[string][]byte
 	StubFiles    map[string][]byte
+	TestCommand  string
 }
 
 // TargetEmitter translates a lowered ArchitectureIR into target source files (Strategy pattern).
@@ -28,8 +29,9 @@ type TargetEmitter interface {
 const ManifestFileName = ".foundation-manifest.json"
 
 type GenerationManifest struct {
-	Version int               `json:"version"`
-	Files   map[string]string `json:"files"`
+	Version     int               `json:"version"`
+	TestCommand string            `json:"test_command,omitempty"`
+	Files       map[string]string `json:"files"`
 }
 
 func sha256Hex(data []byte) string {
@@ -69,7 +71,7 @@ var protectedLockfiles = map[string]bool{
 
 // ReconcileManifest compares the newly emitted files with the existing .foundation-manifest.json,
 // detects human conflicts, prunes stale generated files, writes tracked files, and writes create-if-missing stubs.
-func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles map[string][]byte, force bool) []ir.Diagnostic {
+func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles map[string][]byte, testCommand string, force bool) []ir.Diagnostic {
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return []ir.Diagnostic{{
 			Code:     "FDN0400",
@@ -144,8 +146,9 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 
 	// 3. Write all tracked files in deterministic order and compute new manifest hashes
 	nextManifest := GenerationManifest{
-		Version: 1,
-		Files:   make(map[string]string, len(trackedFiles)),
+		Version:     1,
+		TestCommand: testCommand,
+		Files:       make(map[string]string, len(trackedFiles)),
 	}
 
 	var paths []string
@@ -234,4 +237,18 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 	}
 
 	return nil
+}
+
+// ReadManifest loads and parses .foundation-manifest.json from outDir.
+func ReadManifest(outDir string) (*GenerationManifest, error) {
+	manifestPath := filepath.Join(outDir, ManifestFileName)
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	var m GenerationManifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
 }

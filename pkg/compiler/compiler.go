@@ -286,7 +286,7 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 		}
 
 		outDir := filepath.Join(workspaceDir, filepath.FromSlash(target.OutDir))
-		recDiags := emit.ReconcileManifest(outDir, emission.TrackedFiles, emission.StubFiles, opts.Force)
+		recDiags := emit.ReconcileManifest(outDir, emission.TrackedFiles, emission.StubFiles, emission.TestCommand, opts.Force)
 		if len(recDiags) > 0 {
 			buildDiags = append(buildDiags, recDiags...)
 			return nil, buildDiags

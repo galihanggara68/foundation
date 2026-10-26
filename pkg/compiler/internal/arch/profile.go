@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
@@ -233,6 +234,17 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 				Message:  fmt.Sprintf("invalid scaffold mode %q in target %q; expected 'builtin' or 'none'", sc, bp.Targets[i].Name),
 				Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
 			}}
+		}
+		if tt := bp.Targets[i].TestTimeout; tt != "" {
+			d, err := time.ParseDuration(tt)
+			if err != nil || d <= 0 {
+				return nil, []ir.Diagnostic{{
+					Code:     "FDN0004",
+					Severity: ir.SeverityError,
+					Message:  fmt.Sprintf("invalid test_timeout %q in target %q: must be a positive duration", tt, bp.Targets[i].Name),
+					Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+				}}
+			}
 		}
 	}
 

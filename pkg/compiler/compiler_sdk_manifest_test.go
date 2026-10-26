@@ -208,7 +208,7 @@ func TestRegression_SDKManifestPrunesObsoleteFiles(t *testing.T) {
 		"client.go":          []byte("package client\n"),
 		"obsolete_helper.go": []byte("package client\n"),
 	}
-	diags1 := emit.ReconcileManifest(outDir, tracked1, nil, false)
+	diags1 := emit.ReconcileManifest(outDir, tracked1, nil, "", false)
 	if len(diags1) > 0 {
 		t.Fatalf("reconcile 1 failed: %+v", diags1)
 	}
@@ -222,7 +222,7 @@ func TestRegression_SDKManifestPrunesObsoleteFiles(t *testing.T) {
 	tracked2 := map[string][]byte{
 		"client.go": []byte("package client\n"),
 	}
-	diags2 := emit.ReconcileManifest(outDir, tracked2, nil, false)
+	diags2 := emit.ReconcileManifest(outDir, tracked2, nil, "", false)
 	if len(diags2) > 0 {
 		t.Fatalf("reconcile 2 failed: %+v", diags2)
 	}

@@ -1,13 +1,22 @@
 package compiler
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 )
+
+// DefaultTestTimeout is the default maximum duration for external test execution.
+const DefaultTestTimeout = 60 * time.Second
 
 // testRunner executes the native test suite of one emitted target (Strategy pattern).
 // Registering a new target kind or language adds an entry here without modifying existing runners.
@@ -37,6 +46,25 @@ func Test(workspaceDir string) []Diagnostic {
 	}
 
 	for _, target := range bp.Targets {
+		outDir := filepath.Join(workspaceDir, filepath.FromSlash(target.OutDir))
+
+		// 1. Resolve test command (hybrid resolution: YAML override > Manifest test_command)
+		cmdStr := target.TestCommand
+		if cmdStr == "" {
+			if man, err := emit.ReadManifest(outDir); err == nil && man.TestCommand != "" {
+				cmdStr = man.TestCommand
+			}
+		}
+
+		if cmdStr != "" {
+			timeout := parseTestTimeout(target.TestTimeout)
+			if runDiags := runExternalTestCommand(target, outDir, cmdStr, timeout); len(runDiags) > 0 {
+				return runDiags
+			}
+			continue
+		}
+
+		// 2. Built-in test runner fallback
 		key := targetRunnerKey{Kind: target.Kind, Language: target.Language}
 		runner, ok := testRunners[key]
 		if !ok {
@@ -47,10 +75,58 @@ func Test(workspaceDir string) []Diagnostic {
 				Span:     Span{File: target.OutDir, Line: 1, Column: 1},
 			}}
 		}
-		outDir := filepath.Join(workspaceDir, filepath.FromSlash(target.OutDir))
 		if runnerDiags := runner(target, outDir); len(runnerDiags) > 0 {
 			return runnerDiags
 		}
+	}
+
+	return nil
+}
+
+func parseTestTimeout(raw string) time.Duration {
+	if raw == "" {
+		return DefaultTestTimeout
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return DefaultTestTimeout
+	}
+	return d
+}
+
+func runExternalTestCommand(target arch.TargetConfig, outDir, cmdStr string, timeout time.Duration) []Diagnostic {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+	cmd.Dir = outDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil && cmd.Process.Pid > 0 {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+
+	var outBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &outBuf
+
+	if err := cmd.Start(); err != nil {
+		return []Diagnostic{testFailureDiag(target, fmt.Sprintf("test start (%s)", cmdStr), err, outBuf.String())}
+	}
+
+	err := cmd.Wait()
+	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return []Diagnostic{{
+				Code:     "FDN0602",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("target %q test execution timed out after %s (command: %q)", target.Name, timeout, cmdStr),
+				Span:     Span{File: target.OutDir, Line: 1, Column: 1},
+			}}
+		}
+		return []Diagnostic{testFailureDiag(target, fmt.Sprintf("test execution (%s)", cmdStr), err, outBuf.String())}
 	}
 
 	return nil

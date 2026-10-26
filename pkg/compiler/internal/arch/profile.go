@@ -39,13 +39,49 @@ type StorageConfig struct {
 	Mode    string `json:"mode"`
 }
 
+// ScaffoldKind defines the scaffolding pre-population mode for generator pipelines.
+type ScaffoldKind string
+
+const (
+	ScaffoldBuiltin ScaffoldKind = "builtin"
+	ScaffoldNone    ScaffoldKind = "none"
+)
+
 type TargetConfig struct {
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	Language     string `json:"language"`
-	Architecture string `json:"architecture"`
-	HTTP         string `json:"http"`
-	OutDir       string `json:"out_dir"`
+	Name         string            `json:"name"`
+	Kind         string            `json:"kind"`
+	Language     string            `json:"language"`
+	Architecture string            `json:"architecture"`
+	HTTP         string            `json:"http"`
+	OutDir       string            `json:"out_dir"`
+	Generators   []string          `json:"generators,omitempty"`
+	Generator    string            `json:"generator,omitempty"`
+	Scaffold     ScaffoldKind      `json:"scaffold,omitempty"`
+	Options      map[string]string `json:"options,omitempty"`
+	TestCommand  string            `json:"test_command,omitempty"`
+	TestTimeout  string            `json:"test_timeout,omitempty"`
+}
+
+// EffectiveGenerators returns the resolved slice of generator plugin names.
+func (t TargetConfig) EffectiveGenerators() []string {
+	if len(t.Generators) > 0 {
+		return t.Generators
+	}
+	if t.Generator != "" {
+		return []string{t.Generator}
+	}
+	return nil
+}
+
+// EffectiveScaffold returns ScaffoldBuiltin or ScaffoldNone, defaulting based on target language and architecture.
+func (t TargetConfig) EffectiveScaffold() ScaffoldKind {
+	if t.Scaffold != "" {
+		return t.Scaffold
+	}
+	if IsBuiltinTarget(t) {
+		return ScaffoldBuiltin
+	}
+	return ScaffoldNone
 }
 
 // LoadBuildProfile reads and parses foundation.build.yaml from workspaceDir.
@@ -65,6 +101,8 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 	lines := strings.Split(string(data), "\n")
 	section := ""
 	var curTarget *TargetConfig
+	targetSubSection := ""
+	targetIndent := 0
 
 	for i, rawLine := range lines {
 		lineNum := i + 1
@@ -132,11 +170,13 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 				bp.Dependencies.Runtime = v
 			}
 		case "targets":
-			if strings.HasPrefix(trimmed, "-") {
+			if strings.HasPrefix(trimmed, "-") && (targetSubSection == "" || indent <= targetIndent) {
 				if curTarget != nil {
 					bp.Targets = append(bp.Targets, *curTarget)
 				}
 				curTarget = &TargetConfig{}
+				targetSubSection = ""
+				targetIndent = indent
 				rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "-"))
 				if rest != "" {
 					k, v, ok := splitKV(rest)
@@ -145,10 +185,36 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 					}
 				}
 			} else if curTarget != nil {
+				if strings.HasPrefix(trimmed, "-") && targetSubSection == "generators" {
+					item := strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "-")), `"'`)
+					if item != "" {
+						curTarget.Generators = append(curTarget.Generators, item)
+					}
+					continue
+				}
+				if targetSubSection == "options" && indent > targetIndent {
+					k, v, ok := splitKV(trimmed)
+					if ok {
+						if curTarget.Options == nil {
+							curTarget.Options = make(map[string]string)
+						}
+						curTarget.Options[k] = v
+						continue
+					}
+				}
 				k, v, ok := splitKV(trimmed)
 				if !ok {
 					return nil, yamlErr(lineNum, "invalid target property")
 				}
+				if k == "generators" && v == "" {
+					targetSubSection = "generators"
+					continue
+				}
+				if k == "options" && v == "" {
+					targetSubSection = "options"
+					continue
+				}
+				targetSubSection = ""
 				setTargetField(curTarget, k, v)
 			}
 		}
@@ -159,6 +225,15 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 
 	for i := range bp.Targets {
 		bp.Targets[i].Architecture = NormalizeTargetArchitecture(bp.Targets[i].Kind, bp.Targets[i].Architecture)
+		sc := bp.Targets[i].Scaffold
+		if sc != "" && sc != ScaffoldBuiltin && sc != ScaffoldNone {
+			return nil, []ir.Diagnostic{{
+				Code:     "FDN0004",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("invalid scaffold mode %q in target %q; expected 'builtin' or 'none'", sc, bp.Targets[i].Name),
+				Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			}}
+		}
 	}
 
 	if bp.Project.Module == "" {
@@ -217,6 +292,23 @@ func splitKV(s string) (string, string, bool) {
 	return k, v, true
 }
 
+func parseFlowList(v string) []string {
+	v = strings.TrimSpace(v)
+	if strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]") {
+		v = v[1 : len(v)-1]
+	}
+	parts := strings.Split(v, ",")
+	var out []string
+	for _, p := range parts {
+		item := strings.TrimSpace(p)
+		item = strings.Trim(item, `"'`)
+		if item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
 func setTargetField(t *TargetConfig, k, v string) {
 	switch k {
 	case "name":
@@ -231,6 +323,20 @@ func setTargetField(t *TargetConfig, k, v string) {
 		t.HTTP = v
 	case "out_dir":
 		t.OutDir = v
+	case "generator":
+		t.Generator = v
+	case "generators":
+		if strings.HasPrefix(v, "[") {
+			t.Generators = parseFlowList(v)
+		} else if v != "" {
+			t.Generators = []string{v}
+		}
+	case "scaffold":
+		t.Scaffold = ScaffoldKind(v)
+	case "test_command":
+		t.TestCommand = v
+	case "test_timeout":
+		t.TestTimeout = v
 	}
 }
 

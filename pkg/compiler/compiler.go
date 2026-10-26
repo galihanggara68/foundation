@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -222,46 +223,115 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 	}
 
 	reg := defaultRegistry()
+	var buildDiags []Diagnostic
 
 	for _, target := range bp.Targets {
-		archIR, lowDiags := arch.Lower(sem, bp, target)
-		if len(lowDiags) > 0 {
-			return nil, lowDiags
-		}
-		if target.Kind == "backend" {
-			archIR.Storage = storagePlan
-		}
-		res.Architectures = append(res.Architectures, archIR)
+		effectiveGens := target.EffectiveGenerators()
+		var emission emit.Emission
 
-		key := arch.TargetKey{
-			Kind:         target.Kind,
-			Language:     target.Language,
-			Architecture: target.Architecture,
-		}
-		emitter, ok := reg.emitters[key]
-		if !ok {
-			return nil, []Diagnostic{{
-				Code:     "FDN0300",
-				Severity: SeverityError,
-				Message:  fmt.Sprintf("no emitter registered for target: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
-				Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-			}}
+		if len(effectiveGens) > 0 {
+			scaffold := target.EffectiveScaffold()
+			var archIR *arch.ArchitectureIR
+			var builtinEmission *emit.Emission
+
+			if scaffold == arch.ScaffoldBuiltin {
+				if !arch.IsBuiltinTarget(target) {
+					return nil, []Diagnostic{{
+						Code:     "FDN0300",
+						Severity: SeverityError,
+						Message:  fmt.Sprintf("scaffold: builtin requested but no built-in emitter exists for target: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
+						Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+					}}
+				}
+				var bDiags []Diagnostic
+				archIR, builtinEmission, bDiags = lowerAndEmitBuiltin(sem, bp, target, storagePlan, reg)
+				if len(bDiags) > 0 {
+					return nil, bDiags
+				}
+			} else {
+				if arch.IsBuiltinTarget(target) {
+					var lowDiags []Diagnostic
+					archIR, lowDiags = arch.Lower(sem, bp, target)
+					if len(lowDiags) > 0 {
+						return nil, lowDiags
+					}
+					if target.Kind == "backend" {
+						archIR.Storage = storagePlan
+					}
+				} else {
+					archIR = arch.NewCustomArchitectureIR(target, bp.Project.Module)
+				}
+			}
+
+			if archIR != nil {
+				res.Architectures = append(res.Architectures, archIR)
+			}
+
+			pipelineRes, pipelineDiags := executeGeneratorPipeline(context.Background(), workspaceDir, target, sem, archIR, builtinEmission)
+			buildDiags = append(buildDiags, pipelineDiags...)
+			if hasErrorDiagnostic(pipelineDiags) {
+				return nil, buildDiags
+			}
+			emission = pipelineRes.Emission
+		} else {
+			var stdDiags []Diagnostic
+			var emissionPtr *emit.Emission
+			var archIR *arch.ArchitectureIR
+			archIR, emissionPtr, stdDiags = lowerAndEmitBuiltin(sem, bp, target, storagePlan, reg)
+			if len(stdDiags) > 0 {
+				return nil, stdDiags
+			}
+			res.Architectures = append(res.Architectures, archIR)
+			emission = *emissionPtr
 		}
 
-		emission, emitDiags := emitter.Emit(archIR)
-		if len(emitDiags) > 0 {
-			return nil, emitDiags
-		}
 		outDir := filepath.Join(workspaceDir, filepath.FromSlash(target.OutDir))
 		recDiags := emit.ReconcileManifest(outDir, emission.TrackedFiles, emission.StubFiles, opts.Force)
 		if len(recDiags) > 0 {
-			return nil, recDiags
+			buildDiags = append(buildDiags, recDiags...)
+			return nil, buildDiags
 		}
 	}
 
 	if lockDiags := arch.WriteLockFile(workspaceDir, nextLock); len(lockDiags) > 0 {
-		return nil, lockDiags
+		buildDiags = append(buildDiags, lockDiags...)
+		return nil, buildDiags
 	}
 
-	return res, nil
+	return res, buildDiags
+}
+
+func lowerAndEmitBuiltin(
+	sem *ir.SemanticIR,
+	bp *arch.BuildProfile,
+	target arch.TargetConfig,
+	storagePlan arch.StoragePlanIR,
+	reg *compilerRegistry,
+) (*arch.ArchitectureIR, *emit.Emission, []Diagnostic) {
+	archIR, lowDiags := arch.Lower(sem, bp, target)
+	if len(lowDiags) > 0 {
+		return nil, nil, lowDiags
+	}
+	if target.Kind == "backend" {
+		archIR.Storage = storagePlan
+	}
+	key := arch.TargetKey{
+		Kind:         target.Kind,
+		Language:     target.Language,
+		Architecture: target.Architecture,
+	}
+	emitter, ok := reg.emitters[key]
+	if !ok {
+		return nil, nil, []Diagnostic{{
+			Code:     "FDN0300",
+			Severity: SeverityError,
+			Message:  fmt.Sprintf("no emitter registered for target: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
+			Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+		}}
+	}
+	emission, emitDiags := emitter.Emit(archIR)
+	if len(emitDiags) > 0 {
+		return nil, nil, emitDiags
+	}
+	return archIR, &emission, nil
 }

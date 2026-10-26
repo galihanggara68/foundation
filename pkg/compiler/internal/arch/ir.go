@@ -28,6 +28,31 @@ func NormalizeTargetArchitecture(kind, architecture string) string {
 	return architecture
 }
 
+// NewCustomArchitectureIR creates an ArchitectureIR for custom generator targets with scaffold: none.
+func NewCustomArchitectureIR(target TargetConfig, module string) *ArchitectureIR {
+	return &ArchitectureIR{
+		TargetName: target.Name,
+		Kind:       target.Kind,
+		Language:   target.Language,
+		Pattern:    target.Architecture,
+		HTTP:       target.HTTP,
+		Module:     module,
+		OutDir:     target.OutDir,
+	}
+}
+
+// IsBuiltinTarget reports whether kind, language, and architecture match a registered built-in target.
+func IsBuiltinTarget(target TargetConfig) bool {
+	arch := NormalizeTargetArchitecture(target.Kind, target.Architecture)
+	key := TargetKey{
+		Kind:         target.Kind,
+		Language:     target.Language,
+		Architecture: arch,
+	}
+	_, ok := defaultLowerers[key]
+	return ok
+}
+
 // Lower lowers a validated SemanticIR + TargetConfig into an ArchitectureIR using the matching PatternLowerer strategy.
 func Lower(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig) (*ArchitectureIR, []ir.Diagnostic) {
 	arch := NormalizeTargetArchitecture(target.Kind, target.Architecture)

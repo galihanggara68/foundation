@@ -82,14 +82,17 @@ The existing [ticket #07](./.scratch/00-baseline-compiler-and-architecture/issue
 
 ## Phase 6 — Standardized IR Protocol & Pluggable Generator Plugins
 
-Enable external language adoption and company-specific architectures without hardcoding them into the compiler binary (ADR [0011](./docs/adr/0011-pluggable-emitter-protocol.md)):
+Enable external language adoption and company-specific architectures without hardcoding them into the compiler binary (ADRs [0011](./docs/adr/0011-pluggable-emitter-protocol.md), [0014](./docs/adr/0014-multi-generator-plugin-pipelines.md)):
 
-- **Standardized Wire Protocol**: Formally published JSON Schema for `GenerationRequest` (containing `SemanticIR`, optional `ArchitectureIR`, and target config) and `GenerationResponse` (target file tree and diagnostics).
+- **Standardized Wire Protocol**: Formally published JSON Schema for `GenerationRequest` (containing `SemanticIR`, optional `ArchitectureIR`, and target config) and `GenerationResponse` (target file tree, create-if-missing stubs, and diagnostics).
 - **Subprocess Plugin Runner**: The compiler invokes `foundation-gen-<target>` executables over standard I/O; the compiler's Manifest Engine maintains exclusive control of disk writes, content hashing, conflict detection, and stale-file pruning.
+- **Generator Pipelines & Chaining**: Multi-plugin pipelines (`generators: [...]`) supporting `scaffold: builtin` (pre-populating the standard 90% scaffolding for partial overrides) and `scaffold: none` (clean slate for new languages), with collision detection (`FDN0702`).
 - **Composable `emitterkit` SDK**: Reusable Go libraries for SQL generation, domain types, and Action Pipeline statement lowering so plugin authors do not rewrite generators from scratch.
-- **Testing Seam**: Execution of tests emitted by third-party plugins is delegated to native language toolchains (`cargo test`, `pytest`, etc.).
+- **Testing Seam**: Execution of tests emitted by third-party plugins is delegated to native language toolchains (`pytest`, `cargo test`, etc.) with configurable timeouts.
 
-**Exit:** a standalone `foundation-gen-rust` or company-custom generator runs via `generator:` in `foundation.build.yaml` with full Generation Manifest hygiene.
+**Exit:** two working reference generators running via `generators:` / `generator:` with full Generation Manifest hygiene:
+1. **Rich DDD + OpenTelemetry Trace Plugin Pipeline**: Emits Go Aggregate Roots with encapsulated business invariant methods alongside injected OpenTelemetry tracing middleware.
+2. **Python FastAPI Generator Plugin**: Emits a simple, runnable Python FastAPI HTTP backend from `.fdn` with automated test execution via `pytest`.
 
 ## Phase 7 — High-Contention State Machines & Real-Time Streaming
 

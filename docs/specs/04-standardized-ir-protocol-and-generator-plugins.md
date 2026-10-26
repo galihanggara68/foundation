@@ -80,10 +80,15 @@ Deliver Phase 6 of the Foundation Roadmap by implementing a **Standardized Wire 
 - Hybrid resolution: use plugin `GenerationResponse.test_command` by default, allow override in `foundation.build.yaml`.
 - Enforce test execution timeout (default 60s) with `FDN0602`.
 
-### Ticket 05: Go `emitterkit` SDK & Rich DDD Example Plugin
-- Publish `pkg/emitterkit/` providing helper functions for running plugins and calling built-in scaffolding emitters.
-- Build an end-to-end reference plugin (`foundation-gen-rich-ddd` or `foundation-gen-custom-middleware`) verifying partial overrides.
-- Integration tests verifying full wire compatibility, manifest tracking, conflict detection, and `foundation test` execution.
+### Ticket 05: Go `emitterkit` SDK & Dual Reference Generators (Exit Gate)
+- Publish `pkg/emitterkit/` providing helper functions for running plugins (`RunPlugin`) and invoking built-in Go scaffolding emitters.
+- **Reference Generator 1 (Pipeline Chaining & Partial Overrides)**: Implement `foundation-gen-rich-ddd` and `foundation-gen-otel` working in a sequential pipeline (`generators: [ ... ]`) with `scaffold: builtin`:
+  - `foundation-gen-rich-ddd`: Transforms entities into Go Aggregate Roots with private fields and encapsulated invariant methods.
+  - `foundation-gen-otel`: Wraps the HTTP router with OpenTelemetry tracing headers.
+- **Reference Generator 2 (Clean Slate Polyglot Language)**: Implement `foundation-gen-python-fastapi` working with `scaffold: none`:
+  - Emits runnable Python FastAPI route handlers, Pydantic domain models, and an in-memory repository from `.fdn`.
+  - Emits native test suite executable via `pytest` through `foundation test`.
+- End-to-end integration tests verifying full wire compatibility, manifest tracking, conflict detection, and `foundation test` execution across both generators.
 
 ## Testing Decisions & Agreed Seams
 - **Seam 1 (Protocol Seam)**: Unit tests verify byte-for-byte JSON serialization and deserialization of `GenerationRequest` and `GenerationResponse`.

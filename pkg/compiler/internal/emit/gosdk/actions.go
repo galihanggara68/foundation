@@ -17,12 +17,14 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
 	_ = fmt.Sprintf
 	_ = strings.ReplaceAll
 	_ = strconv.Itoa
+	_ = time.RFC3339
 )
 
 `)
@@ -64,14 +66,18 @@ var (
 				}
 				fieldIdent := arch.ExportIdent(p.Name)
 				switch p.Type {
-				case "string", "uuid":
+				case "string", "uuid", "decimal":
 					sb.WriteString(fmt.Sprintf("\tif input.%s != \"\" {\n\t\tquery.Set(%q, input.%s)\n\t}\n", fieldIdent, p.Name, fieldIdent))
 				case "int":
 					sb.WriteString(fmt.Sprintf("\tif input.%s != 0 {\n\t\tquery.Set(%q, strconv.Itoa(input.%s))\n\t}\n", fieldIdent, p.Name, fieldIdent))
+				case "float":
+					sb.WriteString(fmt.Sprintf("\tif input.%s != 0 {\n\t\tquery.Set(%q, strconv.FormatFloat(input.%s, 'f', -1, 64))\n\t}\n", fieldIdent, p.Name, fieldIdent))
 				case "bool":
-					sb.WriteString(fmt.Sprintf("\tquery.Set(%q, strconv.FormatBool(input.%s))\n", p.Name, fieldIdent))
+					sb.WriteString(fmt.Sprintf("\tif input.%s {\n\t\tquery.Set(%q, \"true\")\n\t}\n", fieldIdent, p.Name))
+				case "timestamp":
+					sb.WriteString(fmt.Sprintf("\tif !input.%s.IsZero() {\n\t\tquery.Set(%q, input.%s.Format(time.RFC3339))\n\t}\n", fieldIdent, p.Name, fieldIdent))
 				default:
-					sb.WriteString(fmt.Sprintf("\tif input.%s != \"\" {\n\t\tquery.Set(%q, fmt.Sprintf(\"%%v\", input.%s))\n\t}\n", fieldIdent, p.Name, fieldIdent))
+					sb.WriteString(fmt.Sprintf("\tif val := fmt.Sprintf(\"%%v\", input.%s); val != \"\" {\n\t\tquery.Set(%q, val)\n\t}\n", fieldIdent, p.Name))
 				}
 			}
 			sb.WriteString("\tvar body interface{} = nil\n")

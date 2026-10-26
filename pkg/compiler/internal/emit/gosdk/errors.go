@@ -38,7 +38,21 @@ type ForbiddenError struct{ APIError }
 type NotFoundError struct{ APIError }
 type ConflictError struct{ APIError }
 type ValidationError struct{ APIError }
-type InternalError struct{ APIError }
+
+func (e *UnauthenticatedError) Unwrap() error { return &e.APIError }
+func (e *ForbiddenError) Unwrap() error { return &e.APIError }
+func (e *NotFoundError) Unwrap() error { return &e.APIError }
+func (e *ConflictError) Unwrap() error { return &e.APIError }
+func (e *ValidationError) Unwrap() error { return &e.APIError }
+
+// Aliases matching standard naming conventions
+type (
+	ErrUnauthenticated = UnauthenticatedError
+	ErrForbidden       = ForbiddenError
+	ErrNotFound        = NotFoundError
+	ErrConflict        = ConflictError
+	ErrValidation      = ValidationError
+)
 
 `)
 

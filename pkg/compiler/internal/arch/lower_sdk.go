@@ -1,8 +1,6 @@
 package arch
 
 import (
-	"strings"
-
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -35,71 +33,9 @@ func lowerSDKCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig) (
 	}
 
 	for _, a := range sem.Actions {
-		isInternal := false
-		isEventHandler := false
-		httpMethod := "POST"
-		isListRet := strings.HasPrefix(a.ReturnType, "[]")
-		if isListRet {
-			httpMethod = "GET"
+		if h, ok := LowerActionHTTP(a); ok {
+			arch.HTTPHandlers = append(arch.HTTPHandlers, h)
 		}
-		httpPath := "/" + strings.ToLower(a.Name)
-
-		for _, tr := range a.Traits {
-			switch tr.Name {
-			case "internal":
-				isInternal = true
-			case "event_handler":
-				isEventHandler = true
-			case "http":
-				if m, ok := tr.Args["method"]; ok {
-					httpMethod = strings.ToUpper(m)
-				}
-				if p, ok := tr.Args["path"]; ok {
-					httpPath = p
-				}
-			}
-		}
-
-		if isInternal || isEventHandler {
-			continue
-		}
-
-		var pathParams []string
-		for _, seg := range strings.Split(httpPath, "/") {
-			if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
-				pathParams = append(pathParams, strings.TrimSuffix(strings.TrimPrefix(seg, "{"), "}"))
-			}
-		}
-
-		var expectedVersionParam string
-		for _, p := range a.Params {
-			if p.Name == "expected_version" || p.Name == "version" {
-				expectedVersionParam = p.Name
-				break
-			}
-		}
-
-		arch.HTTPHandlers = append(arch.HTTPHandlers, HTTPHandlerIR{
-			ActionName:           a.Name,
-			Method:               httpMethod,
-			Path:                 httpPath,
-			PathParams:           pathParams,
-			Params:               a.Params,
-			ReturnType:           a.ReturnType,
-			IsListReturning:      isListRet,
-			ExpectedVersionParam: expectedVersionParam,
-		})
-
-		arch.UseCases = append(arch.UseCases, UseCaseIR{
-			Name:                 a.Name,
-			ActionName:           a.Name,
-			Params:               a.Params,
-			ReturnType:           a.ReturnType,
-			IsListReturning:      isListRet,
-			Traits:               a.Traits,
-			Steps:                a.Steps,
-			ExpectedVersionParam: expectedVersionParam,
-		})
 	}
 
 	return arch, nil

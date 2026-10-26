@@ -9,13 +9,24 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 )
 
-// testRunner executes the native test suite of one emitted backend target (Strategy pattern).
-// Registering a new target language adds an entry here without modifying existing runners.
+// testRunner executes the native test suite of one emitted target (Strategy pattern).
+// Registering a new target kind or language adds an entry here without modifying existing runners.
 type testRunner func(target arch.TargetConfig, outDir string) []Diagnostic
 
-var testRunners = map[string]testRunner{
-	"go":         runGoTestSuite,
-	"typescript": runTypeScriptTestSuite,
+type targetRunnerKey struct {
+	Kind     string
+	Language string
+}
+
+var testRunners = map[targetRunnerKey]testRunner{
+	{Kind: "backend", Language: "go"}:         runGoTestSuite,
+	{Kind: "backend", Language: "typescript"}: runTypeScriptTestSuite,
+	{Kind: "sdk", Language: "go"}:             runNoopTestSuite,
+	{Kind: "sdk", Language: "typescript"}:     runNoopTestSuite,
+}
+
+func runNoopTestSuite(target arch.TargetConfig, outDir string) []Diagnostic {
+	return nil
 }
 
 // Test executes the native test suites inside every emitted target in foundation.build.yaml.
@@ -26,10 +37,8 @@ func Test(workspaceDir string) []Diagnostic {
 	}
 
 	for _, target := range bp.Targets {
-		if target.Kind == "sdk" {
-			continue
-		}
-		runner, ok := testRunners[target.Language]
+		key := targetRunnerKey{Kind: target.Kind, Language: target.Language}
+		runner, ok := testRunners[key]
 		if !ok {
 			return []Diagnostic{{
 				Code:     "FDN0601",

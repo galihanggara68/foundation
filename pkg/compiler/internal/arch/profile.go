@@ -158,9 +158,7 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 	}
 
 	for i := range bp.Targets {
-		if bp.Targets[i].Kind == "sdk" && (bp.Targets[i].Architecture == "" || bp.Targets[i].Architecture == "client") {
-			bp.Targets[i].Architecture = "sdk"
-		}
+		bp.Targets[i].Architecture = NormalizeTargetArchitecture(bp.Targets[i].Kind, bp.Targets[i].Architecture)
 	}
 
 	if bp.Project.Module == "" {

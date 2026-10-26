@@ -35,7 +35,6 @@ export class ForbiddenError extends ApiError {}
 export class NotFoundError extends ApiError {}
 export class ConflictError extends ApiError {}
 export class ValidationError extends ApiError {}
-export class InternalError extends ApiError {}
 
 `)
 

@@ -41,11 +41,16 @@ func WithHTTPClient(httpClient *http.Client) ClientOption {
 	}
 }
 
-// WithBearerToken sets an Authorization: Bearer <token> header on all outgoing requests.
-func WithBearerToken(token string) ClientOption {
+// WithAuthToken sets an Authorization: Bearer <token> header on all outgoing requests.
+func WithAuthToken(token string) ClientOption {
 	return func(c *Client) {
 		c.authToken = token
 	}
+}
+
+// WithBearerToken is an alias for WithAuthToken.
+func WithBearerToken(token string) ClientOption {
+	return WithAuthToken(token)
 }
 
 // WithHeader adds a custom default HTTP header to all outgoing requests.

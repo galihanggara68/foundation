@@ -164,26 +164,8 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 			ExpectedVersionParam: expectedVersionParam,
 		})
 
-		httpMethod := "POST"
-		if isListRet {
-			httpMethod = "GET"
-		}
-		httpPath := "/" + strings.ToLower(a.Name)
-		isInternal := false
-		isEventHandler := false
 		for _, tr := range a.Traits {
-			switch tr.Name {
-			case "http":
-				if m, ok := tr.Args["method"]; ok {
-					httpMethod = strings.ToUpper(m)
-				}
-				if p, ok := tr.Args["path"]; ok {
-					httpPath = p
-				}
-			case "internal":
-				isInternal = true
-			case "event_handler":
-				isEventHandler = true
+			if tr.Name == "event_handler" {
 				evName, _ := getTraitsArg([]ir.TraitDecl{tr}, "event_handler")
 				arch.EventHandlers = append(arch.EventHandlers, EventHandlerIR{
 					ActionName: a.Name,
@@ -191,23 +173,8 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 				})
 			}
 		}
-		if !isInternal && !isEventHandler {
-			var pathParams []string
-			for _, seg := range strings.Split(httpPath, "/") {
-				if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
-					pathParams = append(pathParams, strings.TrimSuffix(strings.TrimPrefix(seg, "{"), "}"))
-				}
-			}
-			arch.HTTPHandlers = append(arch.HTTPHandlers, HTTPHandlerIR{
-				ActionName:           a.Name,
-				Method:               httpMethod,
-				Path:                 httpPath,
-				PathParams:           pathParams,
-				Params:               a.Params,
-				ReturnType:           a.ReturnType,
-				IsListReturning:      isListRet,
-				ExpectedVersionParam: expectedVersionParam,
-			})
+		if h, ok := LowerActionHTTP(a); ok {
+			arch.HTTPHandlers = append(arch.HTTPHandlers, h)
 		}
 	}
 
@@ -258,4 +225,63 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 	arch.HasActorPort = hasActor
 
 	return arch
+}
+
+// LowerActionHTTP extracts the HTTPHandlerIR representation for an action if it is exposed.
+// Returns false if the action is internal or an event handler.
+func LowerActionHTTP(a ir.ActionDecl) (HTTPHandlerIR, bool) {
+	isInternal := false
+	isEventHandler := false
+	httpMethod := "POST"
+	isListRet := strings.HasPrefix(a.ReturnType, "[]")
+	if isListRet {
+		httpMethod = "GET"
+	}
+	httpPath := "/" + strings.ToLower(a.Name)
+
+	for _, tr := range a.Traits {
+		switch tr.Name {
+		case "http":
+			if m, ok := tr.Args["method"]; ok {
+				httpMethod = strings.ToUpper(m)
+			}
+			if p, ok := tr.Args["path"]; ok {
+				httpPath = p
+			}
+		case "internal":
+			isInternal = true
+		case "event_handler":
+			isEventHandler = true
+		}
+	}
+
+	if isInternal || isEventHandler {
+		return HTTPHandlerIR{}, false
+	}
+
+	var pathParams []string
+	for _, seg := range strings.Split(httpPath, "/") {
+		if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
+			pathParams = append(pathParams, strings.TrimSuffix(strings.TrimPrefix(seg, "{"), "}"))
+		}
+	}
+
+	var expectedVersionParam string
+	for _, p := range a.Params {
+		if p.Name == "expected_version" || p.Name == "version" {
+			expectedVersionParam = p.Name
+			break
+		}
+	}
+
+	return HTTPHandlerIR{
+		ActionName:           a.Name,
+		Method:               httpMethod,
+		Path:                 httpPath,
+		PathParams:           pathParams,
+		Params:               a.Params,
+		ReturnType:           a.ReturnType,
+		IsListReturning:      isListRet,
+		ExpectedVersionParam: expectedVersionParam,
+	}, true
 }

@@ -20,12 +20,17 @@ var defaultLowerers = map[TargetKey]PatternLowerer{
 	{Kind: "sdk", Language: "typescript", Architecture: "sdk"}:       TSSDKLowerer{},
 }
 
+// NormalizeTargetArchitecture maps alias and default architecture strings into canonical architecture keys.
+func NormalizeTargetArchitecture(kind, architecture string) string {
+	if kind == "sdk" && (architecture == "" || architecture == "client") {
+		return "sdk"
+	}
+	return architecture
+}
+
 // Lower lowers a validated SemanticIR + TargetConfig into an ArchitectureIR using the matching PatternLowerer strategy.
 func Lower(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig) (*ArchitectureIR, []ir.Diagnostic) {
-	arch := target.Architecture
-	if target.Kind == "sdk" && (arch == "" || arch == "client") {
-		arch = "sdk"
-	}
+	arch := NormalizeTargetArchitecture(target.Kind, target.Architecture)
 	key := TargetKey{
 		Kind:         target.Kind,
 		Language:     target.Language,
@@ -255,6 +260,26 @@ func ToSnakeCase(s string) string {
 			sb.WriteByte(byte(r + ('a' - 'A')))
 		} else {
 			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
+// ToCamelCase converts snake_case or PascalCase identifiers into idiomatic camelCase.
+func ToCamelCase(s string) string {
+	if s == "" {
+		return ""
+	}
+	parts := strings.Split(s, "_")
+	var sb strings.Builder
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		if i == 0 {
+			sb.WriteString(strings.ToLower(p[:1]) + p[1:])
+		} else {
+			sb.WriteString(strings.ToUpper(p[:1]) + p[1:])
 		}
 	}
 	return sb.String()

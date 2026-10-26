@@ -89,19 +89,29 @@ export class Client {
 `)
 
 	for _, h := range archIR.HTTPHandlers {
-		methodName := toCamelCase(h.ActionName)
+		methodName := arch.ToCamelCase(h.ActionName)
 		inputTypeName := fmt.Sprintf("types.%sInput", h.ActionName)
 
 		isVoid := h.ReturnType == "" || h.ReturnType == "void"
 		isList := h.IsListReturning
 
 		var retSig string
+		var reqTypeParam string
 		if isVoid {
 			retSig = "Promise<void>"
+			reqTypeParam = "void"
 		} else if isList {
 			retSig = fmt.Sprintf("Promise<types.%sResponse>", h.ActionName)
+			reqTypeParam = fmt.Sprintf("types.%sResponse", h.ActionName)
 		} else {
-			retSig = fmt.Sprintf("Promise<types.%s>", toTSType(h.ReturnType))
+			rawType := toTSType(h.ReturnType)
+			if isTSPrimitive(rawType) {
+				retSig = fmt.Sprintf("Promise<%s>", rawType)
+				reqTypeParam = rawType
+			} else {
+				retSig = fmt.Sprintf("Promise<types.%s>", rawType)
+				reqTypeParam = fmt.Sprintf("types.%s", rawType)
+			}
 		}
 
 		sb.WriteString(fmt.Sprintf("  async %s(input: %sInput): %s {\n", methodName, inputTypeName, retSig))
@@ -131,11 +141,8 @@ export class Client {
 
 		if isVoid {
 			sb.WriteString(fmt.Sprintf("    await this.doRequest<void>(%q, path, query, body);\n  }\n\n", h.Method))
-		} else if isList {
-			sb.WriteString(fmt.Sprintf("    return await this.doRequest<types.%sResponse>(%q, path, query, body);\n  }\n\n", h.ActionName, h.Method))
 		} else {
-			retType := toTSType(h.ReturnType)
-			sb.WriteString(fmt.Sprintf("    return await this.doRequest<types.%s>(%q, path, query, body);\n  }\n\n", retType, h.Method))
+			sb.WriteString(fmt.Sprintf("    return await this.doRequest<%s>(%q, path, query, body);\n  }\n\n", reqTypeParam, h.Method))
 		}
 	}
 
@@ -143,21 +150,11 @@ export class Client {
 	return sb.String()
 }
 
-func toCamelCase(s string) string {
-	if s == "" {
-		return ""
+func isTSPrimitive(t string) bool {
+	switch t {
+	case "string", "number", "boolean", "void", "any":
+		return true
+	default:
+		return false
 	}
-	parts := strings.Split(s, "_")
-	var sb strings.Builder
-	for i, p := range parts {
-		if p == "" {
-			continue
-		}
-		if i == 0 {
-			sb.WriteString(strings.ToLower(p[:1]) + p[1:])
-		} else {
-			sb.WriteString(strings.ToUpper(p[:1]) + p[1:])
-		}
-	}
-	return sb.String()
 }

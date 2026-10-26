@@ -53,6 +53,16 @@ To guarantee architectural integrity, predictability, and safety, Foundation def
 - **Languages**: Go 1.23+ and TypeScript / Node.js 20+.
 - **Transports**: HTTP/REST routes (gRPC and event queue consumer transports are on the roadmap).
 
+### Real-World Boundaries & Seams:
+- **Relational Joins & Aggregates**: Foundation compiles 1:1 entity-to-table repositories. Cross-table SQL `JOIN`s, grouping, and complex reporting are handled via CQRS Read-Model **Slots** or multi-step pipeline queries.
+- **Secondary Adapter Swapping**: Domain port interfaces (`internal/domain`) decouple your application from default drivers (`database/sql`), allowing custom adapters (`jackc/pgx/v5`, `gorm`, `google/uuid`).
+- **Anemic Models vs. Pipelines**: Entities are emitted as pure IR data structures; business logic and state invariants reside in declarative Action Pipelines or handwritten Domain Service Slots.
+- **Auth Verification vs. Token Issuance**: `authn: jwt-oidc` provides an Ingress Actor Resolver port for validating tokens; user login and token issuance are handled by external IdPs or crypto Slots.
+- **HTTP Ingress Flexibility**: Handlers bind path, query, and body parameters; custom request/response headers are managed via standard HTTP middleware wrapping the generated router.
+- **Schema Migrations**: Emits deterministic snapshot DDL (`schema.sql`); incremental migration tracking is handled by dedicated migration tools (`goose`, `atlas`, `golang-migrate`).
+
+👉 **[Read the complete guide to Extension Patterns, Architectural Seams & Platform Boundaries](./docs/blueprints/extension-patterns-and-limitations.md)**.
+
 ---
 
 ## 🎯 Common Use Cases

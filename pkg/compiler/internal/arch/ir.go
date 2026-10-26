@@ -16,14 +16,20 @@ var defaultLowerers = map[TargetKey]PatternLowerer{
 	{Kind: "backend", Language: "go", Architecture: "hexagonal"}:     GoHexagonalLowerer{},
 	{Kind: "backend", Language: "go", Architecture: "layered"}:       GoLayeredLowerer{},
 	{Kind: "backend", Language: "typescript", Architecture: "clean"}: TSCleanLowerer{},
+	{Kind: "sdk", Language: "go", Architecture: "sdk"}:               GoSDKLowerer{},
+	{Kind: "sdk", Language: "typescript", Architecture: "sdk"}:       TSSDKLowerer{},
 }
 
 // Lower lowers a validated SemanticIR + TargetConfig into an ArchitectureIR using the matching PatternLowerer strategy.
 func Lower(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig) (*ArchitectureIR, []ir.Diagnostic) {
+	arch := target.Architecture
+	if target.Kind == "sdk" && (arch == "" || arch == "client") {
+		arch = "sdk"
+	}
 	key := TargetKey{
 		Kind:         target.Kind,
 		Language:     target.Language,
-		Architecture: target.Architecture,
+		Architecture: arch,
 	}
 	lowerer, ok := defaultLowerers[key]
 	if !ok {
@@ -34,6 +40,7 @@ func Lower(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig) (*Architec
 			Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
 		}}
 	}
+	target.Architecture = arch
 	return lowerer.Lower(sem, bp, target)
 }
 
@@ -199,6 +206,8 @@ type HTTPHandlerIR struct {
 	Path                 string         `json:"path"`
 	PathParams           []string       `json:"path_params,omitempty"`
 	Params               []ir.ParamDecl `json:"params,omitempty"`
+	ReturnType           string         `json:"return_type,omitempty"`
+	IsListReturning      bool           `json:"is_list_returning,omitempty"`
 	ExpectedVersionParam string         `json:"expected_version_param,omitempty"`
 }
 

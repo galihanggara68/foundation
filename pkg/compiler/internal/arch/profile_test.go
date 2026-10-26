@@ -64,3 +64,41 @@ targets:
 		t.Fatalf("expected bp.Dependencies.Runtime == ^0.1.0, got %s", bp.Dependencies.Runtime)
 	}
 }
+
+func TestLoadBuildProfile_SDKTargetArchitectureDefault(t *testing.T) {
+	dir := t.TempDir()
+
+	sdkYAML := `
+project:
+  name: test
+  module: example.com/test
+
+targets:
+  - name: go-client
+    kind: sdk
+    language: go
+    out_dir: clients/go
+  - name: ts-client
+    kind: sdk
+    language: typescript
+    architecture: client
+    out_dir: clients/ts
+`
+	if err := os.WriteFile(filepath.Join(dir, "foundation.build.yaml"), []byte(sdkYAML), 0644); err != nil {
+		t.Fatalf("failed to write yaml: %v", err)
+	}
+
+	bp, diags := arch.LoadBuildProfile(dir)
+	if len(diags) > 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if len(bp.Targets) != 2 {
+		t.Fatalf("expected 2 targets, got %d", len(bp.Targets))
+	}
+	if bp.Targets[0].Architecture != "sdk" {
+		t.Errorf("expected go-client architecture to default to 'sdk', got %q", bp.Targets[0].Architecture)
+	}
+	if bp.Targets[1].Architecture != "sdk" {
+		t.Errorf("expected ts-client architecture 'client' to normalize to 'sdk', got %q", bp.Targets[1].Architecture)
+	}
+}

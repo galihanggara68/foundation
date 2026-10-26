@@ -204,6 +204,8 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 				Path:                 httpPath,
 				PathParams:           pathParams,
 				Params:               a.Params,
+				ReturnType:           a.ReturnType,
+				IsListReturning:      isListRet,
 				ExpectedVersionParam: expectedVersionParam,
 			})
 		}

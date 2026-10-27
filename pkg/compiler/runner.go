@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
@@ -100,13 +99,7 @@ func runExternalTestCommand(target arch.TargetConfig, outDir, cmdStr string, tim
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
 	cmd.Dir = outDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process != nil && cmd.Process.Pid > 0 {
-			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		return nil
-	}
+	configureProcessIsolation(cmd)
 
 	var outBuf bytes.Buffer
 	cmd.Stdout = &outBuf

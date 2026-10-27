@@ -1,0 +1,20 @@
+//go:build !windows
+
+package plugin
+
+import (
+	"os/exec"
+	"syscall"
+)
+
+// configureProcessIsolation sets up process group isolation on POSIX systems
+// so timeouts terminate the entire process group with SIGKILL.
+func configureProcessIsolation(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil && cmd.Process.Pid > 0 {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+}

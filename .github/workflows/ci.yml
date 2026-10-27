@@ -25,6 +25,14 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python test tools
+        run: pip install pytest fastapi uvicorn
+
       - name: Verify Code Formatting
         run: make fmt-check
 

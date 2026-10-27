@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
@@ -96,13 +95,7 @@ func (r *Runner) Execute(ctx context.Context, pluginPath string, req protocol.Ge
 	cmd.Stdin = bytes.NewReader(reqBytes)
 
 	// Process group isolation: kill entire process tree on cancellation or timeout
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process != nil && cmd.Process.Pid > 0 {
-			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		return nil
-	}
+	configureProcessIsolation(cmd)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf

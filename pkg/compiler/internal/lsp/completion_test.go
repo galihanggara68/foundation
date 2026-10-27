@@ -13,6 +13,7 @@ func TestComputeCompletion_TopLevelKeywords(t *testing.T) {
 
 	foundEntity := false
 	foundAction := false
+	foundSlot := false
 	for _, item := range list.Items {
 		if item.Label == "entity" {
 			foundEntity = true
@@ -20,10 +21,13 @@ func TestComputeCompletion_TopLevelKeywords(t *testing.T) {
 		if item.Label == "action" {
 			foundAction = true
 		}
+		if item.Label == "slot" {
+			foundSlot = true
+		}
 	}
 
-	if !foundEntity || !foundAction {
-		t.Fatalf("expected 'entity' and 'action' in completion items, foundEntity=%v foundAction=%v", foundEntity, foundAction)
+	if !foundEntity || !foundAction || !foundSlot {
+		t.Fatalf("expected 'entity', 'action', and 'slot' in completion items, foundEntity=%v foundAction=%v foundSlot=%v", foundEntity, foundAction, foundSlot)
 	}
 }
 

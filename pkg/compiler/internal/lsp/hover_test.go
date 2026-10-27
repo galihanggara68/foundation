@@ -73,7 +73,16 @@ func TestComputeHover_TypesAndKeywords(t *testing.T) {
 		t.Fatalf("expected entity doc, got: %s", hEntity.Contents.Value)
 	}
 
-	// 3. Hover on whitespace (Line 0, Col 6) -> nil
+	// 3. Hover on 'slot'
+	hSlot := ComputeHover("slot ShippingCalculator {}", Position{Line: 0, Character: 2})
+	if hSlot == nil {
+		t.Fatalf("expected hover for slot keyword, got nil")
+	}
+	if !strings.Contains(hSlot.Contents.Value, "outbound integration port") {
+		t.Fatalf("expected slot doc, got: %s", hSlot.Contents.Value)
+	}
+
+	// 4. Hover on whitespace (Line 0, Col 6) -> nil
 	hWhitespace := ComputeHover(doc, Position{Line: 0, Character: 6})
 	if hWhitespace != nil {
 		t.Fatalf("expected nil for whitespace, got: %+v", hWhitespace)

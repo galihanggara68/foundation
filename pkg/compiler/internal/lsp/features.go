@@ -193,6 +193,21 @@ var hoverCatalog = map[string]string{
 	"value":    "### `value` Construct\n\nDeclares an immutable value object without independent persistence identity.",
 	"enum":     "### `enum` Construct\n\nDeclares a closed set of enumerated string or integer variants.",
 	"event":    "### `event` Construct\n\nDeclares a domain event payload published to brokers or asynchronous event handlers.",
+	"error":    "### `error` Construct\n\nDeclares a structured domain error with error kind and descriptive message.",
+	"slot": "### `slot` Construct\n\nDeclares an outbound integration port/interface to decouple domain logic from external services.\n\n" +
+		"**Usage:**\n" +
+		"- Declaration: `slot PaymentGateway { Charge(...) -> Receipt throws Error }`\n" +
+		"- Step call: `let res = slot PaymentGateway.Charge(...) else Error`\n" +
+		"- Scenario stub: `given slot PaymentGateway.Charge(...) returns Receipt { ... }`",
+	"policy":   "### `policy` Construct\n\nDeclares a reusable domain authorization or business rule evaluated with `require PolicyName(...)`.",
+	"require":  "### `require` Step\n\nEvaluates a domain policy rule within an action pipeline. Aborts the pipeline with an error if condition fails.",
+	"validate": "### `validate` Step\n\nAsserts a boolean invariant within an action pipeline. Fails with an error if condition is false.",
+	"emit":     "### `emit` Step\n\nPublishes a domain event to event subscribers or outbox message brokers.",
+	"given":    "### `given` Scenario Clause\n\nSeeds database entity state or stubs external slot responses in scenario tests.",
+	"when":     "### `when` Scenario Clause\n\nExecutes the action under test with provided arguments in scenario tests.",
+	"expect":   "### `expect` Scenario Clause\n\nAsserts expected outcomes: return values, stored entity state, emitted events, or raised errors.",
+	"returns":  "### `returns` Keyword\n\nSpecifies the stubbed return value in scenario slot mocks (`given slot ... returns ...`).",
+	"throws":   "### `throws` Keyword\n\nDeclares errors thrown by slot methods or stubbed in scenario tests (`throws ErrorName`).",
 }
 
 var keywordCompletions = []CompletionItem{
@@ -203,8 +218,17 @@ var keywordCompletions = []CompletionItem{
 	{Label: "value", Kind: CompletionKindKeyword, Detail: "Declare a value object", InsertText: "value ${1:Name} {\n\t$0\n}"},
 	{Label: "enum", Kind: CompletionKindKeyword, Detail: "Declare an enum", InsertText: "enum ${1:Name} {\n\t$0\n}"},
 	{Label: "event", Kind: CompletionKindKeyword, Detail: "Declare a domain event", InsertText: "event ${1:Name} {\n\t$0\n}"},
+	{Label: "error", Kind: CompletionKindKeyword, Detail: "Declare a domain error", InsertText: "error ${1:Name} {\n\tkind: ${2:conflict}\n\tmessage: \"${3:message}\"\n}"},
+	{Label: "slot", Kind: CompletionKindKeyword, Detail: "Declare an outbound integration slot", InsertText: "slot ${1:Name} {\n\t$0\n}"},
+	{Label: "policy", Kind: CompletionKindKeyword, Detail: "Declare a domain policy", InsertText: "policy ${1:Name}(${2:params}) {\n\t$0\n}"},
 	{Label: "query", Kind: CompletionKindKeyword, Detail: "Query step", InsertText: "query ${1:name} = single ${2:Entity} where ${3:id} == ${4:input.id}"},
 	{Label: "step", Kind: CompletionKindKeyword, Detail: "Pipeline step", InsertText: "step ${1:name} {\n\t$0\n}"},
+	{Label: "validate", Kind: CompletionKindKeyword, Detail: "Validate invariant step", InsertText: "validate ${1:condition} else ${2:Error}"},
+	{Label: "require", Kind: CompletionKindKeyword, Detail: "Require policy step", InsertText: "require ${1:Policy}(${2:args}) else ${3:Error}"},
+	{Label: "emit", Kind: CompletionKindKeyword, Detail: "Emit domain event step", InsertText: "emit ${1:Event} {\n\t$0\n}"},
+	{Label: "given", Kind: CompletionKindKeyword, Detail: "Scenario given clause", InsertText: "given ${1:Entity} {\n\t$0\n}"},
+	{Label: "when", Kind: CompletionKindKeyword, Detail: "Scenario when clause", InsertText: "when ${1:Action}(${2:args})"},
+	{Label: "expect", Kind: CompletionKindKeyword, Detail: "Scenario expect clause", InsertText: "expect ${1:condition}"},
 	{Label: "input", Kind: CompletionKindKeyword, Detail: "Input parameters block", InsertText: "input {\n\t$0\n}"},
 	{Label: "output", Kind: CompletionKindKeyword, Detail: "Output response block", InsertText: "output {\n\t$0\n}"},
 }

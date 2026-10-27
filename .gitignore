@@ -1,0 +1,15 @@
+# Binaries
+bin/
+*.exe
+*.test
+
+# Test outputs
+.scratch/
+
+# OS & Editor
+.DS_Store
+.idea/
+.vscode/
+
+# Node
+node_modules/

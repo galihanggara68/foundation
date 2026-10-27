@@ -16,7 +16,14 @@ This document defines the architectural, SOLID, Clean Code, and Deep Module stan
   - `pkg/compiler/internal/arch` (**Stage 2 Middle-End Lowering**): `BuildProfile` loader (`profile.go`), self-contained `ArchitectureIR` (`ir.go`), and `PatternLowerer` strategies (`lower_hexagonal.go`, etc.). `ArchitectureIR` must **never** embed a raw `*ir.SemanticIR` pointer.
   - `pkg/compiler/internal/emit` (**Stage 3 Backend Emission**): `TargetEmitter` interface, `.foundation-manifest.json` reconciliation (`manifest.go`), and per-target emitter subpackages (e.g., `emit/gohex` split into `emitter.go`, `domain.go`, `usecase.go`, `adapters.go`, `scenarios.go`). Emitters must **never** import `frontend` or `validate`.
 - **Cognitive Load & File Size Discipline**:
-  - Avoid monolithic "God files". Keep individual `.go` files focused on a single sub-concern (target ≤ 450 lines per file). When a parser, validator, or emitter grows, split it along clear conceptual seams (`domain.go`, `usecase.go`, `adapters.go`, `scenarios.go`).
+  - Avoid monolithic "God files". Keep individual `.go` files focused on a single sub-concern (strictly $\le 450$ lines per file across `cmd/`, `pkg/`, `contrib/`, and `test/`). When a parser, validator, or emitter grows, split it along clear conceptual seams (`domain.go`, `usecase.go`, `adapters.go`, `scenarios.go`).
+- **Test Taxonomy & Packaging**:
+  - **Unit Tests**: Co-located directly with source code (`*_test.go` inside `cmd/`, `pkg/compiler/internal/...`, and `contrib/...`). Focused on fast, hermetic, in-memory validation of individual components.
+  - **Integration & Battle Tests (`test/`)**: Separated into top-level black-box suites that consume `pkg/compiler` strictly through public interfaces:
+    - `test/e2e/`: Full compiler-to-runnable-app journeys, generator plugins, and generated client SDKs.
+    - `test/security/`: Manifest sandboxing, path traversal (Zip-Slip) prevention, and rogue plugin isolation.
+    - `test/durability/`: Live HTTP concurrency floods, abrupt socket disconnections, and graceful drain (`SIGTERM`).
+    - `test/scale/`: Extreme scale benchmarks (500+ entities, 5,000+ fields, deep DAGs).
 
 ---
 

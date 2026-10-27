@@ -1,4 +1,4 @@
-package compiler_test
+package e2e_test
 
 import (
 	"encoding/json"

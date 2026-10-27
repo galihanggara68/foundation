@@ -228,6 +228,34 @@ Usage: foundation <check|build|test|ir> [--dir <path>] [--force]
 
 ---
 
+## 🛠️ Development & Testing
+
+Foundation includes a root `Makefile` for local development workflows and categorized test execution:
+
+```bash
+# Build
+make build             # Compile Foundation CLI and reference generator plugins into bin/
+make clean             # Remove build outputs and binaries
+
+# Testing by Category
+make test-unit         # Run fast, hermetic unit tests (cmd/ and pkg/)
+make test-e2e          # Run end-to-end integration tests (test/e2e/)
+make test-security     # Run sandboxing & adversarial security suite (test/security/)
+make test-durability   # Run live HTTP durability & crash recovery suite (test/durability/)
+make test-scale        # Run heavy compiler scaling & stress suite (test/scale/)
+make test-contrib      # Run Go and TypeScript runtime test suites
+make test-all          # Run all test suites across the repository
+
+# Quality & Code Discipline
+make fmt               # Format all Go source files with gofmt
+make fmt-check         # Verify all files are formatted
+make line-check        # Enforce file size discipline (<= 450 lines per file)
+make vet               # Run go vet across all packages
+make verify            # Full pre-commit gate (fmt-check, line-check, vet, test-unit)
+```
+
+---
+
 ## 📚 Blueprint Guides & Documentation
 
 Explore in-depth documentation and reference examples in [`docs/blueprints/`](./docs/blueprints/README.md):

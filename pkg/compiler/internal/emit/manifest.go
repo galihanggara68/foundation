@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
@@ -69,9 +70,54 @@ var protectedLockfiles = map[string]bool{
 	"yarn.lock":         true,
 }
 
+// safeDiskPath resolves a relative file path against outDir, ensuring that the resolved
+// path remains strictly confined within outDir (preventing directory traversal / zip-slip attacks).
+func safeDiskPath(outDir, rel string) (string, error) {
+	cleanRel := filepath.Clean(filepath.FromSlash(rel))
+	if cleanRel == "." || cleanRel == "" {
+		return "", fmt.Errorf("invalid empty or root file path: %q", rel)
+	}
+	if filepath.IsAbs(cleanRel) {
+		return "", fmt.Errorf("security violation: absolute file path %q is forbidden", rel)
+	}
+	if cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("security violation: file path %q escapes output directory", rel)
+	}
+
+	diskPath := filepath.Join(outDir, cleanRel)
+	relToOut, err := filepath.Rel(outDir, diskPath)
+	if err != nil || relToOut == ".." || strings.HasPrefix(relToOut, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("security violation: resolved path %q escapes output directory %q", diskPath, outDir)
+	}
+
+	return diskPath, nil
+}
+
 // ReconcileManifest compares the newly emitted files with the existing .foundation-manifest.json,
 // detects human conflicts, prunes stale generated files, writes tracked files, and writes create-if-missing stubs.
 func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles map[string][]byte, testCommand string, force bool) []ir.Diagnostic {
+	// 0. Enforce path confinement security on all incoming virtual files
+	for rel := range trackedFiles {
+		if _, err := safeDiskPath(outDir, rel); err != nil {
+			return []ir.Diagnostic{{
+				Code:     "FDN0400",
+				Severity: ir.SeverityError,
+				Message:  err.Error(),
+				Span:     ir.Span{File: rel, Line: 1, Column: 1},
+			}}
+		}
+	}
+	for rel := range stubFiles {
+		if _, err := safeDiskPath(outDir, rel); err != nil {
+			return []ir.Diagnostic{{
+				Code:     "FDN0400",
+				Severity: ir.SeverityError,
+				Message:  err.Error(),
+				Span:     ir.Span{File: rel, Line: 1, Column: 1},
+			}}
+		}
+	}
+
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return []ir.Diagnostic{{
 			Code:     "FDN0400",
@@ -110,7 +156,10 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 				continue
 			}
 			expectedHash := prev.Files[rel]
-			diskPath := filepath.Join(outDir, filepath.FromSlash(rel))
+			diskPath, err := safeDiskPath(outDir, rel)
+			if err != nil {
+				continue
+			}
 			diskBytes, err := os.ReadFile(diskPath)
 			if err != nil {
 				continue
@@ -137,7 +186,10 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 			continue
 		}
 		if _, stillPresent := trackedFiles[rel]; !stillPresent {
-			diskPath := filepath.Join(outDir, filepath.FromSlash(rel))
+			diskPath, err := safeDiskPath(outDir, rel)
+			if err != nil {
+				continue
+			}
 			_ = os.Remove(diskPath)
 			prunedDirs = append(prunedDirs, path.Dir(rel))
 		}
@@ -159,7 +211,7 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 
 	for _, rel := range paths {
 		content := trackedFiles[rel]
-		diskPath := filepath.Join(outDir, filepath.FromSlash(rel))
+		diskPath, _ := safeDiskPath(outDir, rel)
 		if err := os.MkdirAll(filepath.Dir(diskPath), 0755); err != nil {
 			return []ir.Diagnostic{{
 				Code:     "FDN0400",
@@ -194,7 +246,7 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 	sort.Strings(stubPaths)
 
 	for _, rel := range stubPaths {
-		diskPath := filepath.Join(outDir, filepath.FromSlash(rel))
+		diskPath, _ := safeDiskPath(outDir, rel)
 		if _, err := os.Stat(diskPath); err == nil {
 			continue
 		}

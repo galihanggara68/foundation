@@ -111,8 +111,10 @@ func executeGeneratorPipeline(
 					Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
 				})
 			}
+			if !exists || content != virtualFiles[relPath] {
+				fileProvenance[relPath] = genName
+			}
 			virtualFiles[relPath] = content
-			fileProvenance[relPath] = genName
 		}
 
 		// Deterministic iteration for merging create-if-missing stub files

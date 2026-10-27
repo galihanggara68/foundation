@@ -80,7 +80,7 @@ The existing [ticket #07](./.scratch/00-baseline-compiler-and-architecture/issue
 
 **Exit:** ticket #07 acceptance criteria, end-to-end verified against running Go and TypeScript HTTP servers.
 
-## Phase 6 — Standardized IR Protocol & Pluggable Generator Plugins
+## Phase 6 — Standardized IR Protocol & Pluggable Generator Plugins *(Implemented & Verified)*
 
 Enable external language adoption and company-specific architectures without hardcoding them into the compiler binary (ADRs [0011](./docs/adr/0011-pluggable-emitter-protocol.md), [0014](./docs/adr/0014-multi-generator-plugin-pipelines.md)):
 
@@ -91,8 +91,8 @@ Enable external language adoption and company-specific architectures without har
 - **Testing Seam**: Execution of tests emitted by third-party plugins is delegated to native language toolchains (`pytest`, `cargo test`, etc.) with configurable timeouts.
 
 **Exit:** two working reference generators running via `generators:` / `generator:` with full Generation Manifest hygiene:
-1. **Rich DDD + OpenTelemetry Trace Plugin Pipeline**: Emits Go Aggregate Roots with encapsulated business invariant methods alongside injected OpenTelemetry tracing middleware.
-2. **Python FastAPI Generator Plugin**: Emits a simple, runnable Python FastAPI HTTP backend from `.fdn` with automated test execution via `pytest`.
+1. **Rich DDD + OpenTelemetry Trace Plugin Pipeline**: Emits Go Aggregate Roots with encapsulated business invariant methods alongside injected OpenTelemetry tracing middleware. Verified via `go test ./...`.
+2. **Python FastAPI Generator Plugin**: Emits a simple, runnable Python FastAPI HTTP backend from `.fdn` with automated test execution via `pytest`. Verified end-to-end.
 
 ## Phase 7 — High-Contention State Machines & Real-Time Streaming
 

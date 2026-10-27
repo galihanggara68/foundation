@@ -278,6 +278,24 @@ If an Action or Policy requires a header value (e.g. `X-Tenant-ID` or `X-Organiz
    }
    ```
 
+#### Build-Time Tracing & Header Middleware via Generator Plugins
+Rather than manually wrapping HTTP servers in handwritten code, Foundation's pluggable generator pipeline enables build-time middleware injection:
+
+```yaml
+targets:
+  - name: backend
+    language: go
+    architecture: hexagonal
+    scaffold: builtin
+    generators:
+      - "foundation-gen-otel"
+```
+
+The plugin automatically:
+- Emits distributed tracing middleware extracting W3C `traceparent` and `X-Trace-ID` headers.
+- Wraps the generated Chi router so every incoming request creates an OpenTelemetry span context with zero manual wiring.
+- Preserves standard route handling and error mapping.
+
 ---
 
 ## 4. Rich Domain Models vs. Action Pipelines (DDD Style)
@@ -328,6 +346,27 @@ func (o *Order) CanBeRefunded() bool {
 }
 ```
 *Note*: The generated use case will not call this method automatically, but custom Slots or background workers can share this logic.
+
+#### Automated Rich Aggregate Roots via Generator Plugins
+If your domain requires true DDD Aggregate Roots with private invariant constructors, domain validation, and encapsulated mutation methods, use the `foundation-gen-rich-ddd` generator plugin in your build profile:
+
+```yaml
+targets:
+  - name: backend
+    language: go
+    architecture: hexagonal
+    scaffold: builtin
+    generators:
+      - "foundation-gen-rich-ddd"
+```
+
+When compiled, Foundation:
+1. Emits the standard hexagonal scaffolding in memory (`scaffold: builtin`).
+2. Runs `foundation-gen-rich-ddd` to transform data entities into rich DDD aggregates with:
+   - Invariant constructors (`NewOrder(...)`) enforcing required fields and identifiers.
+   - Validation methods (`Validate() error`).
+   - Encapsulated setter methods (`SetStatus(...)`) that guard business rules.
+3. Automatically writes create-if-missing configuration stubs (`config/ddd.starter.json`) to disk without tracking them in the manifest.
 
 ---
 
@@ -429,7 +468,10 @@ Integrate Foundation with production migration tools (`goose`, `atlas`, or `gola
 | **SQL `JOIN`s / Grouping / Aggregations** | CQRS Read-Model **Slot** (`internal/adapters/postgres`) |
 | **Alternative DB Drivers (`pgx`, `gorm`)** | Implement generated `domain.Repository` port in `internal/adapters/` |
 | **High-Performance UUIDs (`google/uuid`, ULID)** | Kept as `string` at domain boundary; convert in custom adapter or Slot |
-| **Request Headers / Correlation IDs** | Standard Go HTTP middleware wrapping the generated `httpAdapter.Server` |
+| **Request Headers / Correlation IDs** | Standard Go HTTP middleware or generator plugin (`foundation-gen-otel`) |
+| **Distributed Tracing & Context** | Generator plugin (`foundation-gen-otel`) injecting router tracing middleware |
+| **Rich DDD Aggregate Roots** | Generator plugin (`foundation-gen-rich-ddd`) enforcing invariants |
+| **Custom Language Targets (Python, Rust)** | External generator plugin (`foundation-gen-*`) with `scaffold: none` |
 | **Tenant Isolation via Headers** | Extract in `ActorResolver` adapter; bind to `actor` claims |
 | **Custom Response Headers / Cookies** | HTTP response interceptor middleware |
 | **Token Issuance (`/login`, JWT signing)** | Implement a `TokenService` **Slot** using `bcrypt` and `golang-jwt` |

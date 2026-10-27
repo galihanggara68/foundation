@@ -30,6 +30,8 @@ Modern backend development suffers from two extremes:
   Write integration tests directly inside `.fdn` using `given`, `when`, and `expect`. They compile into native `go test` and `npm test` suites with zero mock boilerplate.
 - 🎯 **Multi-Target Code Generation**:
   Compile the exact same domain blueprint into a Go Hexagonal service (Chi router + `database/sql`) or a TypeScript Clean service (Express + `pg`).
+- 🔌 **Pluggable Generator Pipelines (`foundation-gen-*`)**:
+  Compose external generators sequentially (`generators: [...]`) for any language or architecture (Python FastAPI, Rust Axum, Rich DDD Aggregate Roots, OpenTelemetry distributed tracing) with scaffolding pre-population (`scaffold: builtin` vs `none`).
 
 ---
 
@@ -50,7 +52,7 @@ To guarantee architectural integrity, predictability, and safety, Foundation def
 
 ### Current Platform Scope:
 - **Storage**: PostgreSQL (declarative schemas, sequential up/down migrations, transactional outbox tables).
-- **Languages**: Go 1.23+ and TypeScript / Node.js 20+.
+- **Languages**: Built-in Go 1.23+ and TypeScript / Node.js 20+; polyglot support via external Generator Plugins (e.g. Python FastAPI reference generator).
 - **Transports**: HTTP/REST routes (gRPC and event queue consumer transports are on the roadmap).
 
 ### Real-World Boundaries & Seams:
@@ -220,8 +222,8 @@ Usage: foundation <check|build|test|ir> [--dir <path>] [--force]
 | Command | Description |
 | :--- | :--- |
 | `foundation check` | Parses blueprints, resolves symbol tables, type-checks actions, and verifies architectural rules. |
-| `foundation build` | Compiles IR into production code, SQL migrations, stubs, and reconciles `.foundation-manifest.json`. |
-| `foundation test` | Compiles and runs native target scenario tests (`go test ./...` or `npm test`) 100% offline. |
+| `foundation build` | Compiles IR into production code, executes generator pipelines, and reconciles `.foundation-manifest.json`. |
+| `foundation test` | Compiles and runs native target scenario tests (`go test ./...`, `npm test`, or `test_command` like `pytest`) 100% offline. |
 | `foundation ir` | Emits canonical Semantic IR JSON to stdout for tooling and inspection. |
 
 ---
@@ -236,6 +238,8 @@ Explore in-depth documentation and reference examples in [`docs/blueprints/`](./
 - [**Optimistic Concurrency Control**](./docs/blueprints/concurrency-control.md): Field versioning with `@version`, conditional SQL updates, and HTTP 409 Conflict handling.
 - [**Slots & Custom Boundaries**](./docs/blueprints/slots-and-contracts.md): Handwritten code seams, starter stubs, manifest exclusion, and automated contract tests.
 - [**BDD Scenarios & Testing**](./docs/blueprints/scenarios-and-testing.md): BDD testing syntax (`given`, `when`, `expect`) and hermetic execution.
-- [**Build Profile Configuration**](./docs/blueprints/build-profile.md): Reference for `foundation.build.yaml` options and storage modes.
+- [**Build Profile Configuration**](./docs/blueprints/build-profile.md): Reference for `foundation.build.yaml` options, targets, and storage modes.
+- [**Generator Plugins & Emitters**](./docs/blueprints/generator-plugins.md): Subprocess plugin wire protocol, multi-generator pipelines, scaffolding pre-population, and authoring custom generators with `pkg/emitterkit`.
+- [**Extension Patterns & Platform Boundaries**](./docs/blueprints/extension-patterns-and-limitations.md): Cookbook guide for real-world backend needs: SQL `JOIN`s, swapping DB drivers (`pgx`), custom headers, DDD aggregate invariants, and JWT token issuance.
 
 For architecture decisions and compiler specifications, see [Architectural Decision Records (`docs/adr/`)](./docs/adr/) and [Technical Specifications (`docs/specs/`)](./docs/specs/).

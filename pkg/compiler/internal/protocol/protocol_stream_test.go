@@ -159,7 +159,7 @@ func TestDecodeErrors(t *testing.T) {
 				OutDir:   "gen",
 			},
 		},
-		SemanticIR:      &ir.SemanticIR{},
+		SemanticIR: &ir.SemanticIR{},
 	}
 	if err := reqFuture.Validate(); err == nil {
 		t.Error("expected error validating request with future protocol version")

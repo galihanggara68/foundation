@@ -7,7 +7,7 @@ This document defines the architectural, SOLID, Clean Code, and Deep Module stan
 ## 1. Deep Module Architecture & Stage-Aligned Package Layout
 
 - **Single Public Compiler Driver Seam (`pkg/compiler`)**:
-  - External callers (`cmd/foundation` and integration tests) interact exclusively through the deep top-level driver interface: `Check`, `Build`, `IR`, and `Test`.
+  - External callers (`cmd/foundation` and integration tests) interact exclusively through the deep top-level driver interface: `Check`, `Build`, `IR`, `Test`, and `LSP`.
   - Keep the public interface small and stable; hide lexer, parser, pass orchestration, lowering strategies, and emitter implementations inside `pkg/compiler/internal/`.
 - **Stage-Aligned Subpackages ([ADR 0002](./docs/adr/0002-three-stage-architecture-lowering.md))**:
   - `pkg/compiler/internal/ir`: Pure domain data structures (`SemanticIR`, `StepDecl`, `Expr`, `Diagnostic`, `Span`) and shared AST/IR visitors (`WalkStepsAndExprs`, `WalkExpr`). Zero I/O or stage logic.

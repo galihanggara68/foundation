@@ -1,4 +1,4 @@
-.PHONY: all build test test-unit test-e2e test-security test-durability test-scale test-contrib test-all fmt fmt-check line-check vet verify clean help
+.PHONY: all build test test-unit test-lsp test-e2e test-security test-durability test-scale test-contrib test-all fmt fmt-check line-check vet verify clean help
 
 SHELL := /bin/bash
 BIN_DIR := bin
@@ -17,6 +17,7 @@ help:
 	@echo "Test Targets:"
 	@echo "  test               Run all unit and integration tests"
 	@echo "  test-unit          Run fast unit tests (cmd/ and pkg/)"
+	@echo "  test-lsp           Run Foundation LSP language server unit & E2E suite"
 	@echo "  test-e2e           Run end-to-end integration tests (test/e2e/)"
 	@echo "  test-security      Run sandboxing & adversarial security suite (test/security/)"
 	@echo "  test-durability    Run live HTTP durability & crash recovery suite (test/durability/)"
@@ -46,6 +47,10 @@ test:
 
 test-unit:
 	go test -v ./cmd/... ./pkg/...
+
+test-lsp:
+	go test -v ./pkg/compiler/internal/lsp/...
+	go test -v ./test/e2e -run TestE2E_FoundationLSP
 
 test-e2e:
 	go test -v ./test/e2e/...

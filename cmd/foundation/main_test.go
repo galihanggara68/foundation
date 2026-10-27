@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,5 +84,20 @@ targets:
 	stderr.Reset()
 	if code := run([]string{"test", "--dir", dir}, &stdout, &stderr); code != 0 {
 		t.Fatalf("test failed (code %d): %s", code, stderr.String())
+	}
+}
+
+func TestCLI_LSPCommand(t *testing.T) {
+	shutReq := `{"jsonrpc":"2.0","id":1,"method":"shutdown","params":null}`
+	exitNotif := `{"jsonrpc":"2.0","method":"exit","params":{}}`
+	frame := fmt.Sprintf("Content-Length: %d\r\n\r\n%sContent-Length: %d\r\n\r\n%s",
+		len(shutReq), shutReq, len(exitNotif), exitNotif)
+
+	stdin := strings.NewReader(frame)
+	var stdout, stderr bytes.Buffer
+
+	code := runWithStdin([]string{"lsp", "--debug"}, stdin, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("lsp command failed with code %d: %s", code, stderr.String())
 	}
 }

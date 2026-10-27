@@ -10,10 +10,14 @@ import (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(runWithStdin(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	return runWithStdin(args, os.Stdin, stdout, stderr)
+}
+
+func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printUsage(stderr)
 		return 1
@@ -24,12 +28,21 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", ".", "workspace directory containing .fdn Blueprints and foundation.build.yaml")
 	force := fs.Bool("force", false, "overwrite manually modified manifest-tracked files")
+	debug := fs.Bool("debug", false, "enable verbose diagnostic trace for language server")
 
 	if err := fs.Parse(args[1:]); err != nil {
 		return 1
 	}
 
 	switch subcmd {
+	case "lsp":
+		_ = debug // Reserved for verbose trace options
+		if err := compiler.LSP(stdin, stdout); err != nil {
+			fmt.Fprintf(stderr, "lsp error: %v\n", err)
+			return 1
+		}
+		return 0
+
 	case "check":
 		_, diags := compiler.Check(*dir)
 		if len(diags) > 0 {
@@ -80,5 +93,5 @@ func printDiagnostics(w io.Writer, diags []compiler.Diagnostic) {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage: foundation <check|build|ir|test> [--dir <path>] [--force]")
+	fmt.Fprintln(w, "Usage: foundation <check|build|ir|test|lsp> [--dir <path>] [--force]")
 }

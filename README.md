@@ -271,3 +271,21 @@ Explore in-depth documentation and reference examples in [`docs/blueprints/`](./
 - [**Extension Patterns & Platform Boundaries**](./docs/blueprints/extension-patterns-and-limitations.md): Cookbook guide for real-world backend needs: SQL `JOIN`s, swapping DB drivers (`pgx`), custom headers, DDD aggregate invariants, and JWT token issuance.
 
 For architecture decisions and compiler specifications, see [Architectural Decision Records (`docs/adr/`)](./docs/adr/) and [Technical Specifications (`docs/specs/`)](./docs/specs/).
+
+---
+
+## 🤝 Community & Contributing
+
+We welcome community contributions, bug reports, and generator plugin ideas!
+
+* **[Contributing Guide](./CONTRIBUTING.md)**: Development setup, `make verify` pre-commit gate, line discipline, and pull request workflow.
+* **[Security Policy](./SECURITY.md)**: Vulnerability disclosure and defensive sandboxing guarantees.
+* **[Coding Standards](./CODING_STANDARDS.md)**: Code formatting, architectural principles, and line count boundaries.
+* **[Roadmap](./ROADMAP.md)**: Phased platform evolution and planned features.
+
+---
+
+## 📄 License
+
+Foundation is licensed under the [Apache License, Version 2.0](./LICENSE).
+Copyright 2026 Foundation Authors.

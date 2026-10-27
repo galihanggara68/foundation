@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Cross-Platform Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Compile Cross-Platform Binaries
+        run: |
+          mkdir -p dist
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          
+          PLATFORMS=(
+            "linux/amd64/foundation-${TAG_NAME}-linux-amd64"
+            "linux/arm64/foundation-${TAG_NAME}-linux-arm64"
+            "darwin/amd64/foundation-${TAG_NAME}-darwin-amd64"
+            "darwin/arm64/foundation-${TAG_NAME}-darwin-arm64"
+            "windows/amd64/foundation-${TAG_NAME}-windows-amd64"
+          )
+          
+          for target in "${PLATFORMS[@]}"; do
+            IFS="/" read -r GOOS GOARCH OUTNAME <<< "$target"
+            echo "Compiling for ${GOOS}/${GOARCH} -> ${OUTNAME}..."
+            
+            STAGE_DIR="dist/stage_${GOOS}_${GOARCH}"
+            mkdir -p "$STAGE_DIR"
+            
+            EXT=""
+            if [ "$GOOS" = "windows" ]; then
+              EXT=".exe"
+            fi
+            
+            BIN="${STAGE_DIR}/foundation${EXT}"
+            GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${TAG_NAME}" -o "$BIN" ./cmd/foundation
+            
+            cp LICENSE "$STAGE_DIR/"
+            cp README.md "$STAGE_DIR/"
+            
+            if [ "$GOOS" = "windows" ]; then
+              (cd "$STAGE_DIR" && zip -r "../../dist/${OUTNAME}.zip" .)
+            else
+              tar -czvf "dist/${OUTNAME}.tar.gz" -C "$STAGE_DIR" .
+            fi
+            
+            rm -rf "$STAGE_DIR"
+          done
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          generate_release_notes: true

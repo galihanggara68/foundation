@@ -74,6 +74,8 @@ func (s *Server) handleMessage(payload []byte) bool {
 		s.handleDidClose(req.Params)
 	case "textDocument/hover":
 		s.handleHover(req)
+	case "textDocument/definition":
+		s.handleDefinition(req)
 	case "textDocument/completion":
 		s.handleCompletion(req)
 	default:
@@ -112,6 +114,7 @@ func (s *Server) handleInitialize(req RequestMessage) {
 			CompletionProvider: &CompletionOptions{
 				TriggerCharacters: []string{"@", ":", "."},
 			},
+			DefinitionProvider: true,
 		},
 		ServerInfo: &ServerInfo{
 			Name:    "foundation-lsp",
@@ -176,8 +179,35 @@ func (s *Server) handleHover(req RequestMessage) {
 		return
 	}
 
-	hover := ComputeHover(content, params.Position)
+	hover := ComputeHoverAt(
+		s.workspace.SymbolIndexes(params.TextDocument.URI),
+		params.TextDocument.URI,
+		content,
+		params.Position,
+	)
 	_ = s.transport.WriteResponse(req.ID, hover, nil)
+}
+
+func (s *Server) handleDefinition(req RequestMessage) {
+	var params TextDocumentPositionParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		_ = s.transport.WriteResponse(req.ID, nil, nil)
+		return
+	}
+
+	content, ok := s.workspace.GetDocument(params.TextDocument.URI)
+	if !ok {
+		_ = s.transport.WriteResponse(req.ID, nil, nil)
+		return
+	}
+
+	locations := ComputeDefinition(
+		s.workspace.SymbolIndexes(params.TextDocument.URI),
+		params.TextDocument.URI,
+		content,
+		params.Position,
+	)
+	_ = s.transport.WriteResponse(req.ID, locations, nil)
 }
 
 func (s *Server) handleCompletion(req RequestMessage) {

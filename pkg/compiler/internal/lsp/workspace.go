@@ -82,6 +82,34 @@ func (w *Workspace) TrackedURIs() []string {
 	return uris
 }
 
+// SymbolIndexes parses every Blueprint source in the workspace that contains
+// targetURI, returning one index per file for hover and go-to-definition.
+func (w *Workspace) SymbolIndexes(targetURI string) []*DocumentIndex {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	targetPath, err := URIToPath(targetURI)
+	if err != nil {
+		return nil
+	}
+
+	root := w.findMatchingRoot(targetPath)
+	sources, pathMap, err := w.gatherSources(root)
+	if err != nil {
+		return nil
+	}
+
+	indexes := make([]*DocumentIndex, 0, len(sources))
+	for _, src := range sources {
+		uri := pathMap[filepath.Clean(filepath.FromSlash(src.Path))]
+		if uri == "" {
+			uri = PathToURI(src.Path)
+		}
+		indexes = append(indexes, IndexDocument(uri, src.Path, src.Content))
+	}
+	return indexes
+}
+
 // CompileWorkspace compiles the workspace relevant to targetURI and returns diagnostics keyed by URI.
 func (w *Workspace) CompileWorkspace(targetURI string) (map[string][]Diagnostic, error) {
 	w.mu.RLock()

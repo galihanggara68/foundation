@@ -119,6 +119,7 @@ type ServerCapabilities struct {
 	TextDocumentSync   int                `json:"textDocumentSync"`
 	HoverProvider      bool               `json:"hoverProvider"`
 	CompletionProvider *CompletionOptions `json:"completionProvider,omitempty"`
+	DefinitionProvider bool               `json:"definitionProvider,omitempty"`
 }
 
 // CompletionOptions configures code completion.
@@ -136,6 +137,12 @@ type TextDocumentPositionParams struct {
 type Hover struct {
 	Contents MarkupContent `json:"contents"`
 	Range    *Range        `json:"range,omitempty"`
+}
+
+// Location represents a range within a specific document.
+type Location struct {
+	URI   string `json:"uri"`
+	Range Range  `json:"range"`
 }
 
 // MarkupContent contains formatted text.

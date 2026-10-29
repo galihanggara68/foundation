@@ -155,6 +155,7 @@ type MarkupContent struct {
 type CompletionItemKind int
 
 const (
+	CompletionKindField         CompletionItemKind = 5
 	CompletionKindProperty      CompletionItemKind = 10
 	CompletionKindKeyword       CompletionItemKind = 14
 	CompletionKindTypeParameter CompletionItemKind = 25

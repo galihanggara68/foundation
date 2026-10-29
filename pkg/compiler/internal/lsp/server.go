@@ -223,7 +223,12 @@ func (s *Server) handleCompletion(req RequestMessage) {
 		return
 	}
 
-	list := ComputeCompletion(content, params.Position)
+	list := ComputeCompletionAt(
+		s.workspace.SymbolIndexes(params.TextDocument.URI),
+		params.TextDocument.URI,
+		content,
+		params.Position,
+	)
 	_ = s.transport.WriteResponse(req.ID, list, nil)
 }
 

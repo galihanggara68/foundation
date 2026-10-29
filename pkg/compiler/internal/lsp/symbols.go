@@ -39,9 +39,10 @@ type Symbol struct {
 	Kind   SymbolKind
 	Doc    string // markdown rendered for hover
 	URI    string
-	Line   int // 1-based line of the name
-	Column int // 1-based column of the name
-	Length int // length of the name in bytes
+	Line   int    // 1-based line of the name
+	Column int    // 1-based column of the name
+	Length int    // length of the name in bytes
+	Type   string // declared or inferred type for bindings and fields ("" when unknown)
 }
 
 // DocumentIndex holds every symbol declared in a single Blueprint file.
@@ -49,6 +50,7 @@ type DocumentIndex struct {
 	URI     string
 	Content string
 	Symbols []Symbol
+	Structs map[string][]ir.FieldDecl // type name -> fields, for member completion
 }
 
 // IndexDocument parses a Blueprint file and collects its declarations.
@@ -60,12 +62,13 @@ func IndexDocument(uri, filePath, content string) *DocumentIndex {
 		return idx
 	}
 
-	idx.Symbols = collectSymbols(sem, uri, path.Base(filePath), content)
+	idx.Symbols, idx.Structs = collectSymbols(sem, uri, path.Base(filePath), content)
 	return idx
 }
 
-func collectSymbols(sem *ir.SemanticIR, uri, file, content string) []Symbol {
+func collectSymbols(sem *ir.SemanticIR, uri, file, content string) ([]Symbol, map[string][]ir.FieldDecl) {
 	var out []Symbol
+	structs := make(map[string][]ir.FieldDecl)
 
 	structDecl := func(kind SymbolKind, name string, fields []ir.FieldDecl, traits []ir.TraitDecl, span ir.Span) {
 		extra := []string{}
@@ -77,9 +80,14 @@ func collectSymbols(sem *ir.SemanticIR, uri, file, content string) []Symbol {
 			extra = append(extra, fieldLines(fields)...)
 		}
 		out = append(out, newSymbol(uri, content, file, kind, name, span, docFor(kind, name, extra, file, span.Line)))
+		if len(fields) > 0 {
+			structs[name] = fields
+		}
 		for _, f := range fields {
-			out = append(out, newSymbol(uri, content, file, KindField, f.Name, f.Span,
-				docFor(KindField, f.Name, []string{fmt.Sprintf("`%s` on `%s`", fieldType(f), name)}, file, f.Span.Line)))
+			sym := newSymbol(uri, content, file, KindField, f.Name, f.Span,
+				docFor(KindField, f.Name, []string{fmt.Sprintf("`%s` on `%s`", fieldType(f), name)}, file, f.Span.Line))
+			sym.Type = fieldType(f)
+			out = append(out, sym)
 		}
 	}
 
@@ -117,8 +125,10 @@ func collectSymbols(sem *ir.SemanticIR, uri, file, content string) []Symbol {
 		out = append(out, newSymbol(uri, content, file, KindPolicy, p.Name, p.Span,
 			docFor(KindPolicy, p.Name, []string{"```fdn", sig, "```"}, file, p.Span.Line)))
 		for _, pr := range p.Params {
-			out = append(out, newSymbol(uri, content, file, KindParam, pr.Name, pr.Span,
-				docFor(KindParam, pr.Name, []string{fmt.Sprintf("`%s` on `%s`", pr.Type, p.Name)}, file, pr.Span.Line)))
+			sym := newSymbol(uri, content, file, KindParam, pr.Name, pr.Span,
+				docFor(KindParam, pr.Name, []string{fmt.Sprintf("`%s` on `%s`", pr.Type, p.Name)}, file, pr.Span.Line))
+			sym.Type = pr.Type
+			out = append(out, sym)
 		}
 	}
 
@@ -148,8 +158,10 @@ func collectSymbols(sem *ir.SemanticIR, uri, file, content string) []Symbol {
 		}
 		out = append(out, newSymbol(uri, content, file, KindAction, a.Name, a.Span, docFor(KindAction, a.Name, extra, file, a.Span.Line)))
 		for _, pr := range a.Params {
-			out = append(out, newSymbol(uri, content, file, KindParam, pr.Name, pr.Span,
-				docFor(KindParam, pr.Name, []string{fmt.Sprintf("`%s` on `%s`", pr.Type, a.Name)}, file, pr.Span.Line)))
+			sym := newSymbol(uri, content, file, KindParam, pr.Name, pr.Span,
+				docFor(KindParam, pr.Name, []string{fmt.Sprintf("`%s` on `%s`", pr.Type, a.Name)}, file, pr.Span.Line))
+			sym.Type = pr.Type
+			out = append(out, sym)
 		}
 		out = append(out, stepSymbols(a.Steps, uri, file, content)...)
 	}
@@ -159,7 +171,7 @@ func collectSymbols(sem *ir.SemanticIR, uri, file, content string) []Symbol {
 			docFor(KindScenario, sc.Name, []string{fmt.Sprintf("**Action under test:** `%s`", sc.WhenAction)}, file, sc.Span.Line)))
 	}
 
-	return out
+	return out, structs
 }
 
 func stepSymbols(steps []ir.StepDecl, uri, file, content string) []Symbol {
@@ -171,12 +183,16 @@ func stepSymbols(steps []ir.StepDecl, uri, file, content string) []Symbol {
 			if src != "" {
 				extra = append(extra, "```fdn", src, "```")
 			}
-			out = append(out, newSymbol(uri, content, file, KindVariable, s.VarName, s.Span,
-				docFor(KindVariable, s.VarName, extra, file, s.Span.Line)))
+			sym := newSymbol(uri, content, file, KindVariable, s.VarName, s.Span,
+				docFor(KindVariable, s.VarName, extra, file, s.Span.Line))
+			sym.Type = s.EntityName
+			out = append(out, sym)
 		}
 		if s.IterVar != "" {
-			out = append(out, newSymbol(uri, content, file, KindVariable, s.IterVar, s.Span,
-				docFor(KindVariable, s.IterVar, nil, file, s.Span.Line)))
+			sym := newSymbol(uri, content, file, KindVariable, s.IterVar, s.Span,
+				docFor(KindVariable, s.IterVar, nil, file, s.Span.Line))
+			sym.Type = s.EntityName
+			out = append(out, sym)
 		}
 		out = append(out, stepSymbols(s.ThenSteps, uri, file, content)...)
 		out = append(out, stepSymbols(s.ElseSteps, uri, file, content)...)

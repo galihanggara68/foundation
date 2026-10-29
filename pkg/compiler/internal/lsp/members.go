@@ -129,7 +129,7 @@ func memberCompletion(indexes []*DocumentIndex, currentURI, docContent, receiver
 		return nil
 	}
 
-	fields := LookupFields(indexes, currentURI, typeName)
+	fields := LookupFields(indexes, currentURI, strings.TrimPrefix(typeName, "[]"))
 	if len(fields) == 0 {
 		return nil
 	}

@@ -122,3 +122,69 @@ action Transfer(input: TransferInput) -> bool {
 		}
 	}
 }
+
+func TestComputeHoverAt_InfersBindingTypes(t *testing.T) {
+	const doc = `entity Wallet {
+  id: uuid
+  balance: decimal(12, 2)
+}
+
+value TransferInput {
+  id: uuid
+  amount: decimal(12, 2)
+}
+
+value ChargeResult {
+  receipt_id: uuid
+  amount: decimal(12, 2)
+}
+
+slot PaymentGateway {
+  Charge(amount: decimal) -> ChargeResult
+}
+
+action Pay(input: TransferInput) -> bool {
+  let receipt = slot PaymentGateway.Charge(input.amount)
+  let ok = Pay(input)
+  let copy = receipt
+  let built = ChargeResult { receipt_id: input.id }
+  let fee = receipt.amount
+  let total = input.amount
+  let all = query many Wallet where id == input.id
+  for w in all {
+    return true
+  }
+  return true
+}
+`
+	const uri = "file:///ws/inference.fdn"
+	idx := IndexDocument(uri, "inference.fdn", doc)
+	indexes := []*DocumentIndex{idx}
+
+	cases := []struct {
+		name       string
+		line, char int
+		want       string
+	}{
+		{"slot call result", 20, 7, "**Type:** `ChargeResult`"},
+		{"action call result", 21, 7, "**Type:** `bool`"},
+		{"identity binding", 22, 7, "**Type:** `ChargeResult`"},
+		{"struct literal", 23, 7, "**Type:** `ChargeResult`"},
+		{"field access", 24, 7, "**Type:** `decimal(12, 2)`"},
+		{"parameter field access", 25, 7, "**Type:** `decimal(12, 2)`"},
+		{"query many collection", 26, 7, "**Type:** `[]Wallet`"},
+		{"for iterator element", 27, 6, "**Type:** `Wallet`"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hover := ComputeHoverAt(indexes, uri, doc, Position{Line: tc.line, Character: tc.char})
+			if hover == nil {
+				t.Fatalf("expected hover, got nil")
+			}
+			if !strings.Contains(hover.Contents.Value, tc.want) {
+				t.Fatalf("expected %q in hover, got:\n%s", tc.want, hover.Contents.Value)
+			}
+		})
+	}
+}

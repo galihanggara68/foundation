@@ -104,6 +104,25 @@ func collectSymbols(sem *ir.SemanticIR, uri, file, content string) ([]Symbol, ma
 		structDecl(KindEvent, e.Name, e.Fields, nil, e.Span)
 	}
 
+	// Declaration tables used to infer binding types that are not on the step itself.
+	tc := typeContext{
+		slotReturns:   make(map[string]string),
+		actionReturns: make(map[string]string),
+		structs:       structs,
+	}
+	for _, s := range sem.Slots {
+		for _, m := range s.Methods {
+			if m.ReturnType != "" {
+				tc.slotReturns[s.Name+"."+m.Name] = m.ReturnType
+			}
+		}
+	}
+	for _, a := range sem.Actions {
+		if a.ReturnType != "" {
+			tc.actionReturns[a.Name] = a.ReturnType
+		}
+	}
+
 	for _, e := range sem.Enums {
 		extra := []string{}
 		if len(e.Variants) > 0 {
@@ -163,7 +182,11 @@ func collectSymbols(sem *ir.SemanticIR, uri, file, content string) ([]Symbol, ma
 			sym.Type = pr.Type
 			out = append(out, sym)
 		}
-		out = append(out, stepSymbols(a.Steps, uri, file, content)...)
+		bindings := make(map[string]string, len(a.Params))
+		for _, pr := range a.Params {
+			bindings[pr.Name] = pr.Type
+		}
+		out = append(out, stepSymbols(a.Steps, uri, file, content, tc, bindings)...)
 	}
 
 	for _, sc := range sem.Scenarios {
@@ -174,166 +197,101 @@ func collectSymbols(sem *ir.SemanticIR, uri, file, content string) ([]Symbol, ma
 	return out, structs
 }
 
-func stepSymbols(steps []ir.StepDecl, uri, file, content string) []Symbol {
+func stepSymbols(steps []ir.StepDecl, uri, file, content string, tc typeContext, bindings map[string]string) []Symbol {
 	var out []Symbol
 	for _, s := range steps {
 		if s.VarName != "" {
-			displayType := s.EntityName
-			if displayType != "" && s.Kind == ir.StepQueryMany {
-				displayType = "[]" + displayType
-			}
+			typ := resolveStepType(s, tc, bindings)
 			src := strings.TrimSpace(lineTextOf(content, s.Span.Line))
 			extra := []string{}
-			if displayType != "" {
-				extra = append(extra, fmt.Sprintf("**Type:** `%s`", displayType))
+			if typ != "" {
+				extra = append(extra, fmt.Sprintf("**Type:** `%s`", typ))
 			}
 			if src != "" {
 				extra = append(extra, "```fdn", src, "```")
 			}
 			sym := newSymbol(uri, content, file, KindVariable, s.VarName, s.Span,
 				docFor(KindVariable, s.VarName, extra, file, s.Span.Line))
-			sym.Type = s.EntityName
+			sym.Type = typ
 			out = append(out, sym)
+			bindings[s.VarName] = typ
 		}
 		if s.IterVar != "" {
+			typ := ""
+			if s.Expr != nil {
+				typ = strings.TrimPrefix(resolveExprType(*s.Expr, tc, bindings), "[]")
+			}
+			extra := []string{}
+			if typ != "" {
+				extra = append(extra, fmt.Sprintf("**Type:** `%s`", typ))
+			}
 			sym := newSymbol(uri, content, file, KindVariable, s.IterVar, s.Span,
-				docFor(KindVariable, s.IterVar, nil, file, s.Span.Line))
-			sym.Type = s.EntityName
+				docFor(KindVariable, s.IterVar, extra, file, s.Span.Line))
+			sym.Type = typ
 			out = append(out, sym)
+			bindings[s.IterVar] = typ
 		}
-		out = append(out, stepSymbols(s.ThenSteps, uri, file, content)...)
-		out = append(out, stepSymbols(s.ElseSteps, uri, file, content)...)
+		out = append(out, stepSymbols(s.ThenSteps, uri, file, content, tc, bindings)...)
+		out = append(out, stepSymbols(s.ElseSteps, uri, file, content, tc, bindings)...)
 		for _, arm := range s.MatchArms {
-			out = append(out, stepSymbols(arm.Steps, uri, file, content)...)
+			out = append(out, stepSymbols(arm.Steps, uri, file, content, tc, bindings)...)
 		}
 	}
 	return out
 }
 
-func newSymbol(uri, content, file string, kind SymbolKind, name string, span ir.Span, doc string) Symbol {
-	line, col := namePosition(content, span, name)
-	return Symbol{
-		Name:   name,
-		Kind:   kind,
-		Doc:    doc,
-		URI:    uri,
-		Line:   line,
-		Column: col,
-		Length: len(name),
-	}
+// typeContext carries the declaration tables used to infer binding types that are
+// not recorded directly on a step.
+type typeContext struct {
+	slotReturns   map[string]string // "Slot.Method" -> return type
+	actionReturns map[string]string // action name -> return type
+	structs       map[string][]ir.FieldDecl
 }
 
-// namePosition locates a declaration's name on its start line. Parser spans point
-// at the leading keyword for top-level declarations, and at the name itself for
-// fields and parameters, so the name is searched from the span onwards.
-func namePosition(content string, span ir.Span, name string) (line, col int) {
-	if span.Line <= 0 || name == "" {
-		return span.Line, span.Column
-	}
-	text := lineTextOf(content, span.Line)
-	if i := findIdentifier(text, name, span.Column-1); i >= 0 {
-		return span.Line, i + 1
-	}
-	return span.Line, span.Column
-}
-
-// findIdentifier returns the byte index of name in text at or after from, or -1.
-func findIdentifier(text, name string, from int) int {
-	if from < 0 {
-		from = 0
-	}
-	for i := from; i+len(name) <= len(text); i++ {
-		if text[i:i+len(name)] != name {
-			continue
+// resolveStepType returns the declared or inferred type of a `let` binding.
+func resolveStepType(s ir.StepDecl, tc typeContext, bindings map[string]string) string {
+	if s.EntityName != "" {
+		if s.Kind == ir.StepQueryMany {
+			return "[]" + s.EntityName
 		}
-		if i > 0 && isIdentByte(text[i-1]) {
-			continue
+		return s.EntityName
+	}
+	if s.Kind == ir.StepSlot {
+		return tc.slotReturns[s.SlotName+"."+s.SlotMethod]
+	}
+	if s.Expr != nil {
+		return resolveExprType(*s.Expr, tc, bindings)
+	}
+	return ""
+}
+
+// resolveExprType infers the type produced by an expression.
+func resolveExprType(e ir.Expr, tc typeContext, bindings map[string]string) string {
+	switch e.Kind {
+	case ir.ExprConstruct:
+		return e.TypeName
+	case ir.ExprCall:
+		return tc.actionReturns[e.Value]
+	case ir.ExprIdent:
+		return bindings[e.Value]
+	case ir.ExprCombinator:
+		if e.Left != nil {
+			return resolveExprType(*e.Left, tc, bindings)
 		}
-		if i+len(name) < len(text) && isIdentByte(text[i+len(name)]) {
-			continue
+	case ir.ExprField:
+		recv := ""
+		if e.Target != "" {
+			recv = bindings[e.Target]
+		} else if e.Left != nil {
+			recv = resolveExprType(*e.Left, tc, bindings)
 		}
-		return i
-	}
-	return -1
-}
-
-func isIdentByte(b byte) bool {
-	return b == '_' || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
-}
-
-func lineTextOf(content string, line int) string {
-	if line <= 0 {
-		return ""
-	}
-	lines := strings.Split(content, "\n")
-	if line > len(lines) {
-		return ""
-	}
-	return lines[line-1]
-}
-
-func docFor(kind SymbolKind, name string, extra []string, file string, line int) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "### %s `%s`\n", kind, name)
-	if len(extra) > 0 {
-		b.WriteString("\n")
-		b.WriteString(strings.Join(extra, "\n"))
-		b.WriteString("\n")
-	}
-	if file != "" && line > 0 {
-		fmt.Fprintf(&b, "\n_Declared in %s:%d_\n", file, line)
-	}
-	return b.String()
-}
-
-func fieldType(f ir.FieldDecl) string {
-	t := f.Type
-	if f.TypeParams != "" {
-		t += "(" + f.TypeParams + ")"
-	}
-	if f.Optional {
-		t += "?"
-	}
-	return t
-}
-
-func fieldLines(fields []ir.FieldDecl) []string {
-	out := make([]string, 0, len(fields))
-	for _, f := range fields {
-		line := fmt.Sprintf("- `%s`: `%s`", f.Name, fieldType(f))
-		if len(f.Traits) > 0 {
-			line += " " + traitNames(f.Traits)
+		for _, f := range tc.structs[strings.TrimPrefix(recv, "[]")] {
+			if f.Name == e.Field {
+				return fieldType(f)
+			}
 		}
-		out = append(out, line)
 	}
-	return out
-}
-
-func traitNames(traits []ir.TraitDecl) string {
-	names := make([]string, 0, len(traits))
-	for _, t := range traits {
-		names = append(names, "`@"+t.Name+"`")
-	}
-	return strings.Join(names, " ")
-}
-
-func paramList(params []ir.ParamDecl) string {
-	parts := make([]string, 0, len(params))
-	for _, p := range params {
-		parts = append(parts, p.Name+": "+p.Type)
-	}
-	return strings.Join(parts, ", ")
-}
-
-func slotMethodSig(m ir.SlotMethodDecl) string {
-	sig := fmt.Sprintf("%s(%s)", m.Name, paramList(m.Params))
-	if m.ReturnType != "" {
-		sig += " -> " + m.ReturnType
-	}
-	if len(m.Throws) > 0 {
-		sig += " throws " + strings.Join(m.Throws, ", ")
-	}
-	return sig
+	return ""
 }
 
 // LookupSymbol resolves name at the given line, preferring locals declared before

@@ -178,8 +178,15 @@ func stepSymbols(steps []ir.StepDecl, uri, file, content string) []Symbol {
 	var out []Symbol
 	for _, s := range steps {
 		if s.VarName != "" {
+			displayType := s.EntityName
+			if displayType != "" && s.Kind == ir.StepQueryMany {
+				displayType = "[]" + displayType
+			}
 			src := strings.TrimSpace(lineTextOf(content, s.Span.Line))
 			extra := []string{}
+			if displayType != "" {
+				extra = append(extra, fmt.Sprintf("**Type:** `%s`", displayType))
+			}
 			if src != "" {
 				extra = append(extra, "```fdn", src, "```")
 			}

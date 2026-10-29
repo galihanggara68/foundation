@@ -88,3 +88,37 @@ func TestComputeHover_TypesAndKeywords(t *testing.T) {
 		t.Fatalf("expected nil for whitespace, got: %+v", hWhitespace)
 	}
 }
+
+func TestComputeHoverAt_VariableShowsType(t *testing.T) {
+	const doc = `entity Wallet {
+  id: uuid
+}
+
+action Transfer(input: TransferInput) -> bool {
+  let recipient = query one Wallet where id == input.id else Missing
+  let all = query many Wallet where id == input.id
+  return true
+}
+`
+	const uri = "file:///ws/hover.fdn"
+	idx := IndexDocument(uri, "hover.fdn", doc)
+	indexes := []*DocumentIndex{idx}
+
+	cases := []struct {
+		line, char int
+		want       string
+	}{
+		{5, 7, "**Type:** `Wallet`"},   // let recipient = query one Wallet
+		{6, 7, "**Type:** `[]Wallet`"}, // let all = query many Wallet
+	}
+
+	for _, tc := range cases {
+		hover := ComputeHoverAt(indexes, uri, doc, Position{Line: tc.line, Character: tc.char})
+		if hover == nil {
+			t.Fatalf("line %d: expected hover, got nil", tc.line)
+		}
+		if !strings.Contains(hover.Contents.Value, tc.want) {
+			t.Errorf("line %d: expected %q in hover, got:\n%s", tc.line, tc.want, hover.Contents.Value)
+		}
+	}
+}

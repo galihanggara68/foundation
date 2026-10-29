@@ -127,6 +127,14 @@ _Avoid_: Cron job, ticker loop, daemon thread
 An HTTP streaming response (`text/event-stream`) emitted for real-time query Actions that continuously pushes domain Events to clients with deterministic offset resumption via `Last-Event-ID`.
 _Avoid_: WebSocket channel, long polling, socket connection
 
+**Language Server**:
+The in-tree Language Server Protocol implementation (`foundation lsp`) that serves live diagnostics, hover, completion, and go-to-definition for Blueprints by running the same compiler as `foundation check` over standard I/O.
+_Avoid_: IDE plugin, editor extension, autocomplete daemon
+
+**Symbol Index**:
+The workspace-wide declaration index built and memoized by the Language Server, resolving Blueprints' declarations across files so hover and go-to-definition work on symbols declared outside the current document.
+_Avoid_: AST cache, symbol table dump
+
 
 
 

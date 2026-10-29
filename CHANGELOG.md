@@ -8,12 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2026-10-29
 
 ### Added
-- **In-Tree Language Server (`foundation lsp`)**: LSP 3.17 implementation over stdio, launched by the Zed extension.
+- **In-Tree Language Server (`foundation lsp`)**: LSP 3.17 implementation over stdio, launched by editor clients.
   - Live compiler diagnostics (error/warning/information) on open, edit, and save.
   - Context-aware completions for keywords, scalar types, traits, and pipeline snippets, with correct snippet tab stops.
   - Hover documentation for the DSL catalog (constructs, traits, scalar types) and for symbols declared in the workspace.
   - Go-to-definition for entities, values, enums, events, errors, policies, slots, actions, scenarios, their fields/parameters/methods, and `let`/`for` locals — resolved across files.
 - **Symbol Index**: workspace declaration index shared by hover and definition.
+- **Editor Integrations**: companion projects providing syntax support — `tree-sitter-foundation` (grammar for Zed, Neovim, Helix), `foundation-zed`, and `foundation-vscode` (VS Code / Open VSX).
 
 ### Changed
 - **Workspace scanning** prunes dependency and build directories (`node_modules`, `vendor`, `dist`, `build`, `out`, `target`, `tmp`, `coverage`).

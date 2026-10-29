@@ -94,7 +94,19 @@ Enable external language adoption and company-specific architectures without har
 1. **Rich DDD + OpenTelemetry Trace Plugin Pipeline**: Emits Go Aggregate Roots with encapsulated business invariant methods alongside injected OpenTelemetry tracing middleware. Verified via `go test ./...`.
 2. **Python FastAPI Generator Plugin**: Emits a simple, runnable Python FastAPI HTTP backend from `.fdn` with automated test execution via `pytest`. Verified end-to-end.
 
-## Phase 7 — High-Contention State Machines & Real-Time Streaming
+## Phase 7 — Editor Tooling & Language Server *(Implemented & Verified)*
+
+Bring `.fdn` Blueprints into the editor using the same compiler that powers `foundation check`, so diagnostics in the editor never drift from the CLI (see the [Editor Support guide](./docs/blueprints/editor-support.md)):
+
+- **In-Tree Language Server (`foundation lsp`)**: LSP 3.17 over stdio, launched as a CLI subcommand with no separate daemon or network listener.
+- **Live Diagnostics**: compiler error/warning/information diagnostics published on open, edit, and save, mirroring `foundation check` codes, severities, and spans.
+- **Hover, Completion & Definition**: DSL catalog documentation and workspace-declared symbols with inferred types; context-aware keyword/type/trait completions; member completion after `value.`; and cross-file go-to-definition for declarations and `let`/`for` locals.
+- **Workspace Symbol Index**: a memoized declaration index that prunes dependency and build directories and invalidates only the edited document.
+- **Editor Integrations**: companion projects — a [tree-sitter grammar](https://github.com/galihanggara68/tree-sitter-foundation), a [Zed extension](https://github.com/galihanggara68/foundation-zed), and a [VS Code / Open VSX extension](https://github.com/galihanggara68/foundation-vscode) — providing syntax highlighting and launching `foundation lsp`.
+
+**Exit:** accurate, offline `.fdn` diagnostics, hover, completion, and navigation in any LSP-capable editor, with official syntax integrations for Zed, Neovim/Helix (tree-sitter), and VS Code.
+
+## Phase 8 — High-Contention State Machines & Real-Time Streaming
 
 Enable real-time, high-contention financial and event-driven workloads (e.g., collector auctions, seat reservations, inventory allocation) without dropping to handwritten scaffolding:
 
@@ -122,7 +134,7 @@ Enable real-time, high-contention financial and event-driven workloads (e.g., co
 - **CQRS** — until a real adopter need; the glossary now names the patterns that actually exist (Hexagonal, Layered CRUD, Clean).
 - **`@cron`** — until an honest HA scheduler story (leader election), not an emitted ticker; transactional background tasks use `@worker` with database row locks (`SKIP LOCKED`).
 - **Offset pagination** — never; keyset cursors are the only emitted pagination (ADR [0008](./docs/adr/0008-deterministic-query-many.md)).
-- **Broker event delivery** — the outbox table plus in-process replay is the contract; broker adapters arrive in Phase 7 as contrib libraries.
+- **Broker event delivery** — the outbox table plus in-process replay is the contract; broker adapters arrive in Phase 8 as contrib libraries.
 - **Secure-by-default flip** — decided at the 1.0 gate (ADR [0006](./docs/adr/0006-actor-resolver-port-with-contrib-adapters.md)).
 
-**1.0** = Phases 0–5 landed, the versioning contract proven through at least one breaking-change cycle, and the secure-by-default decision made. Phases 6 and 7 open the pluggable generator ecosystem, broker adapters, and real-time high-contention engine post-1.0.
+**1.0** = Phases 0–5 landed, the versioning contract proven through at least one breaking-change cycle, and the secure-by-default decision made. Phases 6–8 open the pluggable generator ecosystem, editor tooling, broker adapters, and the real-time high-contention engine post-1.0.

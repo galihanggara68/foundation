@@ -94,6 +94,28 @@ If any check fails, resolve the issue before opening a pull request. (Use `make 
 
 ---
 
+## 🏷️ Versioning & Releases
+
+The version is derived from Git tags. `make build` injects the version, commit, and a build timestamp into the CLI, so `./bin/foundation version` always reports what the tree actually is; `make version` prints the same string without building.
+
+Releases are gated and driven from the `Makefile`. The tag push triggers the cross-platform build in [`.github/workflows/release.yml`](./.github/workflows/release.yml), which publishes the archives and checksums:
+
+```bash
+# 1. Add a "## [x.y.z]" section to CHANGELOG.md and commit it
+# 2. Validate and tag (runs make verify; requires a clean tree, a fresh
+#    semver tag, and a matching CHANGELOG heading)
+make release VERSION=x.y.z
+
+# No CI credentials handy? Build release archives locally without publishing:
+make snapshot
+```
+
+`make release-check` runs the same validations without creating the tag, and `make changelog-draft` lists commit subjects since the last tag to seed the CHANGELOG entry.
+
+Foundation follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/). During 0.x, tracked output may change in any release, while **Slots, Scenarios, and the manifest format stay stable within a minor** (see the [Roadmap](./ROADMAP.md)).
+
+---
+
 ## 📐 Architecture Decision Records (ADRs)
 
 If your contribution introduces:

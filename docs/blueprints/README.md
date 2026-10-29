@@ -12,4 +12,5 @@ Foundation Blueprints (`.fdn`) are declarative domain specifications describing 
 - [Declarative Scenarios & Testing](./scenarios-and-testing.md): Writing test scenarios with `given`, `when`, and `expect`, stubbing slot dependencies, and executing 100% offline hermetic tests.
 - [Build Profile & Configuration](./build-profile.md): Reference for `foundation.build.yaml`, target languages (Go, TypeScript), storage dialects, schema migrations, and CLI commands.
 - [Generator Plugins & Custom Emitters](./generator-plugins.md): Pluggable generator architecture (`foundation-gen-*`), wire protocol, multi-generator pipelines, scaffolding pre-population, and authoring plugins with `pkg/emitterkit`.
+- [Editor Support & Language Server](./editor-support.md): The in-tree LSP server (`foundation lsp`), live diagnostics, hover, completions, member completion, go-to-definition, and workspace indexing.
 - [Extension Patterns & Platform Boundaries](./extension-patterns-and-limitations.md): Cookbook guide for real-world backend needs: SQL `JOIN`s, swapping DB drivers (`pgx`), custom headers, DDD aggregate invariants, and JWT token issuance.

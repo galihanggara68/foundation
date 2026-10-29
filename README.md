@@ -32,6 +32,8 @@ Modern backend development suffers from two extremes:
   Compile the exact same domain blueprint into a Go Hexagonal service (Chi router + `database/sql`) or a TypeScript Clean service (Express + `pg`).
 - 🔌 **Pluggable Generator Pipelines (`foundation-gen-*`)**:
   Compose external generators sequentially (`generators: [...]`) for any language or architecture (Python FastAPI, Rust Axum, Rich DDD Aggregate Roots, OpenTelemetry distributed tracing) with scaffolding pre-population (`scaffold: builtin` vs `none`).
+- 🧭 **Editor Support (In-Tree Language Server)**:
+  `foundation lsp` speaks LSP 3.17 over stdio, giving any LSP-capable editor live compiler diagnostics, hover documentation, context-aware and member completions, and cross-file go-to-definition. Official integrations ship as sibling projects: [`tree-sitter-foundation`](https://github.com/galihanggara68/tree-sitter-foundation) (grammar), [`foundation-zed`](https://github.com/galihanggara68/foundation-zed) (Zed), and [`foundation-vscode`](https://github.com/galihanggara68/foundation-vscode) (VS Code / Open VSX).
 
 ---
 
@@ -216,7 +218,7 @@ foundation test
 ## CLI Command Reference
 
 ```bash
-Usage: foundation <check|build|test|ir> [--dir <path>] [--force]
+Usage: foundation <check|build|ir|test|lsp|version> [--dir <path>] [--force]
 ```
 
 | Command | Description |
@@ -225,6 +227,8 @@ Usage: foundation <check|build|test|ir> [--dir <path>] [--force]
 | `foundation build` | Compiles IR into production code, executes generator pipelines, and reconciles `.foundation-manifest.json`. |
 | `foundation test` | Compiles and runs native target scenario tests (`go test ./...`, `npm test`, or `test_command` like `pytest`) 100% offline. |
 | `foundation ir` | Emits canonical Semantic IR JSON to stdout for tooling and inspection. |
+| `foundation lsp` | Runs the Foundation language server over stdio for editor integration (diagnostics, hover, completions, go-to-definition). |
+| `foundation version` | Prints the compiler version, commit, and build timestamp. |
 
 ---
 
@@ -252,7 +256,16 @@ make fmt-check         # Verify all files are formatted
 make line-check        # Enforce file size discipline (<= 450 lines per file)
 make vet               # Run go vet across all packages
 make verify            # Full pre-commit gate (fmt-check, line-check, vet, test-unit)
+
+# Release & Versioning
+make version           # Print the version the current tree reports
+make changelog-draft   # Print commit subjects since the last tag, for the CHANGELOG
+make release-check     # Gate a release (clean tree, fresh semver tag, CHANGELOG entry, verify)
+make release VERSION=x.y.z  # Validate, then tag and push (CI builds the release artifacts)
+make snapshot          # Cross-compile release archives into dist/ without tagging
 ```
+
+The version is derived from `git describe` and injected at build time; `make build` therefore produces a `bin/foundation` that reports its exact version via `foundation version`.
 
 ---
 
@@ -268,6 +281,7 @@ Explore in-depth documentation and reference examples in [`docs/blueprints/`](./
 - [**BDD Scenarios & Testing**](./docs/blueprints/scenarios-and-testing.md): BDD testing syntax (`given`, `when`, `expect`) and hermetic execution.
 - [**Build Profile Configuration**](./docs/blueprints/build-profile.md): Reference for `foundation.build.yaml` options, targets, and storage modes.
 - [**Generator Plugins & Emitters**](./docs/blueprints/generator-plugins.md): Subprocess plugin wire protocol, multi-generator pipelines, scaffolding pre-population, and authoring custom generators with `pkg/emitterkit`.
+- [**Editor Support & Language Server**](./docs/blueprints/editor-support.md): The in-tree LSP server (`foundation lsp`) — live diagnostics, hover, completions, member completion, go-to-definition, and workspace indexing.
 - [**Extension Patterns & Platform Boundaries**](./docs/blueprints/extension-patterns-and-limitations.md): Cookbook guide for real-world backend needs: SQL `JOIN`s, swapping DB drivers (`pgx`), custom headers, DDD aggregate invariants, and JWT token issuance.
 
 For architecture decisions and compiler specifications, see [Architectural Decision Records (`docs/adr/`)](./docs/adr/) and [Technical Specifications (`docs/specs/`)](./docs/specs/).

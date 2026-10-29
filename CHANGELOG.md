@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-29
+
+### Added
+- **In-Tree Language Server (`foundation lsp`)**: LSP 3.17 implementation over stdio, launched by the Zed extension.
+  - Live compiler diagnostics (error/warning/information) on open, edit, and save.
+  - Context-aware completions for keywords, scalar types, traits, and pipeline snippets, with correct snippet tab stops.
+  - Hover documentation for the DSL catalog (constructs, traits, scalar types) and for symbols declared in the workspace.
+  - Go-to-definition for entities, values, enums, events, errors, policies, slots, actions, scenarios, their fields/parameters/methods, and `let`/`for` locals — resolved across files.
+- **Symbol Index**: workspace declaration index shared by hover and definition.
+
+### Changed
+- **Workspace scanning** prunes dependency and build directories (`node_modules`, `vendor`, `dist`, `build`, `out`, `target`, `tmp`, `coverage`).
+- **Caching**: gathered sources and per-document symbol indexes are memoized and invalidated on document changes, so repeated hover/definition requests are sub-millisecond and an edit re-indexes only the changed file.
+
+### Fixed
+- Completion items that use LSP snippet syntax now declare `insertTextFormat: Snippet`, so clients insert the template with tab stops instead of literal `${1:...}` placeholders.
+
+---
+
 ## [0.2.0] - 2026-10-27
 
 ### Added

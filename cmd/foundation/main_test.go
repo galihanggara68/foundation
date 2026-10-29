@@ -87,6 +87,17 @@ targets:
 	}
 }
 
+func TestCLI_VersionCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	if code := run([]string{"version"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("version failed (code %d): %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "foundation "+version) {
+		t.Fatalf("expected version output to contain %q, got: %s", version, stdout.String())
+	}
+}
+
 func TestCLI_LSPCommand(t *testing.T) {
 	shutReq := `{"jsonrpc":"2.0","id":1,"method":"shutdown","params":null}`
 	exitNotif := `{"jsonrpc":"2.0","method":"exit","params":{}}`

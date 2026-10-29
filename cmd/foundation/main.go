@@ -9,6 +9,13 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler"
 )
 
+// Injected at build time via -ldflags "-X main.version=... -X main.commit=... -X main.date=...".
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	os.Exit(runWithStdin(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
@@ -35,6 +42,10 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	}
 
 	switch subcmd {
+	case "version":
+		fmt.Fprintf(stdout, "foundation %s (commit %s, built %s)\n", version, commit, date)
+		return 0
+
 	case "lsp":
 		_ = debug // Reserved for verbose trace options
 		if err := compiler.LSP(stdin, stdout); err != nil {
@@ -93,5 +104,5 @@ func printDiagnostics(w io.Writer, diags []compiler.Diagnostic) {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage: foundation <check|build|ir|test|lsp> [--dir <path>] [--force]")
+	fmt.Fprintln(w, "Usage: foundation <check|build|ir|test|lsp|version> [--dir <path>] [--force]")
 }

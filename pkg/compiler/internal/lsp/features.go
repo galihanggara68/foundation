@@ -77,6 +77,23 @@ func ComputeCompletion(docContent string, pos Position) *CompletionList {
 	return &CompletionList{IsIncomplete: false, Items: items}
 }
 
+// Completion InsertText values use LSP snippet syntax (${1:placeholders}, $0).
+// Clients insert them literally unless the item declares the snippet format, so
+// mark every item that carries InsertText as a snippet.
+func init() {
+	keywordCompletions = withSnippets(keywordCompletions)
+	traitCompletions = withSnippets(traitCompletions)
+}
+
+func withSnippets(items []CompletionItem) []CompletionItem {
+	for i := range items {
+		if items[i].InsertText != "" {
+			items[i].InsertTextFormat = InsertTextFormatSnippet
+		}
+	}
+	return items
+}
+
 func isTypeContextAt(docContent string, pos Position) bool {
 	lines := strings.Split(docContent, "\n")
 	if pos.Line < 0 || pos.Line >= len(lines) {

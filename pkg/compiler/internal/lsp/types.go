@@ -160,13 +160,22 @@ const (
 	CompletionKindTypeParameter CompletionItemKind = 25
 )
 
+// CompletionItemInsertTextFormat describes how InsertText is interpreted.
+type CompletionItemInsertTextFormat int
+
+const (
+	InsertTextFormatPlainText CompletionItemInsertTextFormat = 1
+	InsertTextFormatSnippet   CompletionItemInsertTextFormat = 2
+)
+
 // CompletionItem represents a completion candidate.
 type CompletionItem struct {
-	Label         string             `json:"label"`
-	Kind          CompletionItemKind `json:"kind,omitempty"`
-	Detail        string             `json:"detail,omitempty"`
-	Documentation *MarkupContent     `json:"documentation,omitempty"`
-	InsertText    string             `json:"insertText,omitempty"`
+	Label            string                         `json:"label"`
+	Kind             CompletionItemKind             `json:"kind,omitempty"`
+	Detail           string                         `json:"detail,omitempty"`
+	Documentation    *MarkupContent                 `json:"documentation,omitempty"`
+	InsertText       string                         `json:"insertText,omitempty"`
+	InsertTextFormat CompletionItemInsertTextFormat `json:"insertTextFormat,omitempty"`
 }
 
 // CompletionList contains completion items.

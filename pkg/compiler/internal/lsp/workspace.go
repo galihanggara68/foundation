@@ -26,14 +26,51 @@ type Workspace struct {
 	docs      map[string]string // URI -> file content
 	roots     []string          // Local filesystem workspace roots
 	compileFn CompileFunc
+
+	// cacheGen is bumped whenever the open documents or workspace roots change.
+	// Cached source snapshots and per-document symbol indexes are validated against it.
+	cacheGen    uint64
+	sourceCache map[string]*sourceSnapshot // workspace root -> snapshot
+	indexCache  map[string]*DocumentIndex  // URI -> parsed symbol index
+}
+
+// sourceSnapshot is a gathered view of a workspace root taken at a given generation.
+type sourceSnapshot struct {
+	gen     uint64
+	sources []SourceDoc
+	pathMap map[string]string
+}
+
+// skippedDirs are dependency and build directories that never hold Blueprint
+// sources. Skipping them keeps workspace scans cheap on large repositories:
+// node_modules alone can hold orders of magnitude more entries than the source
+// tree, and a scan runs on every hover, definition and edit request.
+var skippedDirs = map[string]bool{
+	"node_modules": true,
+	"vendor":       true,
+	"dist":         true,
+	"build":        true,
+	"out":          true,
+	"target":       true,
+	"tmp":          true,
+	"coverage":     true,
 }
 
 // NewWorkspace creates a Workspace initialized with the provided compiler function.
 func NewWorkspace(compileFn CompileFunc) *Workspace {
 	return &Workspace{
-		docs:      make(map[string]string),
-		compileFn: compileFn,
+		docs:        make(map[string]string),
+		compileFn:   compileFn,
+		sourceCache: make(map[string]*sourceSnapshot),
+		indexCache:  make(map[string]*DocumentIndex),
 	}
+}
+
+// invalidateLocked drops cached source snapshots after the document set changes.
+// Callers must hold the write lock.
+func (w *Workspace) invalidateLocked() {
+	w.cacheGen++
+	clear(w.sourceCache)
 }
 
 // AddRoot registers a workspace root directory.
@@ -47,13 +84,18 @@ func (w *Workspace) AddRoot(rootPath string) {
 		}
 	}
 	w.roots = append(w.roots, cleaned)
+	w.invalidateLocked()
 }
 
 // SetDocument stores or updates in-memory content for a document URI.
 func (w *Workspace) SetDocument(uri, content string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if existing, ok := w.docs[uri]; ok && existing == content {
+		return
+	}
 	w.docs[uri] = content
+	w.invalidateLocked()
 }
 
 // GetDocument retrieves the current in-memory text for a document URI.
@@ -68,7 +110,12 @@ func (w *Workspace) GetDocument(uri string) (string, bool) {
 func (w *Workspace) RemoveDocument(uri string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if _, ok := w.docs[uri]; !ok {
+		return
+	}
 	delete(w.docs, uri)
+	delete(w.indexCache, uri)
+	w.invalidateLocked()
 }
 
 // TrackedURIs returns a copy of all document URIs currently open in memory.
@@ -82,11 +129,27 @@ func (w *Workspace) TrackedURIs() []string {
 	return uris
 }
 
+// cachedSources returns the gathered sources for root, reusing a snapshot unless
+// the open documents or workspace roots changed since it was captured.
+// Callers must hold the write lock.
+func (w *Workspace) cachedSources(root string) ([]SourceDoc, map[string]string, error) {
+	if snap, ok := w.sourceCache[root]; ok && snap.gen == w.cacheGen {
+		return snap.sources, snap.pathMap, nil
+	}
+	sources, pathMap, err := w.gatherSources(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	w.sourceCache[root] = &sourceSnapshot{gen: w.cacheGen, sources: sources, pathMap: pathMap}
+	return sources, pathMap, nil
+}
+
 // SymbolIndexes parses every Blueprint source in the workspace that contains
 // targetURI, returning one index per file for hover and go-to-definition.
+// Per-document indexes are cached and reused while their content is unchanged.
 func (w *Workspace) SymbolIndexes(targetURI string) []*DocumentIndex {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
 	targetPath, err := URIToPath(targetURI)
 	if err != nil {
@@ -94,7 +157,7 @@ func (w *Workspace) SymbolIndexes(targetURI string) []*DocumentIndex {
 	}
 
 	root := w.findMatchingRoot(targetPath)
-	sources, pathMap, err := w.gatherSources(root)
+	sources, pathMap, err := w.cachedSources(root)
 	if err != nil {
 		return nil
 	}
@@ -105,7 +168,13 @@ func (w *Workspace) SymbolIndexes(targetURI string) []*DocumentIndex {
 		if uri == "" {
 			uri = PathToURI(src.Path)
 		}
-		indexes = append(indexes, IndexDocument(uri, src.Path, src.Content))
+		if cached, ok := w.indexCache[uri]; ok && cached.Content == src.Content {
+			indexes = append(indexes, cached)
+			continue
+		}
+		idx := IndexDocument(uri, src.Path, src.Content)
+		w.indexCache[uri] = idx
+		indexes = append(indexes, idx)
 	}
 	return indexes
 }
@@ -177,15 +246,18 @@ func (w *Workspace) gatherSources(root string) ([]SourceDoc, map[string]string, 
 	pathMap := make(map[string]string) // filePath -> URI
 	sourcesByPath := make(map[string]string)
 
-	// 1. Scan filesystem for .fdn files
+	// 1. Scan filesystem for .fdn files, pruning hidden and build directories
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		if d.IsDir() && strings.HasPrefix(d.Name(), ".") && p != root {
-			return filepath.SkipDir
+		if d.IsDir() {
+			if p != root && (strings.HasPrefix(d.Name(), ".") || skippedDirs[d.Name()]) {
+				return filepath.SkipDir
+			}
+			return nil
 		}
-		if !d.IsDir() && (strings.HasSuffix(d.Name(), ".fdn") || strings.HasSuffix(d.Name(), ".fdn.json")) {
+		if strings.HasSuffix(d.Name(), ".fdn") || strings.HasSuffix(d.Name(), ".fdn.json") {
 			cleanP := filepath.Clean(p)
 			sourcesByPath[cleanP] = "" // Mark discovered, load later if not overridden
 			pathMap[cleanP] = PathToURI(cleanP)

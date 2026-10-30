@@ -51,10 +51,46 @@ const GenerationRequestSchemaJSON = `{
         "actor": { "type": "object" },
         "actors": { "type": "array", "items": { "type": "object" } },
         "enums": { "type": "array", "items": { "type": "object" } },
-        "values": { "type": "array", "items": { "type": "object" } },
-        "entities": { "type": "array", "items": { "type": "object" } },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "fields": {
+                "type": "array",
+                "items": { "$ref": "#/definitions/FieldDecl" }
+              }
+            }
+          }
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "fields": {
+                "type": "array",
+                "items": { "$ref": "#/definitions/FieldDecl" }
+              }
+            }
+          }
+        },
         "errors": { "type": "array", "items": { "type": "object" } },
-        "events": { "type": "array", "items": { "type": "object" } },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "fields": {
+                "type": "array",
+                "items": { "$ref": "#/definitions/FieldDecl" }
+              }
+            }
+          }
+        },
         "policies": { "type": "array", "items": { "type": "object" } },
         "slots": { "type": "array", "items": { "type": "object" } },
         "actions": { "type": "array", "items": { "type": "object" } },
@@ -90,6 +126,47 @@ const GenerationRequestSchemaJSON = `{
       "type": "object",
       "description": "Map of relative virtual file paths to their utf-8 string content.",
       "additionalProperties": { "type": "string" }
+    }
+  },
+  "definitions": {
+    "FieldDecl": {
+      "type": "object",
+      "description": "A named, type-bearing field declared on an entity, value, or event.",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "description": "Declared type string, including any array-ness (e.g. 'Customer' or '[]string'). The kind below classifies its element type."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Closed, compiler-validated field kind. Optional: v1 documents produced before the taxonomy existed omit it.",
+          "enum": [
+            "uuid",
+            "string",
+            "int",
+            "decimal",
+            "bool",
+            "timestamp",
+            "enum",
+            "entity",
+            "value",
+            "event",
+            "actor",
+            "page",
+            "result"
+          ]
+        },
+        "optional": {
+          "type": "boolean"
+        }
+      }
     }
   }
 }`

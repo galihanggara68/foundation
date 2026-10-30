@@ -148,8 +148,8 @@ func TestServer_Diagnostics_SemanticInvariantViolation(t *testing.T) {
 	if len(params.Diagnostics) == 0 {
 		t.Fatalf("expected semantic diagnostic for unknown type FooBar, got 0")
 	}
-	if params.Diagnostics[0].Code != "FDN0202" {
-		t.Fatalf("expected diagnostic code 'FDN0202', got %q", params.Diagnostics[0].Code)
+	if params.Diagnostics[0].Code != "FDN0218" {
+		t.Fatalf("expected diagnostic code 'FDN0218', got %q", params.Diagnostics[0].Code)
 	}
 }
 

@@ -48,16 +48,19 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 	}
 
 	validateFields := func(fields []ir.FieldDecl) {
-		for _, f := range fields {
-			if !sym.isKnownType(f.Type) {
+		for i := range fields {
+			f := &fields[i]
+			kind, ok := sym.classifyType(f.Type)
+			if !ok {
 				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0202",
+					Code:     "FDN0218",
 					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("unknown type %q for field %q", f.Type, f.Name),
+					Message:  fmt.Sprintf("cannot classify type %q for field %q", f.Type, f.Name),
 					Span:     f.Span,
 				})
 				continue
 			}
+			f.Kind = kind
 			if strings.HasPrefix(f.DefaultVal, ".") {
 				variant := strings.TrimPrefix(f.DefaultVal, ".")
 				if !sym.enumHasVariant(f.Type, variant) {

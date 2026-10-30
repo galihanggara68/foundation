@@ -26,7 +26,7 @@ func (lay goLayout) emitGoEntityFile(e ir.EntityDecl) string {
 	sb.WriteString("package " + lay.DomainPkg + "\n\n")
 	hasTime := false
 	for _, f := range e.Fields {
-		if f.Type == "timestamp" {
+		if f.Kind == ir.KindTimestamp {
 			hasTime = true
 			break
 		}
@@ -42,7 +42,7 @@ func (lay goLayout) emitGoStructDef(name string, fields []ir.FieldDecl) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("type %s struct {\n", name))
 	for _, f := range fields {
-		sb.WriteString(fmt.Sprintf("\t%s %s `json:%q`\n", arch.ExportIdent(f.Name), lay.goType(f.Type, true), f.Name))
+		sb.WriteString(fmt.Sprintf("\t%s %s `json:%q`\n", arch.ExportIdent(f.Name), lay.goKindType(f.Kind, f.Type, true), f.Name))
 	}
 	sb.WriteString("}\n")
 	return sb.String()

@@ -36,15 +36,6 @@ func Validate(sem *ir.SemanticIR) []ir.Diagnostic {
 	return diags
 }
 
-var scalarTypes = map[string]bool{
-	"uuid":      true,
-	"string":    true,
-	"int":       true,
-	"decimal":   true,
-	"bool":      true,
-	"timestamp": true,
-}
-
 var validErrorKinds = map[string]bool{
 	"not_found":       true,
 	"validation":      true,
@@ -121,26 +112,52 @@ func (s *SymbolTable) findSlotMethod(slotName, methodName string) (ir.SlotDecl, 
 	return sl, ir.SlotMethodDecl{}, false
 }
 
-func (s *SymbolTable) isKnownType(t string) bool {
+// classifyType resolves a declared type into its closed FieldKind. Array element
+// types classify to their element kind; an unclassifiable type reports ok=false.
+func (s *SymbolTable) classifyType(t string) (ir.FieldKind, bool) {
 	if strings.HasPrefix(t, "[]") {
-		return s.isKnownType(strings.TrimPrefix(t, "[]"))
+		return s.classifyType(strings.TrimPrefix(t, "[]"))
 	}
-	if scalarTypes[t] || t == "Actor" || t == "PageInfo" || strings.HasSuffix(t, "Result") {
-		return true
+	switch t {
+	case "uuid":
+		return ir.KindUUID, true
+	case "string":
+		return ir.KindString, true
+	case "int":
+		return ir.KindInt, true
+	case "decimal":
+		return ir.KindDecimal, true
+	case "bool":
+		return ir.KindBool, true
+	case "timestamp":
+		return ir.KindTimestamp, true
+	case "Actor":
+		return ir.KindActor, true
+	case "PageInfo":
+		return ir.KindPage, true
 	}
+	// Declared types take precedence over the "*Result" suffix heuristic.
 	if _, ok := s.enums[t]; ok {
-		return true
+		return ir.KindEnum, true
 	}
 	if _, ok := s.entities[t]; ok {
-		return true
+		return ir.KindEntity, true
 	}
 	if _, ok := s.values[t]; ok {
-		return true
+		return ir.KindValue, true
 	}
 	if _, ok := s.events[t]; ok {
-		return true
+		return ir.KindEvent, true
 	}
-	return false
+	if strings.HasSuffix(t, "Result") {
+		return ir.KindResult, true
+	}
+	return "", false
+}
+
+func (s *SymbolTable) isKnownType(t string) bool {
+	_, ok := s.classifyType(t)
+	return ok
 }
 
 func (s *SymbolTable) fieldsOf(typeName string) map[string]ir.FieldDecl {

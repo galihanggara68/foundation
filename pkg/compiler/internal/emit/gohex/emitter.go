@@ -342,9 +342,39 @@ func (lay goLayout) goType(fdnType string, inDomainPkg bool) string {
 	case "bool":
 		return "bool"
 	default:
-		if inDomainPkg {
-			return fdnType
-		}
-		return lay.DomainPkg + "." + fdnType
+		return lay.goNamedType(fdnType, inDomainPkg)
 	}
+}
+
+// goKindType maps a compiler-validated FieldKind to its Go type. Array-ness is read
+// from the declared type string; a field's Kind is the kind of its element type.
+func (lay goLayout) goKindType(kind ir.FieldKind, declaredType string, inDomainPkg bool) string {
+	if strings.HasPrefix(declaredType, "[]") {
+		return "[]" + lay.goKindType(kind, strings.TrimPrefix(declaredType, "[]"), inDomainPkg)
+	}
+	switch kind {
+	case ir.KindUUID, ir.KindString:
+		return "string"
+	case ir.KindTimestamp:
+		return "time.Time"
+	case ir.KindInt:
+		return "int"
+	case ir.KindDecimal:
+		if inDomainPkg {
+			return "Decimal"
+		}
+		return lay.DomainPkg + ".Decimal"
+	case ir.KindBool:
+		return "bool"
+	default:
+		return lay.goNamedType(declaredType, inDomainPkg)
+	}
+}
+
+// goNamedType renders a declared type as a reference to a type in the domain package.
+func (lay goLayout) goNamedType(name string, inDomainPkg bool) string {
+	if inDomainPkg {
+		return name
+	}
+	return lay.DomainPkg + "." + name
 }

@@ -80,9 +80,31 @@ type PolicyDecl struct {
 	Span   Span        `json:"span"`
 }
 
+// FieldKind is the closed, compiler-validated classification of a declared type.
+// Array-ness is carried separately by the FieldDecl.Type string; a field's Kind is
+// the kind of its element type.
+type FieldKind string
+
+const (
+	KindUUID      FieldKind = "uuid"
+	KindString    FieldKind = "string"
+	KindInt       FieldKind = "int"
+	KindDecimal   FieldKind = "decimal"
+	KindBool      FieldKind = "bool"
+	KindTimestamp FieldKind = "timestamp"
+	KindEnum      FieldKind = "enum"
+	KindEntity    FieldKind = "entity"
+	KindValue     FieldKind = "value"
+	KindEvent     FieldKind = "event"
+	KindActor     FieldKind = "actor"
+	KindPage      FieldKind = "page"
+	KindResult    FieldKind = "result"
+)
+
 type FieldDecl struct {
 	Name       string      `json:"name"`
 	Type       string      `json:"type"`
+	Kind       FieldKind   `json:"kind"`
 	TypeParams string      `json:"type_params,omitempty"`
 	Optional   bool        `json:"optional,omitempty"`
 	DefaultVal string      `json:"default_val,omitempty"`

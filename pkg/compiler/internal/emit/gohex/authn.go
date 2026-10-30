@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
 func (lay goLayout) emitGoActorResolverPort(module string) string {
@@ -108,8 +109,8 @@ func emitActorPopulation(sb *strings.Builder, archIR *arch.ArchitectureIR) {
 	}
 	for _, f := range archIR.DomainActor.Fields {
 		fExp := arch.ExportIdent(f.Name)
-		switch f.Type {
-		case "bool":
+		switch f.Kind {
+		case ir.KindBool:
 			sb.WriteString(fmt.Sprintf("\tif v, ok := claims[%q].(bool); ok {\n\t\tact.%s = v\n\t}\n", f.Name, fExp))
 		default:
 			sb.WriteString(fmt.Sprintf("\tif v, ok := claims[%q].(string); ok {\n\t\tact.%s = v\n\t}\n", f.Name, fExp))

@@ -75,6 +75,10 @@ _Avoid_: AST, domain graph
 The lowered intermediate representation produced by applying a structural architecture pattern (such as Hexagonal, Layered CRUD, or Clean Architecture) to the Semantic IR before emitting target language code.
 _Avoid_: Codegen tree, file template tree
 
+**Field Kind**:
+The compiler-validated classification of a type-bearing position's value type — a scalar, an enum, a declared reference, or a built-in — carried by the Semantic IR so an Emitter maps types as a total function instead of guessing from an open type string.
+_Avoid_: Field type, type tag, data type
+
 **Emitter**:
 A target-specific backend module that translates the Architecture IR into deterministic, formatted source files for a concrete language or infrastructure stack (such as Go, TypeScript, or PostgreSQL DDL).
 _Avoid_: Transpiler, generator, printer

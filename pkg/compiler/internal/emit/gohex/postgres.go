@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
 func (lay goLayout) emitGoPostgresTxManager() string {
@@ -114,7 +115,7 @@ import (
 				repoStruct, lay.DomainPkg, p.EntityName, lay.DomainPkg, p.EntityName))
 			hasUUIDPK := false
 			for _, f := range ent.Fields {
-				if f.HasTrait("pk") && f.Type == "uuid" {
+				if f.HasTrait("pk") && f.Kind == ir.KindUUID {
 					hasUUIDPK = true
 					break
 				}
@@ -126,7 +127,7 @@ import (
 				sb.WriteString(fmt.Sprintf("\tif entity.%s == 0 {\n\t\tentity.%s = 1\n\t}\n", vExport, vExport))
 			}
 			for _, f := range ent.Fields {
-				if f.HasTrait("auto_now_add") && f.Type == "timestamp" {
+				if f.HasTrait("auto_now_add") && f.Kind == ir.KindTimestamp {
 					fExp := arch.ExportIdent(f.Name)
 					sb.WriteString(fmt.Sprintf("\tif entity.%s.IsZero() {\n\t\tentity.%s = time.Now().UTC()\n\t}\n", fExp, fExp))
 				}

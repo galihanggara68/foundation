@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
 func (lay goLayout) emitGoMemoryEventPublisher() string {
@@ -160,7 +161,7 @@ import (
 	pkField, _ := arch.EntityPKField(ent)
 	hasID := false
 	for _, f := range ent.Fields {
-		if f.Name == "id" && f.Type == "uuid" {
+		if f.Name == "id" && f.Kind == ir.KindUUID {
 			hasID = true
 		}
 	}

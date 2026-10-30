@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
 func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.UseCaseIR) string {
@@ -22,7 +23,7 @@ func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.Use
 	}
 	hasTime := false
 	for _, p := range uc.Params {
-		if p.Type == "timestamp" {
+		if p.Kind == ir.KindTimestamp {
 			hasTime = true
 		}
 	}
@@ -121,7 +122,7 @@ func (lay goLayout) emitGoSingleUseCase(archIR *arch.ArchitectureIR, uc arch.Use
 	execParams = append(execParams, "ctx context.Context")
 	callArgNames = append(callArgNames, "ctx")
 	for _, p := range uc.Params {
-		execParams = append(execParams, fmt.Sprintf("%s %s", p.Name, lay.goType(p.Type, false)))
+		execParams = append(execParams, fmt.Sprintf("%s %s", p.Name, lay.goKindType(p.Kind, p.Type, false)))
 		callArgNames = append(callArgNames, p.Name)
 	}
 

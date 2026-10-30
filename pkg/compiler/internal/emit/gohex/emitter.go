@@ -371,6 +371,29 @@ func (lay goLayout) goKindType(kind ir.FieldKind, declaredType string, inDomainP
 	}
 }
 
+// isScalarKind reports whether a compiler-validated FieldKind is a primitive
+// scalar, i.e. one that maps to a built-in Go type rather than a domain type.
+func isScalarKind(kind ir.FieldKind) bool {
+	switch kind {
+	case ir.KindUUID, ir.KindString, ir.KindInt, ir.KindDecimal, ir.KindBool, ir.KindTimestamp:
+		return true
+	default:
+		return false
+	}
+}
+
+// isArrayType reports whether a declared type is an array. Array-ness is carried on
+// the declared type string; a FieldKind is only the element kind.
+func isArrayType(declaredType string) bool {
+	return strings.HasPrefix(declaredType, "[]")
+}
+
+// isScalarParam reports whether a param is a single built-in scalar. Arrays, enums,
+// and declared types are not scalars.
+func isScalarParam(p ir.ParamDecl) bool {
+	return !isArrayType(p.Type) && isScalarKind(p.Kind)
+}
+
 // goNamedType renders a declared type as a reference to a type in the domain package.
 func (lay goLayout) goNamedType(name string, inDomainPkg bool) string {
 	if inDomainPkg {

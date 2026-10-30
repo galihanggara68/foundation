@@ -41,6 +41,7 @@ type SlotMethodDecl struct {
 	Name       string      `json:"name"`
 	Params     []ParamDecl `json:"params"`
 	ReturnType string      `json:"return_type,omitempty"`
+	ReturnKind FieldKind   `json:"return_kind,omitempty"`
 	Throws     []string    `json:"throws,omitempty"`
 	Traits     []TraitDecl `json:"traits,omitempty"`
 	Span       Span        `json:"span"`
@@ -149,9 +150,10 @@ type ErrorDecl struct {
 }
 
 type ParamDecl struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Span Span   `json:"span"`
+	Name string    `json:"name"`
+	Type string    `json:"type"`
+	Kind FieldKind `json:"kind"`
+	Span Span      `json:"span"`
 }
 
 type ActionDecl struct {

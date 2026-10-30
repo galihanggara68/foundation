@@ -168,25 +168,36 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		validateFields(ev.Fields)
 		checkNoVersionTrait("event", ev.Name, ev.Fields)
 	}
-	for _, sl := range sem.Slots {
-		for _, m := range sl.Methods {
-			for _, p := range m.Params {
-				if !sym.isKnownType(p.Type) {
+	for si := range sem.Slots {
+		sl := &sem.Slots[si]
+		for mi := range sl.Methods {
+			m := &sl.Methods[mi]
+			for pi := range m.Params {
+				p := &m.Params[pi]
+				kind, ok := sym.classifyType(p.Type)
+				if !ok {
 					diags = append(diags, ir.Diagnostic{
 						Code:     "FDN0202",
 						Severity: ir.SeverityError,
 						Message:  fmt.Sprintf("unknown parameter type %q in slot %s.%s", p.Type, sl.Name, m.Name),
 						Span:     p.Span,
 					})
+					continue
 				}
+				p.Kind = kind
 			}
-			if m.ReturnType != "" && !sym.isKnownType(m.ReturnType) {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0202",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("unknown return type %q in slot %s.%s", m.ReturnType, sl.Name, m.Name),
-					Span:     m.Span,
-				})
+			if m.ReturnType != "" {
+				kind, ok := sym.classifyType(m.ReturnType)
+				if !ok {
+					diags = append(diags, ir.Diagnostic{
+						Code:     "FDN0202",
+						Severity: ir.SeverityError,
+						Message:  fmt.Sprintf("unknown return type %q in slot %s.%s", m.ReturnType, sl.Name, m.Name),
+						Span:     m.Span,
+					})
+				} else {
+					m.ReturnKind = kind
+				}
 			}
 			for _, th := range m.Throws {
 				validateErrorRef(th, fmt.Sprintf("slot %s.%s throws", sl.Name, m.Name), m.Span, sym, &diags)
@@ -197,14 +208,18 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 	for i := range sem.Policies {
 		pol := &sem.Policies[i]
 		pScope := make(map[string]string)
-		for _, param := range pol.Params {
-			if !sym.isKnownType(param.Type) {
+		for pi := range pol.Params {
+			param := &pol.Params[pi]
+			kind, ok := sym.classifyType(param.Type)
+			if !ok {
 				diags = append(diags, ir.Diagnostic{
 					Code:     "FDN0202",
 					Severity: ir.SeverityError,
 					Message:  fmt.Sprintf("unknown parameter type %q in policy %q", param.Type, pol.Name),
 					Span:     param.Span,
 				})
+			} else {
+				param.Kind = kind
 			}
 			pScope[param.Name] = param.Type
 		}

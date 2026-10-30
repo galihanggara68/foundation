@@ -11,11 +11,11 @@ import (
 func (lay goLayout) slotNeedsDomainPkg(sl ir.SlotDecl) bool {
 	for _, m := range sl.Methods {
 		for _, p := range m.Params {
-			if strings.Contains(lay.goType(p.Type, false), lay.DomainPkg+".") {
+			if strings.Contains(lay.goKindType(p.Kind, p.Type, false), lay.DomainPkg+".") {
 				return true
 			}
 		}
-		if strings.Contains(lay.goType(m.ReturnType, false), lay.DomainPkg+".") {
+		if m.ReturnType != "" && strings.Contains(lay.goKindType(m.ReturnKind, m.ReturnType, false), lay.DomainPkg+".") {
 			return true
 		}
 	}
@@ -54,10 +54,10 @@ func (lay goLayout) emitGoSlotPort(module string, sl ir.SlotDecl) string {
 		var params []string
 		params = append(params, "ctx context.Context")
 		for _, p := range m.Params {
-			params = append(params, fmt.Sprintf("%s %s", p.Name, lay.goType(p.Type, false)))
+			params = append(params, fmt.Sprintf("%s %s", p.Name, lay.goKindType(p.Kind, p.Type, false)))
 		}
 		if m.ReturnType != "" {
-			sb.WriteString(fmt.Sprintf("\t%s(%s) (%s, error)\n", m.Name, strings.Join(params, ", "), lay.goType(m.ReturnType, false)))
+			sb.WriteString(fmt.Sprintf("\t%s(%s) (%s, error)\n", m.Name, strings.Join(params, ", "), lay.goKindType(m.ReturnKind, m.ReturnType, false)))
 		} else {
 			sb.WriteString(fmt.Sprintf("\t%s(%s) error\n", m.Name, strings.Join(params, ", ")))
 		}
@@ -80,10 +80,10 @@ func (lay goLayout) emitGoSlotStub(sl ir.SlotDecl) string {
 		var params []string
 		params = append(params, "ctx context.Context")
 		for _, p := range m.Params {
-			params = append(params, fmt.Sprintf("%s %s", p.Name, lay.goType(p.Type, true)))
+			params = append(params, fmt.Sprintf("%s %s", p.Name, lay.goKindType(p.Kind, p.Type, true)))
 		}
 		if m.ReturnType != "" {
-			retGo := lay.goType(m.ReturnType, true)
+			retGo := lay.goKindType(m.ReturnKind, m.ReturnType, true)
 			sb.WriteString(fmt.Sprintf("func (s *%s) %s(%s) (%s, error) {\n\t_ = ctx\n", stubType, m.Name, strings.Join(params, ", "), retGo))
 			for _, p := range m.Params {
 				sb.WriteString(fmt.Sprintf("\t_ = %s\n", p.Name))
@@ -121,10 +121,10 @@ func (lay goLayout) emitGoMemorySlotFake(module string, sl ir.SlotDecl) string {
 		ruleType := fmt.Sprintf("fake%s%sRule", sl.Name, m.Name)
 		sb.WriteString(fmt.Sprintf("type %s struct {\n\thasArgs bool\n", ruleType))
 		for _, p := range m.Params {
-			sb.WriteString(fmt.Sprintf("\targ_%s %s\n", p.Name, lay.goType(p.Type, false)))
+			sb.WriteString(fmt.Sprintf("\targ_%s %s\n", p.Name, lay.goKindType(p.Kind, p.Type, false)))
 		}
 		if m.ReturnType != "" {
-			sb.WriteString(fmt.Sprintf("\tret %s\n", lay.goType(m.ReturnType, false)))
+			sb.WriteString(fmt.Sprintf("\tret %s\n", lay.goKindType(m.ReturnKind, m.ReturnType, false)))
 		}
 		sb.WriteString("\terr error\n}\n\n")
 	}
@@ -142,9 +142,9 @@ func (lay goLayout) emitGoMemorySlotFake(module string, sl ir.SlotDecl) string {
 		ruleType := fmt.Sprintf("fake%s%sRule", sl.Name, m.Name)
 		var paramDecls []string
 		for _, p := range m.Params {
-			paramDecls = append(paramDecls, fmt.Sprintf("%s %s", p.Name, lay.goType(p.Type, false)))
+			paramDecls = append(paramDecls, fmt.Sprintf("%s %s", p.Name, lay.goKindType(p.Kind, p.Type, false)))
 		}
-		retGo := lay.goType(m.ReturnType, false)
+		retGo := lay.goKindType(m.ReturnKind, m.ReturnType, false)
 
 		if m.ReturnType != "" {
 			stubWithArgs := append([]string{}, paramDecls...)
@@ -242,7 +242,7 @@ import (
 			callArgs = append(callArgs, "ctx")
 			for idx, p := range m.Params {
 				argVar := fmt.Sprintf("arg_%s_%d", m.Name, idx)
-				sb.WriteString(fmt.Sprintf("\tvar %s %s\n", argVar, lay.goType(p.Type, false)))
+				sb.WriteString(fmt.Sprintf("\tvar %s %s\n", argVar, lay.goKindType(p.Kind, p.Type, false)))
 				callArgs = append(callArgs, argVar)
 			}
 			if m.ReturnType != "" {

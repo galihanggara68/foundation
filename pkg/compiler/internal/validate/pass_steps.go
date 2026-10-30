@@ -18,14 +18,18 @@ func (ActionTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 		scope := map[string]string{
 			"actor": "Actor",
 		}
-		for _, p := range a.Params {
-			if !sym.isKnownType(p.Type) {
+		for pi := range a.Params {
+			p := &a.Params[pi]
+			kind, ok := sym.classifyType(p.Type)
+			if !ok {
 				diags = append(diags, ir.Diagnostic{
 					Code:     "FDN0202",
 					Severity: ir.SeverityError,
 					Message:  fmt.Sprintf("unknown parameter type %q", p.Type),
 					Span:     p.Span,
 				})
+			} else {
+				p.Kind = kind
 			}
 			scope[p.Name] = p.Type
 		}

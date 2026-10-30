@@ -141,7 +141,7 @@ func (lay goLayout) emitGoDomainPolicies(archIR *arch.ArchitectureIR) string {
 	for _, pol := range archIR.DomainPolicies {
 		var params []string
 		for _, p := range pol.Params {
-			params = append(params, fmt.Sprintf("%s %s", p.Name, lay.goType(p.Type, true)))
+			params = append(params, fmt.Sprintf("%s %s", p.Name, lay.goKindType(p.Kind, p.Type, true)))
 		}
 		sb.WriteString(fmt.Sprintf("func %s(%s) bool {\n\treturn %s\n}\n\n",
 			pol.Name, strings.Join(params, ", "), lay.emitGoExpr(pol.Body, true)))

@@ -116,24 +116,24 @@ type Server struct {
 
 		if h.Method == "GET" {
 			for _, p := range bodyParams {
-				if p.Type == "int" {
+				if isScalarParam(p) && p.Kind == ir.KindInt {
 					sb.WriteString(fmt.Sprintf("\t%s, _ := strconv.Atoi(r.URL.Query().Get(%q))\n", p.Name, p.Name))
-				} else if p.Type == "bool" {
+				} else if isScalarParam(p) && p.Kind == ir.KindBool {
 					sb.WriteString(fmt.Sprintf("\t%s := r.URL.Query().Get(%q) == \"true\"\n", p.Name, p.Name))
 				} else {
 					sb.WriteString(fmt.Sprintf("\t%s := r.URL.Query().Get(%q)\n", p.Name, p.Name))
 				}
 				callArgs = append(callArgs, p.Name)
 			}
-		} else if len(bodyParams) == 1 && !arch.IsScalarType(bodyParams[0].Type) {
+		} else if len(bodyParams) == 1 && !isScalarParam(bodyParams[0]) {
 			p := bodyParams[0]
-			sb.WriteString(fmt.Sprintf("\tvar %s %s\n", p.Name, lay.goType(p.Type, false)))
+			sb.WriteString(fmt.Sprintf("\tvar %s %s\n", p.Name, lay.goKindType(p.Kind, p.Type, false)))
 			sb.WriteString(fmt.Sprintf("\tif err := json.NewDecoder(r.Body).Decode(&%s); err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n", p.Name))
 			callArgs = append(callArgs, p.Name)
 		} else if len(bodyParams) > 0 {
 			sb.WriteString("\tvar reqBody struct {\n")
 			for _, p := range bodyParams {
-				sb.WriteString(fmt.Sprintf("\t\t%s %s `json:%q`\n", arch.ExportIdent(p.Name), lay.goType(p.Type, false), p.Name))
+				sb.WriteString(fmt.Sprintf("\t\t%s %s `json:%q`\n", arch.ExportIdent(p.Name), lay.goKindType(p.Kind, p.Type, false), p.Name))
 			}
 			sb.WriteString("\t}\n")
 			sb.WriteString("\tif err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {\n\t\twriteError(w, err)\n\t\treturn\n\t}\n")

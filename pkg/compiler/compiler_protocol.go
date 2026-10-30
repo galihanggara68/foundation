@@ -7,6 +7,7 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/protocol"
 )
 
@@ -17,6 +18,8 @@ type (
 	GenerationResponse = protocol.GenerationResponse
 	TargetInfo         = protocol.TargetInfo
 	TargetConfig       = arch.TargetConfig
+	PlatformInfo       = platform.Info
+	PaginationDefaults = platform.PaginationDefaults
 	EntityDecl         = ir.EntityDecl
 	FieldDecl          = ir.FieldDecl
 	ActionDecl         = ir.ActionDecl

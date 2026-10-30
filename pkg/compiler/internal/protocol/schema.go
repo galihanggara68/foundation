@@ -126,6 +126,26 @@ const GenerationRequestSchemaJSON = `{
       "type": "object",
       "description": "Map of relative virtual file paths to their utf-8 string content.",
       "additionalProperties": { "type": "string" }
+    },
+    "platform": {
+      "type": "object",
+      "description": "Compiler-owned platform policy every emitter consumes. Optional: v1 requests produced before it existed omit it.",
+      "properties": {
+        "pagination": {
+          "type": "object",
+          "description": "Platform page-size policy for list reads.",
+          "properties": {
+            "default_limit": {
+              "type": "integer",
+              "description": "Page size to apply when a caller does not supply one."
+            },
+            "max_limit": {
+              "type": "integer",
+              "description": "Hard ceiling that any requested page size is clamped to."
+            }
+          }
+        }
+      }
     }
   },
   "definitions": {

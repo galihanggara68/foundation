@@ -14,6 +14,8 @@ type (
 	GenerationResponse = compiler.GenerationResponse
 	TargetInfo         = compiler.TargetInfo
 	TargetConfig       = compiler.TargetConfig
+	PlatformInfo       = compiler.PlatformInfo
+	PaginationDefaults = compiler.PaginationDefaults
 	Diagnostic         = compiler.Diagnostic
 	Emission           = compiler.Emission
 	SemanticIR         = compiler.SemanticIR

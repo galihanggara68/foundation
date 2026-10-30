@@ -7,6 +7,7 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 type stepEmitCtx struct {
@@ -81,7 +82,7 @@ func (lay goLayout) emitGoSteps(sb *strings.Builder, steps []ir.StepDecl, declar
 
 			limitVal := s.Limit
 			if limitVal <= 0 {
-				limitVal = 20
+				limitVal = platform.DefaultPageLimit
 			}
 			limitExpr := fmt.Sprintf("%d", limitVal)
 			if s.LimitExpr != nil && s.LimitExpr.Kind != ir.ExprInt {

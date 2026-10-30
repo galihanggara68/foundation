@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 // QueryManyUniqueOrderPass implements validate.Pass to enforce that query many
@@ -111,17 +112,17 @@ func ValidateQueryManyLimitCap(doc *ir.SemanticIR) []ir.Diagnostic {
 				diags = append(diags, ir.Diagnostic{
 					Code:     "FDN0216",
 					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("query many limit on entity %q must be a static integer literal <= 100", s.EntityName),
+					Message:  fmt.Sprintf("query many limit on entity %q must be a static integer literal <= %d", s.EntityName, platform.DefaultMaxPageLimit),
 					Span:     s.LimitExpr.Span,
 				})
 				return
 			}
 
-			if s.Limit > 100 {
+			if s.Limit > platform.DefaultMaxPageLimit {
 				diags = append(diags, ir.Diagnostic{
 					Code:     "FDN0216",
 					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("query many limit %d exceeds maximum allowed cap of 100", s.Limit),
+					Message:  fmt.Sprintf("query many limit %d exceeds maximum allowed cap of %d", s.Limit, platform.DefaultMaxPageLimit),
 					Span:     s.Span,
 				})
 			} else if s.Limit <= 0 {

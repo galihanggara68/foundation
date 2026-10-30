@@ -8,6 +8,7 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/plugin"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/protocol"
 )
@@ -66,12 +67,14 @@ func executeGeneratorPipeline(
 			reqFiles[k] = v
 		}
 
+		platformInfo := platform.DefaultInfo()
 		req := protocol.GenerationRequest{
 			ProtocolVersion: protocol.ProtocolVersion,
 			WorkspaceRoot:   workspaceDir,
 			Target:          protocol.TargetInfoFromConfig(target, target.Options),
 			SemanticIR:      sem,
 			ArchitectureIR:  archIR,
+			Platform:        &platformInfo,
 			Files:           reqFiles,
 		}
 

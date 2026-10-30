@@ -24,8 +24,14 @@ func generatePythonFastAPI(req emitterkit.GenerationRequest) (emitterkit.Generat
 	entities := req.SemanticIR.Entities
 	actions := req.SemanticIR.Actions
 
+	// Consume the compiler-owned pagination policy rather than inventing one.
+	var page *emitterkit.PaginationDefaults
+	if req.Platform != nil {
+		page = &req.Platform.Pagination
+	}
+
 	resp.Files["models.py"] = emitModelsPy(entities)
-	resp.Files["repository.py"] = emitRepositoryPy(entities)
+	resp.Files["repository.py"] = emitRepositoryPy(entities, page)
 	resp.Files["main.py"] = emitMainPy(entities, actions)
 	resp.Files["test_app.py"] = emitTestAppPy(entities, actions)
 
@@ -71,13 +77,21 @@ from typing import Optional, List, Dict, Any
 	return sb.String()
 }
 
-func emitRepositoryPy(entities []emitterkit.EntityDecl) string {
+func emitRepositoryPy(entities []emitterkit.EntityDecl, page *emitterkit.PaginationDefaults) string {
 	var sb strings.Builder
 	sb.WriteString(`# In-memory repository implementation for entities
 from typing import Dict, List, Optional
 from models import *
 
 `)
+
+	if page != nil {
+		sb.WriteString(fmt.Sprintf(`# Platform pagination policy (compiler-owned).
+DEFAULT_PAGE_LIMIT = %d
+MAX_PAGE_LIMIT = %d
+
+`, page.DefaultLimit, page.MaxLimit))
+	}
 
 	for _, e := range entities {
 		idField := "id"
@@ -103,8 +117,15 @@ from models import *
 		sb.WriteString(fmt.Sprintf("    def find_by_id(self, item_id: str) -> Optional[%s]:\n", e.Name))
 		sb.WriteString("        return self._items.get(str(item_id))\n\n")
 
-		sb.WriteString(fmt.Sprintf("    def find_all(self) -> List[%s]:\n", e.Name))
-		sb.WriteString("        return list(self._items.values())\n\n")
+		if page != nil {
+			sb.WriteString(fmt.Sprintf("    def find_all(self, limit: Optional[int] = None) -> List[%s]:\n", e.Name))
+			sb.WriteString("        if limit is None:\n            limit = DEFAULT_PAGE_LIMIT\n")
+			sb.WriteString("        if limit > MAX_PAGE_LIMIT:\n            limit = MAX_PAGE_LIMIT\n")
+			sb.WriteString("        return list(self._items.values())[:limit]\n\n")
+		} else {
+			sb.WriteString(fmt.Sprintf("    def find_all(self) -> List[%s]:\n", e.Name))
+			sb.WriteString("        return list(self._items.values())\n\n")
+		}
 
 		sb.WriteString("    def delete(self, item_id: str) -> bool:\n")
 		sb.WriteString("        if str(item_id) in self._items:\n")

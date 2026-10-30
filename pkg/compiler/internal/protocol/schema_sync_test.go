@@ -146,6 +146,67 @@ func TestAdditiveCompatibility_V1RequestWithoutKind(t *testing.T) {
 	}
 }
 
+// TestPublishedSchemaDocumentsPlatform asserts the published bundle exposes the
+// compiler-owned platform policy as an optional object on the request.
+func TestPublishedSchemaDocumentsPlatform(t *testing.T) {
+	published := schemaReadObject(t, publishedSchemaRelPath)
+	defs := schemaObject(t, published, "definitions")
+	request := schemaObject(t, defs, "GenerationRequest")
+
+	if schemaContains(schemaStrings(t, request, "required"), "platform") {
+		t.Fatalf("platform must be optional, but it is listed as required: %v",
+			schemaStrings(t, request, "required"))
+	}
+
+	platformProp := schemaObject(t, schemaObject(t, request, "properties"), "platform")
+	paginationProps := schemaObject(t, schemaObject(t, schemaObject(t, platformProp, "properties"), "pagination"), "properties")
+
+	for _, field := range []string{"default_limit", "max_limit"} {
+		if got := schemaString(t, schemaObject(t, paginationProps, field), "type"); got != "integer" {
+			t.Fatalf("platform.pagination.%s must be an integer, got %q", field, got)
+		}
+	}
+}
+
+// TestAdditiveCompatibility_V1RequestWithoutPlatform proves the additive-evolution
+// promise of ADR 0011 for the platform section: a request written before it existed
+// still decodes and validates, and its platform policy is simply absent.
+func TestAdditiveCompatibility_V1RequestWithoutPlatform(t *testing.T) {
+	const prePlatformRequest = `{
+  "protocol_version": 1,
+  "workspace_root": "/workspace",
+  "target": {"name": "backend", "kind": "backend", "language": "go", "out_dir": "gen"},
+  "semantic_ir": {"entities": []}
+}`
+
+	req, err := protocol.DecodeRequest([]byte(prePlatformRequest))
+	if err != nil {
+		t.Fatalf("DecodeRequest rejected a v1 document without platform: %v", err)
+	}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("v1 document without platform failed validation: %v", err)
+	}
+	if req.Platform != nil {
+		t.Fatalf("an absent platform section must decode to nil, got %+v", req.Platform)
+	}
+
+	withPlatform := strings.Replace(prePlatformRequest, `"semantic_ir"`,
+		`"platform": {"pagination": {"default_limit": 7, "max_limit": 42}}, "semantic_ir"`, 1)
+	reqWith, err := protocol.DecodeRequest([]byte(withPlatform))
+	if err != nil {
+		t.Fatalf("DecodeRequest rejected a v1 document with platform: %v", err)
+	}
+	if err := reqWith.Validate(); err != nil {
+		t.Fatalf("v1 document with platform failed validation: %v", err)
+	}
+	if reqWith.Platform == nil {
+		t.Fatal("expected a decoded platform section")
+	}
+	if got := reqWith.Platform.Pagination; got.DefaultLimit != 7 || got.MaxLimit != 42 {
+		t.Fatalf("unexpected decoded pagination policy: %+v", got)
+	}
+}
+
 func schemaReadObject(t *testing.T, path string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)

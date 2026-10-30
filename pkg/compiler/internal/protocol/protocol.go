@@ -7,6 +7,7 @@ import (
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 // ProtocolVersion is the canonical integer version of the Foundation plugin generation wire protocol.
@@ -37,6 +38,7 @@ type GenerationRequest struct {
 	Target          TargetInfo           `json:"target"`
 	SemanticIR      *ir.SemanticIR       `json:"semantic_ir"`
 	ArchitectureIR  *arch.ArchitectureIR `json:"architecture_ir,omitempty"`
+	Platform        *platform.Info       `json:"platform,omitempty"`
 	Files           map[string]string    `json:"files,omitempty"`
 }
 

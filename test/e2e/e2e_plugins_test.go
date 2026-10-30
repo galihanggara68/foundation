@@ -275,7 +275,18 @@ targets:
 		}
 	}
 
-	// 2. Test (pytest if installed in environment)
+	// 2. The plugin consumes the compiler-owned platform pagination policy.
+	repoSrc, err := os.ReadFile(filepath.Join(outDir, "repository.py"))
+	if err != nil {
+		t.Fatalf("read generated repository.py: %v", err)
+	}
+	for _, want := range []string{"DEFAULT_PAGE_LIMIT = 20", "MAX_PAGE_LIMIT = 100"} {
+		if !strings.Contains(string(repoSrc), want) {
+			t.Errorf("expected repository.py to carry the platform policy %q, got:\n%s", want, repoSrc)
+		}
+	}
+
+	// 3. Test (pytest if installed in environment)
 	if _, err := exec.LookPath("pytest"); err != nil {
 		t.Log("skipping pytest execution: pytest not installed in PATH")
 		return

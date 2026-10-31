@@ -91,13 +91,15 @@ func Compile(sources []SourceFile) (*SemanticIR, []Diagnostic) {
 		return nil, diags
 	}
 
+	// Warnings ride along with a successful compile: they say something worth knowing,
+	// not something to stop for.
 	valDiags := validateSemanticIR(sem)
-	if len(valDiags) > 0 {
+	if HasErrors(valDiags) {
 		return nil, valDiags
 	}
 
 	sem.Canonicalize()
-	return sem, nil
+	return sem, valDiags
 }
 
 // Check scans workspaceDir for .fdn and .fdn.json Blueprints, parses them, and runs all semantic validation passes.
@@ -172,7 +174,7 @@ func findFDNFiles(dir string) ([]string, error) {
 // IR validates all .fdn Blueprints in workspaceDir and returns the canonical JSON representation of SemanticIR.
 func IR(workspaceDir string) ([]byte, []Diagnostic) {
 	sem, diags := Check(workspaceDir)
-	if len(diags) > 0 {
+	if HasErrors(diags) {
 		return nil, diags
 	}
 	b, err := json.MarshalIndent(sem, "", "  ")
@@ -184,7 +186,7 @@ func IR(workspaceDir string) ([]byte, []Diagnostic) {
 			Span:     Span{File: workspaceDir, Line: 1, Column: 1},
 		}}
 	}
-	return append(b, '\n'), nil
+	return append(b, '\n'), diags
 }
 
 // BuildOptions configures the compiler Build behavior.
@@ -203,7 +205,7 @@ type BuildResult struct {
 // lowers them into ArchitectureIR, reconciles .foundation-manifest.json, and emits target files.
 func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) {
 	sem, diags := Check(workspaceDir)
-	if len(diags) > 0 {
+	if HasErrors(diags) {
 		return nil, diags
 	}
 
@@ -223,7 +225,8 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 	}
 
 	reg := defaultRegistry()
-	var buildDiags []Diagnostic
+	// Warnings from checking the blueprints carry into the build result.
+	buildDiags := diags
 
 	for _, target := range bp.Targets {
 		effectiveGens := target.EffectiveGenerators()
@@ -269,7 +272,7 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 
 			pipelineRes, pipelineDiags := executeGeneratorPipeline(context.Background(), workspaceDir, target, sem, archIR, builtinEmission)
 			buildDiags = append(buildDiags, pipelineDiags...)
-			if hasErrorDiagnostic(pipelineDiags) {
+			if HasErrors(pipelineDiags) {
 				return nil, buildDiags
 			}
 			emission = pipelineRes.Emission

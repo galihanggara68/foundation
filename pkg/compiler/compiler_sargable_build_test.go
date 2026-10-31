@@ -41,7 +41,7 @@ targets:
 	}
 
 	_, buildDiags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(buildDiags) > 0 {
+	if compiler.HasErrors(buildDiags) {
 		t.Fatalf("compiler.Build failed: %+v", buildDiags)
 	}
 
@@ -97,7 +97,7 @@ targets:
 	}
 
 	_, buildDiags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(buildDiags) > 0 {
+	if compiler.HasErrors(buildDiags) {
 		t.Fatalf("compiler.Build failed: %+v", buildDiags)
 	}
 

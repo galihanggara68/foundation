@@ -70,8 +70,8 @@ action FindRecentOrders(customer_id: uuid, status: string, since: timestamp) -> 
 	}
 
 	semIR, diags := compiler.Check(dir)
-	if len(diags) > 0 {
-		t.Fatalf("expected zero diagnostics for valid compound and query, got: %+v", diags)
+	if compiler.HasErrors(diags) {
+		t.Fatalf("expected no errors for valid compound and query, got: %+v", diags)
 	}
 	if semIR == nil {
 		t.Fatal("expected non-nil SemanticIR")
@@ -161,7 +161,7 @@ targets:
 	}
 
 	_, buildDiags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(buildDiags) > 0 {
+	if compiler.HasErrors(buildDiags) {
 		t.Fatalf("compiler.Build failed: %+v", buildDiags)
 	}
 
@@ -252,7 +252,7 @@ scenario "FindRecentOrder retrieves order matching compound and criteria" {
 	}
 
 	_, buildDiags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(buildDiags) > 0 {
+	if compiler.HasErrors(buildDiags) {
 		t.Fatalf("compiler.Build failed: %+v", buildDiags)
 	}
 
@@ -306,7 +306,7 @@ targets:
 	}
 
 	_, buildDiags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(buildDiags) > 0 {
+	if compiler.HasErrors(buildDiags) {
 		t.Fatalf("compiler.Build failed: %+v", buildDiags)
 	}
 

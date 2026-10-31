@@ -25,6 +25,47 @@ func realCompilerFn(sources []lsp.SourceDoc) ([]ir.Diagnostic, error) {
 	return diags, nil
 }
 
+// A warning has to reach the editor as a warning: shown as an error it would read as a
+// broken file.
+func TestServer_Diagnostics_ReservedErrorName_IsPublishedAsWarning(t *testing.T) {
+	uri := "file:///workspace/shop.fdn"
+	doc := "error NotFound {\n  kind: not_found\n  message: \"no such item\"\n}\n"
+	openReq := fmt.Sprintf(`{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":%q,"languageId":"foundation","version":1,"text":%q}}}`,
+		uri, doc)
+	shutReq := `{"jsonrpc":"2.0","id":99,"method":"shutdown","params":null}`
+	exitReq := `{"jsonrpc":"2.0","method":"exit","params":{}}`
+
+	input := fmt.Sprintf("Content-Length: %d\r\n\r\n%sContent-Length: %d\r\n\r\n%sContent-Length: %d\r\n\r\n%s",
+		len(openReq), openReq, len(shutReq), shutReq, len(exitReq), exitReq)
+
+	var output bytes.Buffer
+	server := lsp.NewServer(bytes.NewBufferString(input), &output, realCompilerFn)
+	_ = server.Run()
+
+	reader := lsp.NewTransport(&output, &bytes.Buffer{})
+	payload, err := reader.ReadMessage()
+	if err != nil {
+		t.Fatalf("failed reading diagnostics notification: %v", err)
+	}
+	var notif lsp.NotificationMessage
+	if err := json.Unmarshal(payload, &notif); err != nil {
+		t.Fatalf("failed unmarshaling notification: %v", err)
+	}
+	raw, _ := json.Marshal(notif.Params)
+	var params lsp.PublishDiagnosticsParams
+	_ = json.Unmarshal(raw, &params)
+
+	if len(params.Diagnostics) != 1 {
+		t.Fatalf("expected the collision warning alone, got %+v", params.Diagnostics)
+	}
+	if params.Diagnostics[0].Code != "FDN0219" {
+		t.Errorf("expected FDN0219, got %q", params.Diagnostics[0].Code)
+	}
+	if params.Diagnostics[0].Severity != lsp.SeverityWarning {
+		t.Errorf("expected SeverityWarning (2), got %d", params.Diagnostics[0].Severity)
+	}
+}
+
 func TestServer_Diagnostics_DidOpenAndDidChange(t *testing.T) {
 	uri := "file:///workspace/order.fdn"
 

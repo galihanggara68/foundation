@@ -18,12 +18,7 @@ func parseAndValidate(t *testing.T, src string) (*ir.SemanticIR, []ir.Diagnostic
 }
 
 func hasCode(diags []ir.Diagnostic, code string) bool {
-	for _, d := range diags {
-		if d.Code == code {
-			return true
-		}
-	}
-	return false
+	return findCode(diags, code) != nil
 }
 
 func TestValidate_ErrorStatus_NotDeclared_UsesKindDefault(t *testing.T) {

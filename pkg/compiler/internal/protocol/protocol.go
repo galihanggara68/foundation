@@ -98,12 +98,7 @@ type GenerationResponse struct {
 
 // HasErrors reports whether any diagnostic in the response has error severity.
 func (r *GenerationResponse) HasErrors() bool {
-	for _, d := range r.Diagnostics {
-		if d.Severity == ir.SeverityError {
-			return true
-		}
-	}
-	return false
+	return ir.HasErrors(r.Diagnostics)
 }
 
 // SetFile sets or updates a tracked generated file in the response.

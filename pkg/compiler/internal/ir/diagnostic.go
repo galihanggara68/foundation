@@ -28,3 +28,15 @@ type Diagnostic struct {
 	Message  string   `json:"message"`
 	Span     Span     `json:"span"`
 }
+
+// HasErrors reports whether a diagnostic list contains anything that aborts a build.
+// Warnings travel alongside a successful result, so a caller decides on this rather
+// than on the list being empty.
+func HasErrors(diags []Diagnostic) bool {
+	for _, d := range diags {
+		if d.Severity == SeverityError {
+			return true
+		}
+	}
+	return false
+}

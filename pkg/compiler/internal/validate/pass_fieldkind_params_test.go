@@ -43,7 +43,7 @@ func TestValidate_ParamKind_ClassifiesActionSlotAndPolicyParams(t *testing.T) {
 	if len(parseDiags) > 0 {
 		t.Fatalf("unexpected parse diags: %+v", parseDiags)
 	}
-	if diags := validate.Validate(sem); len(diags) > 0 {
+	if diags := validate.Validate(sem); ir.HasErrors(diags) {
 		t.Fatalf("unexpected validation diags: %+v", diags)
 	}
 
@@ -86,7 +86,7 @@ func TestValidate_ReturnKind_ClassifiesSlotReturnAndOmitsMissingReturn(t *testin
 	if len(parseDiags) > 0 {
 		t.Fatalf("unexpected parse diags: %+v", parseDiags)
 	}
-	if diags := validate.Validate(sem); len(diags) > 0 {
+	if diags := validate.Validate(sem); ir.HasErrors(diags) {
 		t.Fatalf("unexpected validation diags: %+v", diags)
 	}
 

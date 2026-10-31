@@ -80,7 +80,7 @@ func executeGeneratorPipeline(
 
 		resp, execDiags := runner.Execute(ctx, pluginPath, req)
 		allDiags = append(allDiags, execDiags...)
-		if hasErrorDiagnostic(execDiags) {
+		if HasErrors(execDiags) {
 			return nil, allDiags
 		}
 
@@ -152,11 +152,9 @@ func executeGeneratorPipeline(
 	}, allDiags
 }
 
-func hasErrorDiagnostic(diags []Diagnostic) bool {
-	for _, d := range diags {
-		if d.Severity == SeverityError {
-			return true
-		}
-	}
-	return false
+// HasErrors reports whether any diagnostic aborts a build. Warnings ride along with a
+// successful result, so callers decide on this rather than on an empty slice: treating a
+// warning as a failure silently makes the whole build fatal.
+func HasErrors(diags []Diagnostic) bool {
+	return ir.HasErrors(diags)
 }

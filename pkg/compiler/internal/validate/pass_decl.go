@@ -26,6 +26,15 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 	}
 	for i := range sem.Errors {
 		errDecl := &sem.Errors[i]
+		if kind, reserved := platform.ReservedErrorName(errDecl.Name); reserved {
+			diags = append(diags, ir.Diagnostic{
+				Code:     "FDN0219",
+				Severity: ir.SeverityWarning,
+				Message: fmt.Sprintf("error %q collides with the platform's standard %q error; its text can be shadowed by the standard error downstream",
+					errDecl.Name, kind),
+				Span: errDecl.Span,
+			})
+		}
 		policy, standard := platform.ErrorPolicyFor(errDecl.Kind)
 		if !standard {
 			diags = append(diags, ir.Diagnostic{

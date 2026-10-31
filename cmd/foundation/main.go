@@ -56,8 +56,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 
 	case "check":
 		_, diags := compiler.Check(*dir)
-		if len(diags) > 0 {
-			printDiagnostics(stderr, diags)
+		printDiagnostics(stderr, diags)
+		if compiler.HasErrors(diags) {
 			return 1
 		}
 		fmt.Fprintln(stdout, "check passed")
@@ -65,8 +65,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 
 	case "build":
 		_, diags := compiler.Build(*dir, compiler.BuildOptions{Force: *force})
-		if len(diags) > 0 {
-			printDiagnostics(stderr, diags)
+		printDiagnostics(stderr, diags)
+		if compiler.HasErrors(diags) {
 			return 1
 		}
 		fmt.Fprintln(stdout, "build succeeded")
@@ -74,8 +74,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 
 	case "ir":
 		data, diags := compiler.IR(*dir)
-		if len(diags) > 0 {
-			printDiagnostics(stderr, diags)
+		printDiagnostics(stderr, diags)
+		if compiler.HasErrors(diags) {
 			return 1
 		}
 		_, _ = stdout.Write(data)
@@ -83,8 +83,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 
 	case "test":
 		diags := compiler.Test(*dir)
-		if len(diags) > 0 {
-			printDiagnostics(stderr, diags)
+		printDiagnostics(stderr, diags)
+		if compiler.HasErrors(diags) {
 			return 1
 		}
 		fmt.Fprintln(stdout, "tests passed")

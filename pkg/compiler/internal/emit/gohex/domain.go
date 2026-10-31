@@ -178,31 +178,16 @@ func (e *DomainError) Error() string {
 
 `, lay.DomainPkg, ir.PostureBusiness, ir.PostureTechnical))
 
-	for _, builtin := range builtinDomainErrors {
-		sb.WriteString(emitGoDomainErrorVar(stampBuiltinPolicy(builtin)))
+	for _, errDecl := range platform.BuiltinErrors() {
+		sb.WriteString(emitGoDomainErrorVar(errDecl))
 	}
 	for _, errDecl := range archIR.DomainErrors {
-		if errDecl.Name == "Conflict" || errDecl.Name == "Unauthenticated" {
+		if platform.IsBuiltinErrorName(errDecl.Name) {
 			continue
 		}
 		sb.WriteString(emitGoDomainErrorVar(errDecl))
 	}
 	return sb.String()
-}
-
-// stampBuiltinPolicy gives a built-in the platform's standard policy, so the built-ins
-// cannot drift from the status and posture declared errors get.
-func stampBuiltinPolicy(errDecl ir.ErrorDecl) ir.ErrorDecl {
-	policy, _ := platform.ErrorPolicyFor(errDecl.Kind)
-	errDecl.Status = policy.Status
-	errDecl.Posture = policy.Posture
-	return errDecl
-}
-
-// builtinDomainErrors are the errors every service ships with.
-var builtinDomainErrors = []ir.ErrorDecl{
-	{Name: "Conflict", Kind: ir.ErrorKindConflict, Message: "optimistic concurrency conflict"},
-	{Name: "Unauthenticated", Kind: ir.ErrorKindUnauthenticated, Message: "unauthenticated actor"},
 }
 
 func emitGoDomainErrorVar(errDecl ir.ErrorDecl) string {

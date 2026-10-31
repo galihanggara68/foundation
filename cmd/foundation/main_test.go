@@ -87,6 +87,33 @@ targets:
 	}
 }
 
+// A warning is reported without failing the command, while an error still fails it.
+func TestCLI_ReservedErrorNameWarning_ReportsWithoutFailing(t *testing.T) {
+	dir := t.TempDir()
+	warningBlueprint := "error NotFound {\n  kind: not_found\n  message: \"unknown\"\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "shop.fdn"), []byte(warningBlueprint), 0644); err != nil {
+		t.Fatalf("write blueprint: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", "--dir", dir}, &stdout, &stderr); code != 0 {
+		t.Fatalf("a warning must not fail check (code %d): %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "FDN0219") || !strings.Contains(stderr.String(), "warning") {
+		t.Errorf("expected the collision reported as a warning, got stderr: %q", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	brokenBlueprint := "entity Item {\n  id: uuid @pk\n  name: strng\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "shop.fdn"), []byte(brokenBlueprint), 0644); err != nil {
+		t.Fatalf("write blueprint: %v", err)
+	}
+	if code := run([]string{"check", "--dir", dir}, &stdout, &stderr); code != 1 {
+		t.Fatalf("an error must still fail check, got code %d (stderr: %s)", code, stderr.String())
+	}
+}
+
 func TestCLI_VersionCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 

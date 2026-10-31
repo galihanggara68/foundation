@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 // Pass represents a single semantic or architectural invariant verification pass
@@ -52,19 +53,26 @@ type SymbolTable struct {
 // NewSymbolTable constructs an empty symbol table with built-in Actor context fields.
 func NewSymbolTable() *SymbolTable {
 	return &SymbolTable{
-		enums:    make(map[string]ir.EnumDecl),
-		entities: make(map[string]ir.EntityDecl),
-		values:   make(map[string]ir.ValueDecl),
-		errors: map[string]ir.ErrorDecl{
-			"Conflict":        {Name: "Conflict", Kind: ir.ErrorKindConflict, Message: "optimistic concurrency conflict"},
-			"Unauthenticated": {Name: "Unauthenticated", Kind: ir.ErrorKindUnauthenticated, Message: "unauthenticated actor"},
-		},
+		enums:       make(map[string]ir.EnumDecl),
+		entities:    make(map[string]ir.EntityDecl),
+		values:      make(map[string]ir.ValueDecl),
+		errors:      builtinErrors(),
 		events:      make(map[string]ir.EventDecl),
 		policies:    make(map[string]ir.PolicyDecl),
 		slots:       make(map[string]ir.SlotDecl),
 		actions:     make(map[string]ir.ActionDecl),
 		actorFields: defaultActorFields(),
 	}
+}
+
+// builtinErrors seeds the errors every service ships with, read from the platform
+// vocabulary so their names, kinds and messages are declared in exactly one place.
+func builtinErrors() map[string]ir.ErrorDecl {
+	errs := make(map[string]ir.ErrorDecl)
+	for _, errDecl := range platform.BuiltinErrors() {
+		errs[errDecl.Name] = errDecl
+	}
+	return errs
 }
 
 func defaultActorFields() map[string]ir.FieldDecl {

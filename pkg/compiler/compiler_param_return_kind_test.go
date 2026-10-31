@@ -68,7 +68,7 @@ targets:
 		t.Fatalf("write foundation.build.yaml: %v", err)
 	}
 
-	if _, diags := compiler.Build(dir, compiler.BuildOptions{}); len(diags) != 0 {
+	if _, diags := compiler.Build(dir, compiler.BuildOptions{}); compiler.HasErrors(diags) {
 		t.Fatalf("expected build with []decimal action param and entity slot return to succeed, got: %+v", diags)
 	}
 
@@ -138,7 +138,7 @@ targets:
 		t.Fatalf("write foundation.build.yaml: %v", err)
 	}
 
-	if _, diags := compiler.Build(dir, compiler.BuildOptions{}); len(diags) != 0 {
+	if _, diags := compiler.Build(dir, compiler.BuildOptions{}); compiler.HasErrors(diags) {
 		t.Fatalf("expected build with a single []decimal body param to succeed, got: %+v", diags)
 	}
 

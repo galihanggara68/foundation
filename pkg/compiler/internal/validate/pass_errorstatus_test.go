@@ -102,6 +102,79 @@ error Mystery {
 	}
 }
 
+func TestValidate_ErrorPosture_NotDeclared_UsesKindDefault(t *testing.T) {
+	sem, diags := parseAndValidate(t, `
+error ProductNotFound {
+  kind: not_found
+  message: "requested product does not exist"
+}
+
+error Boom {
+  kind: internal
+  message: "database connection reset"
+}
+`)
+	if len(diags) > 0 {
+		t.Fatalf("unexpected validation diags: %+v", diags)
+	}
+
+	got := map[string]ir.ErrorPosture{}
+	for _, e := range sem.Errors {
+		got[e.Name] = e.Posture
+	}
+	if got["ProductNotFound"] != ir.PostureBusiness {
+		t.Errorf("not_found is the caller's problem, so it is business: got %q", got["ProductNotFound"])
+	}
+	if got["Boom"] != ir.PostureTechnical {
+		t.Errorf("internal is our problem, so it is technical: got %q", got["Boom"])
+	}
+}
+
+func TestValidate_ErrorPosture_Declared_OverridesKindDefault(t *testing.T) {
+	sem, diags := parseAndValidate(t, `
+error ProductGone {
+  kind: not_found
+  message: "requested product does not exist"
+  posture: technical
+}
+`)
+	if len(diags) > 0 {
+		t.Fatalf("unexpected validation diags: %+v", diags)
+	}
+	if got := sem.Errors[0].Posture; got != ir.PostureTechnical {
+		t.Errorf("declared posture must win over the kind default: got %q, want technical", got)
+	}
+}
+
+func TestValidate_ErrorPosture_NotStandard_ReturnsFDN0221(t *testing.T) {
+	_, diags := parseAndValidate(t, `
+error Mystery {
+  kind: not_found
+  message: "boom"
+  posture: whatever
+}
+`)
+	if !hasCode(diags, "FDN0221") {
+		t.Errorf("expected FDN0221 for a posture outside the two the language defines, got %+v", diags)
+	}
+}
+
+func TestValidate_ErrorPosture_InvalidKind_DoesNotAlsoReportPosture(t *testing.T) {
+	_, diags := parseAndValidate(t, `
+error Mystery {
+  kind: bogus
+  message: "boom"
+  posture: whatever
+}
+`)
+	if !hasCode(diags, "FDN0201") {
+		t.Errorf("expected FDN0201 for the invalid kind, got %+v", diags)
+	}
+	if hasCode(diags, "FDN0221") {
+		t.Errorf("expected one diagnostic per mistake, but the posture was reported too: %+v", diags)
+	}
+}
+
 func TestValidate_ErrorKind_NotInVocabulary_ReturnsFDN0201(t *testing.T) {
 	_, diags := parseAndValidate(t, `
 error Mystery {

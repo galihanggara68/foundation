@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -163,41 +164,63 @@ type Server struct {
 		sb.WriteString(fmt.Sprintf("\tw.Header().Set(\"Content-Type\", \"application/json\")\n\tw.WriteHeader(%s)\n\t_ = json.NewEncoder(w).Encode(res)\n}\n\n", status))
 	}
 
-	var statusByKind strings.Builder
+	var standardPolicy strings.Builder
 	for _, kind := range platform.StandardErrorKinds() {
 		policy, _ := platform.ErrorPolicyFor(kind)
-		fmt.Fprintf(&statusByKind, "\t%q: %d,\n", kind, policy.Status)
+		fmt.Fprintf(&standardPolicy, "\t%q: {status: %d, posture: %s.%s},\n",
+			kind, policy.Status, lay.DomainPkg, emitGoPostureConst(policy.Posture))
 	}
 
 	sb.WriteString(fmt.Sprintf(`
-var errorStatusByKind = map[string]int{
+type errorPolicy struct {
+	status  int
+	posture string
+}
+
+// standardErrorPolicy is the platform's standard treatment of each error kind,
+// generated from the compiler's vocabulary.
+var standardErrorPolicy = map[string]errorPolicy{
 %s}
 
-// errorStatus resolves the status of an error the compiler did not stamp — one built
-// by application code. A compiler-stamped status always wins, exactly as a declared
-// status wins over the kind default at build time.
-func errorStatus(domErr *%s.DomainError) int {
+// policyFor resolves the platform's standard treatment of an error the compiler did
+// not stamp — one built by application code. A compiler-stamped value always wins,
+// exactly as a declared value wins over the kind default at build time, and anything
+// unrecognised stays diagnostic so an unknown message never reaches a caller.
+func policyFor(domErr *%s.DomainError) errorPolicy {
+	policy := errorPolicy{status: http.StatusInternalServerError, posture: %s.PostureTechnical}
+	if standard, ok := standardErrorPolicy[string(domErr.Kind)]; ok {
+		policy = standard
+	}
 	if domErr.Status >= %d && domErr.Status <= %d {
-		return domErr.Status
+		policy.status = domErr.Status
 	}
-	if status, standard := errorStatusByKind[string(domErr.Kind)]; standard {
-		return status
+	if domErr.Posture == %s.PostureBusiness || domErr.Posture == %s.PostureTechnical {
+		policy.posture = domErr.Posture
 	}
-	return http.StatusInternalServerError
+	return policy
 }
 
 func writeError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	var domErr *%s.DomainError
 	if errors.As(err, &domErr) {
-		w.WriteHeader(errorStatus(domErr))
+		policy := policyFor(domErr)
+		w.WriteHeader(policy.status)
+		if policy.posture == %s.PostureTechnical {
+			log.Printf("error %%s (%%s): %%s", domErr.Code, domErr.Kind, domErr.Message)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"code": domErr.Code,
+				"kind": domErr.Kind,
+			})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(domErr)
 		return
 	}
 	w.WriteHeader(http.StatusBadRequest)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
-`, statusByKind.String(), lay.DomainPkg, platform.MinHTTPStatus, platform.MaxHTTPStatus, lay.DomainPkg))
+`, standardPolicy.String(), lay.DomainPkg, lay.DomainPkg, platform.MinHTTPStatus, platform.MaxHTTPStatus, lay.DomainPkg, lay.DomainPkg, lay.DomainPkg, lay.DomainPkg))
 
 	return sb.String()
 }

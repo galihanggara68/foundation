@@ -38,6 +38,17 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		if errDecl.Status == 0 {
 			errDecl.Status = policy.Status
 		}
+		if errDecl.Posture == "" {
+			errDecl.Posture = policy.Posture
+		}
+		if standard && !errDecl.Posture.IsStandard() {
+			diags = append(diags, ir.Diagnostic{
+				Code:     "FDN0221",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("invalid error posture %q in error %q", errDecl.Posture, errDecl.Name),
+				Span:     errDecl.Span,
+			})
+		}
 		if errDecl.Status != 0 && (errDecl.Status < platform.MinHTTPStatus || errDecl.Status > platform.MaxHTTPStatus) {
 			diags = append(diags, ir.Diagnostic{
 				Code:     "FDN0220",

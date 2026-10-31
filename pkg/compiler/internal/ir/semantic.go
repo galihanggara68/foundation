@@ -157,12 +157,30 @@ const (
 	ErrorKindInternal        ErrorKind = "internal"
 )
 
+// ErrorPosture separates an error the caller can act on from one only the service can.
+// It decides whether an error's message is caller-facing text or an internal
+// diagnostic, which is what makes the same message field mean two different things.
+type ErrorPosture string
+
+const (
+	PostureBusiness  ErrorPosture = "business"
+	PostureTechnical ErrorPosture = "technical"
+)
+
+// IsStandard reports whether the posture is one the language defines. The zero value
+// is not standard: it means "not declared", left for the kind default to fill in.
+func (p ErrorPosture) IsStandard() bool {
+	return p == PostureBusiness || p == PostureTechnical
+}
+
 type ErrorDecl struct {
-	Name    string    `json:"name"`
-	Kind    ErrorKind `json:"kind"`
-	Message string    `json:"message"`
-	Status  int       `json:"status"`
-	Span    Span      `json:"span"`
+	Name     string            `json:"name"`
+	Kind     ErrorKind         `json:"kind"`
+	Message  string            `json:"message"`
+	Messages map[string]string `json:"messages,omitempty"`
+	Status   int               `json:"status"`
+	Posture  ErrorPosture      `json:"posture"`
+	Span     Span              `json:"span"`
 }
 
 type ParamDecl struct {

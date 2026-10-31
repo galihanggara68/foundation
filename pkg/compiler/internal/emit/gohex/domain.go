@@ -2,6 +2,7 @@ package gohex
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
@@ -155,45 +156,83 @@ func (lay goLayout) emitGoDomainErrors(archIR *arch.ArchitectureIR) string {
 	sb.WriteString(fmt.Sprintf(`package %s
 
 type DomainError struct {
-	Code    string `+"`json:\"code\"`"+`
-	Kind    string `+"`json:\"kind\"`"+`
-	Message string `+"`json:\"message\"`"+`
-	Status  int    `+"`json:\"status\"`"+`
+	Code     string            `+"`json:\"code\"`"+`
+	Kind     string            `+"`json:\"kind\"`"+`
+	Message  string            `+"`json:\"message\"`"+`
+	Messages map[string]string `+"`json:\"messages,omitempty\"`"+`
+	Status   int               `+"`json:\"status\"`"+`
+	Posture  string            `+"`json:\"posture\"`"+`
 }
 
+// Error postures, as declared on the error or defaulted from its kind.
+const (
+	PostureBusiness  = %q
+	PostureTechnical = %q
+)
+
+// Error returns the fallback message. It is what a caller sees only for a business
+// error, where the message is written for them.
 func (e *DomainError) Error() string {
 	return e.Message
 }
 
-`, lay.DomainPkg))
+`, lay.DomainPkg, ir.PostureBusiness, ir.PostureTechnical))
+
 	for _, builtin := range builtinDomainErrors {
-		policy, _ := platform.ErrorPolicyFor(builtin.Kind)
-		sb.WriteString(emitGoDomainErrorVar(builtin.Name, builtin.Kind, builtin.Message, policy.Status))
+		sb.WriteString(emitGoDomainErrorVar(stampBuiltinPolicy(builtin)))
 	}
 	for _, errDecl := range archIR.DomainErrors {
 		if errDecl.Name == "Conflict" || errDecl.Name == "Unauthenticated" {
 			continue
 		}
-		sb.WriteString(emitGoDomainErrorVar(errDecl.Name, errDecl.Kind, errDecl.Message, errDecl.Status))
+		sb.WriteString(emitGoDomainErrorVar(errDecl))
 	}
 	return sb.String()
 }
 
-// builtinDomainErrors are the errors every service ships with. Their status is read
-// from the platform vocabulary rather than written here, so it cannot drift from the
-// status the rest of the compiler stamps on declared errors.
-var builtinDomainErrors = []struct {
-	Name    string
-	Kind    ir.ErrorKind
-	Message string
-}{
+// stampBuiltinPolicy gives a built-in the platform's standard policy, so the built-ins
+// cannot drift from the status and posture declared errors get.
+func stampBuiltinPolicy(errDecl ir.ErrorDecl) ir.ErrorDecl {
+	policy, _ := platform.ErrorPolicyFor(errDecl.Kind)
+	errDecl.Status = policy.Status
+	errDecl.Posture = policy.Posture
+	return errDecl
+}
+
+// builtinDomainErrors are the errors every service ships with.
+var builtinDomainErrors = []ir.ErrorDecl{
 	{Name: "Conflict", Kind: ir.ErrorKindConflict, Message: "optimistic concurrency conflict"},
 	{Name: "Unauthenticated", Kind: ir.ErrorKindUnauthenticated, Message: "unauthenticated actor"},
 }
 
-func emitGoDomainErrorVar(name string, kind ir.ErrorKind, message string, status int) string {
-	return fmt.Sprintf("var Err%s = &DomainError{\n\tCode: %q,\n\tKind: %q,\n\tMessage: %q,\n\tStatus: %d,\n}\n\n",
-		name, name, kind, message, status)
+func emitGoDomainErrorVar(errDecl ir.ErrorDecl) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "var Err%s = &DomainError{\n\tCode: %q,\n\tKind: %q,\n\tMessage: %q,\n",
+		errDecl.Name, errDecl.Name, errDecl.Kind, errDecl.Message)
+	if len(errDecl.Messages) > 0 {
+		locales := make([]string, 0, len(errDecl.Messages))
+		for locale := range errDecl.Messages {
+			locales = append(locales, locale)
+		}
+		sort.Strings(locales)
+		sb.WriteString("\tMessages: map[string]string{\n")
+		for _, locale := range locales {
+			fmt.Fprintf(&sb, "\t\t%q: %q,\n", locale, errDecl.Messages[locale])
+		}
+		sb.WriteString("\t},\n")
+	}
+	fmt.Fprintf(&sb, "\tStatus: %d,\n\tPosture: %s,\n}\n\n", errDecl.Status, emitGoPostureConst(errDecl.Posture))
+	return sb.String()
+}
+
+// emitGoPostureConst names the emitted constant for a posture. A posture the language
+// does not define cannot reach here — validation rejects it — and if one did, the safe
+// reading is to treat the message as a diagnostic rather than hand it to a caller.
+func emitGoPostureConst(posture ir.ErrorPosture) string {
+	if posture == ir.PostureBusiness {
+		return "PostureBusiness"
+	}
+	return "PostureTechnical"
 }
 
 func (lay goLayout) emitGoSinglePort(module string, p arch.RepositoryPortIR) string {

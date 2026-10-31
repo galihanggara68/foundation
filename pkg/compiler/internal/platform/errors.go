@@ -11,7 +11,8 @@ const (
 // ErrorPolicy is the platform's standard treatment of one error kind — what the
 // kind resolves to when a blueprint does not declare its own.
 type ErrorPolicy struct {
-	Status int
+	Status  int
+	Posture ir.ErrorPosture
 }
 
 // errorVocabulary is the single source of truth for the standard vocabulary. Its
@@ -21,13 +22,13 @@ var errorVocabulary = []struct {
 	Kind   ir.ErrorKind
 	Policy ErrorPolicy
 }{
-	{ir.ErrorKindNotFound, ErrorPolicy{Status: 404}},
-	{ir.ErrorKindValidation, ErrorPolicy{Status: 400}},
-	{ir.ErrorKindConflict, ErrorPolicy{Status: 409}},
-	{ir.ErrorKindUnauthenticated, ErrorPolicy{Status: 401}},
-	{ir.ErrorKindUnauthorized, ErrorPolicy{Status: 401}},
-	{ir.ErrorKindForbidden, ErrorPolicy{Status: 403}},
-	{ir.ErrorKindInternal, ErrorPolicy{Status: 500}},
+	{ir.ErrorKindNotFound, ErrorPolicy{Status: 404, Posture: ir.PostureBusiness}},
+	{ir.ErrorKindValidation, ErrorPolicy{Status: 400, Posture: ir.PostureBusiness}},
+	{ir.ErrorKindConflict, ErrorPolicy{Status: 409, Posture: ir.PostureBusiness}},
+	{ir.ErrorKindUnauthenticated, ErrorPolicy{Status: 401, Posture: ir.PostureBusiness}},
+	{ir.ErrorKindUnauthorized, ErrorPolicy{Status: 401, Posture: ir.PostureBusiness}},
+	{ir.ErrorKindForbidden, ErrorPolicy{Status: 403, Posture: ir.PostureBusiness}},
+	{ir.ErrorKindInternal, ErrorPolicy{Status: 500, Posture: ir.PostureTechnical}},
 }
 
 // ErrorPolicyFor returns the platform's standard policy for an error kind, and

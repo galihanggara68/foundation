@@ -348,6 +348,18 @@ func (p *parser) parseError() (ir.ErrorDecl, bool) {
 			} else {
 				errDecl.Status = sign * status
 			}
+		case "messages":
+			messages, ok := p.parseErrorMessages()
+			if !ok {
+				return ir.ErrorDecl{}, false
+			}
+			errDecl.Messages = messages
+		case "posture":
+			pTok, ok := p.expect(tokIdent)
+			if !ok {
+				return ir.ErrorDecl{}, false
+			}
+			errDecl.Posture = ir.ErrorPosture(pTok.text)
 		default:
 			p.diags = append(p.diags, ir.Diagnostic{
 				Code:     "FDN0104",
@@ -362,4 +374,48 @@ func (p *parser) parseError() (ir.ErrorDecl, bool) {
 		return ir.ErrorDecl{}, false
 	}
 	return errDecl, true
+}
+
+// parseErrorMessages reads a `messages: { <locale>: "<text>" }` block. A locale is a
+// bare identifier or a quoted tag, so a region subtag can be written as "en-US". The
+// keys are otherwise free-form: the compiler records what a blueprint declares rather
+// than deciding which locales exist.
+func (p *parser) parseErrorMessages() (map[string]string, bool) {
+	if _, ok := p.expect(tokLBrace); !ok {
+		return nil, false
+	}
+	messages := make(map[string]string)
+	for p.cur().kind != tokRBrace && p.cur().kind != tokEOF {
+		localeTok := p.cur()
+		if localeTok.kind != tokIdent && localeTok.kind != tokString {
+			p.diags = append(p.diags, ir.Diagnostic{
+				Code:     "FDN0102",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("expected LOCALE, got %q", localeTok.text),
+				Span:     localeTok.span,
+			})
+			return nil, false
+		}
+		p.advance()
+		if _, ok := p.expect(tokColon); !ok {
+			return nil, false
+		}
+		textTok, ok := p.expect(tokString)
+		if !ok {
+			return nil, false
+		}
+		if _, duplicate := messages[localeTok.text]; duplicate {
+			p.diags = append(p.diags, ir.Diagnostic{
+				Code:     "FDN0108",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("duplicate locale %q in error messages", localeTok.text),
+				Span:     localeTok.span,
+			})
+		}
+		messages[localeTok.text] = textTok.text
+	}
+	if _, ok := p.expect(tokRBrace); !ok {
+		return nil, false
+	}
+	return messages, true
 }

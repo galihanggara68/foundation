@@ -148,7 +148,8 @@ When an Action pipeline returns an error, the transport layer inspects the decla
 | Error Kind | HTTP Status Code | Description |
 | :--- | :--- | :--- |
 | `validation` | `400 Bad Request` | Failed `guard`, invalid parameter format, or domain invariant violation |
-| `unauthorized` | `401 Unauthorized` | Missing authentication credentials |
+| `unauthenticated` | `401 Unauthorized` | No valid credentials for the acting principal |
+| `unauthorized` | `401 Unauthorized` | Authentication failure declared by a Blueprint; answers the same 401 as `unauthenticated` |
 | `forbidden` | `403 Forbidden` | Failed `require <Policy>` check |
 | `not_found` | `404 Not Found` | Failed `query one ... else <Error>` |
 | `conflict` | `409 Conflict` | OCC version mismatch or unique constraint collision |

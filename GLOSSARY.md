@@ -50,6 +50,14 @@ _Avoid_: Auth middleware, session filter, identity provider
 A built-in domain error indicating that a concurrent mutation has rendered the target Entity state stale due to an Entity Version mismatch (mapped to HTTP 409).
 _Avoid_: Race condition, concurrency error, stale data, mismatch
 
+**Error Posture**:
+Whether a declared error's message is caller-facing text (`business`) or an internal diagnostic (`technical`), resolved by the compiler from the error's kind unless the declaration states one; the Go hexagonal transport logs and masks a technical message rather than returning it to a caller.
+_Avoid_: Severity, error level, log level, visibility
+
+**Standard Error Vocabulary**:
+The compiler-owned table mapping each built-in error kind to its default HTTP status and posture and reserving each kind's name, so a kind's treatment is decided once by the compiler instead of re-derived by every emitter.
+_Avoid_: Error enum, status map, error registry, error taxonomy
+
 **Keyset Cursor**:
 An opaque, deterministic pagination token representing the unique ordering key of the first or last item in a paginated read, used to navigate forward (`next_cursor`) or backward (`prev_cursor`) without offset scanning.
 _Avoid_: Page number, offset, seek token, continuation token

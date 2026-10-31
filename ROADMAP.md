@@ -46,7 +46,7 @@ Fix the runtime promises broken under multi-replica deployments — the double-c
 Close the gap between the Actor/policy language and the runtime that trusts client headers verbatim (ADR [0006](./docs/adr/0006-actor-resolver-port-with-contrib-adapters.md)):
 
 - **Actor Resolver** port in every generated backend; Build Profile `authn:` selects the adapter.
-- Built-in `unauthenticated` error kind (HTTP 401) — the grammar can currently only say `forbidden` (403).
+- Built-in `unauthenticated` error kind (HTTP 401) — part of the compiler-owned standard error vocabulary (ADR [0016](./docs/adr/0016-error-vocabulary-ownership.md)).
 - **Flexible Actor Schema**:
   - *Zero-Config*: APIs without actor policies generate no authn middleware.
   - *Implicit Baseline*: Standard `{ id: string, role: string, verified: bool }` provided if policies use `actor` without an explicit declaration.

@@ -68,20 +68,35 @@ entity Product {
 ```
 
 ### 4. `error`
-Strongly-typed domain error categorized by a built-in `kind`:
+Strongly-typed domain error categorized by a built-in `kind`, which resolves its HTTP status and its posture — whether the message is caller-facing text or an internal diagnostic:
+
 - `not_found`: Missing resource (HTTP 404).
 - `validation`: Invalid payload or violated business invariant (HTTP 400).
 - `conflict`: Concurrency collision or state conflict (HTTP 409).
-- `unauthorized`: Missing authentication (HTTP 401).
+- `unauthenticated`: No valid credentials for the acting principal; the kind generated actor resolution answers with (HTTP 401).
+- `unauthorized`: Authentication failure declared by a Blueprint; answers the same HTTP 401 as `unauthenticated`.
 - `forbidden`: Insufficient permissions (HTTP 403).
-- `internal`: Unrecoverable system failure (HTTP 500).
+- `internal`: Unrecoverable system failure (HTTP 500; the only kind that is `technical` by default).
 
 ```fdn
 error ProductNotFound {
   kind: not_found
   message: "requested product does not exist"
+  messages: {
+    en: "requested product does not exist"
+    "id-ID": "produk yang diminta tidak ditemukan"
+  }
+  posture: business
+  status: 404
 }
 ```
+
+- `message`: Fallback text, used when the error carries no locale-specific text.
+- `messages`: Text per locale tag (`en`, `id`, `"en-US"`). Locales are recorded, never negotiated: the compiler does not pick one for a caller.
+- `status`: HTTP status the transport answers with, between 100 and 599. Omit it to take the kind's default; declaring one overrides that default.
+- `posture`: `business` or `technical`. Every kind defaults to `business` except `internal`, which is `technical`. A `technical` message is an internal diagnostic rather than text for a caller: the Go hexagonal transport logs it and answers with a generic body, while emitters that have not migrated still write it out.
+
+The vocabulary also reserves each kind's name (`NotFound`, `Validation`, `Conflict`, `Unauthenticated`, `Unauthorized`, `Forbidden`, `Internal`). Declaring an error with one of those names is legal, but warns (`FDN0219`): the platform owns the name, so that declaration risks being shadowed downstream.
 
 ### 5. `event`
 Published domain event payload emitted when state transitions occur.

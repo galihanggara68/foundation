@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Compiler-Owned Standard Error Vocabulary** ([ADR 0016](./docs/adr/0016-error-vocabulary-ownership.md)): each error kind's default HTTP status and posture now live in one compiler table, and every declared error carries the `status`, `posture` and per-locale `messages` the compiler resolved for it.
+  - Grammar: `status: <int>`, `posture: business|technical`, and a `messages: { <locale>: "<text>" }` block; `message:` stays the fallback text.
+  - A declared `status` or `posture` overrides the kind's default; a status outside 100–599 is `FDN0220`, an unknown posture `FDN0221`, and a duplicate locale `FDN0108`.
+  - `FDN0219` warns when a declared error reuses a name the vocabulary owns (`NotFound`, `Conflict`, …), which risks the platform shadowing it.
+  - The `ErrorDecl` shape is published in the generation protocol schema, additively: documents written before it still decode and validate.
+- **Closed Field-Kind Taxonomy** ([ADR 0015](./docs/adr/0015-closed-field-kind-taxonomy.md)): `FieldDecl` carries a compiler-validated `Kind`, and parameter and slot-return positions classify as well, so an emitter maps types as a total function instead of matching an open type string; a type the compiler cannot classify is `FDN0218`.
+- **Platform Section in the Generation Request**: `GenerationRequest.platform` carries compiler-owned policy, starting with pagination defaults, so emitters consume platform decisions instead of inventing them.
+
+### Changed
+- Generated Go services answer with the status and posture the compiler resolved for a declared error, falling back to the kind's policy for an error application code builds; a `technical` message is logged and masked rather than returned to a caller.
+- `foundation check`, `build`, `ir` and `test` now fail only on errors: a warning is reported and the command still succeeds.
+- The error reference in `declarations.md` documents `status:`, `posture:` and `messages:`, and both it and `http-transport.md` now list the full kind set.
+
+---
+
 ## [0.3.0] - 2026-10-29
 
 ### Added

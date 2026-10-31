@@ -22,7 +22,7 @@ The first production external emitter — a Go-service generator following the e
 
 Evolve the IR and request payload **additively under the existing `protocol_version`** (ADR 0011's stability promise intact — emitters that ignore new optional fields are unaffected, and defaults live compiler-side or in `emitterkit` helpers):
 
-1. **Closed field-kind taxonomy** — `FieldDecl` carries a validated `Kind` (`uuid | string | int | decimal | bool | timestamp | enum | json | …`), checked at compile time; unknown kinds are a compiler diagnostic, never an emitter string-map fallback.
+1. **Closed field-kind taxonomy** — `FieldDecl` carries a validated `Kind` (the scalars `uuid | string | int | decimal | bool | timestamp`, the reference kinds `enum | entity | value | event`, and the built-ins `actor | page | result`), checked at compile time; unknown kinds are a compiler diagnostic, never an emitter string-map fallback.
 2. **Platform section in `GenerationRequest`** — one object carrying the facts every emitter needs as platform policy: `middleware` selection intent, identity posture (edge-minted headers, auth scheme), `db_schema` target, pagination defaults. The compiler owns defaults; emitters consume.
 3. **`ErrorDecl` v2** — explicit posture, declared HTTP status (with type-default fallback), locale-keyed messages, and **compiler-side collision diagnostics** against the platform's standard vocabulary.
 4. **Namespaced, validated traits** — reserved emitter namespaces (e.g. `@acme:*`), a validated standard set with typed args, and documentation of which standard traits every emitter must honor vs may ignore.
@@ -66,7 +66,7 @@ Items 1–3 are prioritized: all three are already-paid emitter-side complexity,
 
 ## Decision Records Needed
 
-Item 1 (closed taxonomy) and item 3 (error v2 + platform-vocabulary ownership) warrant ADRs at scheduling: both are hard to reverse once emitters depend on them, surprising without context, and real trade-offs (openness vs safety; declaration vs convention).
+Item 1 (closed taxonomy) and item 3 (error v2 + platform-vocabulary ownership) warrant ADRs at scheduling: both are hard to reverse once emitters depend on them, surprising without context, and real trade-offs (openness vs safety; declaration vs convention). Written: [ADR 0015](../adr/0015-closed-field-kind-taxonomy.md) for item 1, [ADR 0016](../adr/0016-error-vocabulary-ownership.md) for item 3.
 
 ## Out of Scope
 

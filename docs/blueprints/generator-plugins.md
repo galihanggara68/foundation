@@ -139,7 +139,7 @@ Delivered to the plugin's standard input (`stdin`):
 
 * `protocol_version`: Current protocol version (`"1.0"`).
 * `target`: Target parameters and custom options declared in `foundation.build.yaml`.
-* `semantic_ir`: Validated domain IR (entities, actions, values, errors, policies, scenarios).
+* `semantic_ir`: Validated domain IR (entities, actions, values, errors, policies, scenarios). A declared error carries a closed `kind`, the `status` and `posture` the compiler resolved from it, and per-locale `messages` ([ADR 0016](../adr/0016-error-vocabulary-ownership.md)).
 * `architecture_ir`: Optional pre-lowered middle-end IR (use cases, ports, routes, adapters).
 * `files`: Current virtual file tree. When `scaffold: builtin`, this contains all built-in scaffolding; in multi-plugin pipelines, it contains modifications from upstream plugins.
 

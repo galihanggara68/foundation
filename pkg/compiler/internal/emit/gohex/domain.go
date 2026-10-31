@@ -6,6 +6,7 @@ import (
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 func (lay goLayout) emitGoDomainEnums(archIR *arch.ArchitectureIR) string {
@@ -157,33 +158,42 @@ type DomainError struct {
 	Code    string `+"`json:\"code\"`"+`
 	Kind    string `+"`json:\"kind\"`"+`
 	Message string `+"`json:\"message\"`"+`
+	Status  int    `+"`json:\"status\"`"+`
 }
 
 func (e *DomainError) Error() string {
 	return e.Message
 }
 
-var ErrConflict = &DomainError{
-	Code:    "Conflict",
-	Kind:    "conflict",
-	Message: "optimistic concurrency conflict",
-}
-
-var ErrUnauthenticated = &DomainError{
-	Code:    "Unauthenticated",
-	Kind:    "unauthenticated",
-	Message: "unauthenticated actor",
-}
-
 `, lay.DomainPkg))
+	for _, builtin := range builtinDomainErrors {
+		policy, _ := platform.ErrorPolicyFor(builtin.Kind)
+		sb.WriteString(emitGoDomainErrorVar(builtin.Name, builtin.Kind, builtin.Message, policy.Status))
+	}
 	for _, errDecl := range archIR.DomainErrors {
 		if errDecl.Name == "Conflict" || errDecl.Name == "Unauthenticated" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("var Err%s = &DomainError{\n\tCode: %q,\n\tKind: %q,\n\tMessage: %q,\n}\n\n",
-			errDecl.Name, errDecl.Name, errDecl.Kind, errDecl.Message))
+		sb.WriteString(emitGoDomainErrorVar(errDecl.Name, errDecl.Kind, errDecl.Message, errDecl.Status))
 	}
 	return sb.String()
+}
+
+// builtinDomainErrors are the errors every service ships with. Their status is read
+// from the platform vocabulary rather than written here, so it cannot drift from the
+// status the rest of the compiler stamps on declared errors.
+var builtinDomainErrors = []struct {
+	Name    string
+	Kind    ir.ErrorKind
+	Message string
+}{
+	{Name: "Conflict", Kind: ir.ErrorKindConflict, Message: "optimistic concurrency conflict"},
+	{Name: "Unauthenticated", Kind: ir.ErrorKindUnauthenticated, Message: "unauthenticated actor"},
+}
+
+func emitGoDomainErrorVar(name string, kind ir.ErrorKind, message string, status int) string {
+	return fmt.Sprintf("var Err%s = &DomainError{\n\tCode: %q,\n\tKind: %q,\n\tMessage: %q,\n\tStatus: %d,\n}\n\n",
+		name, name, kind, message, status)
 }
 
 func (lay goLayout) emitGoSinglePort(module string, p arch.RepositoryPortIR) string {

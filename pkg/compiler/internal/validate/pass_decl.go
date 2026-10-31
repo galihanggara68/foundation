@@ -6,6 +6,7 @@ import (
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 // DeclarationPass populates the SymbolTable and validates top-level declarations, error kinds, field types, and policies.
@@ -23,8 +24,10 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 	for _, e := range sem.Entities {
 		registerUniqueDecl(sym.entities, "entity", e.Name, e, e.Span, &diags)
 	}
-	for _, errDecl := range sem.Errors {
-		if !validErrorKinds[errDecl.Kind] {
+	for i := range sem.Errors {
+		errDecl := &sem.Errors[i]
+		policy, standard := platform.ErrorPolicyFor(errDecl.Kind)
+		if !standard {
 			diags = append(diags, ir.Diagnostic{
 				Code:     "FDN0201",
 				Severity: ir.SeverityError,
@@ -32,7 +35,19 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 				Span:     errDecl.Span,
 			})
 		}
-		registerUniqueDecl(sym.errors, "error", errDecl.Name, errDecl, errDecl.Span, &diags)
+		if errDecl.Status == 0 {
+			errDecl.Status = policy.Status
+		}
+		if errDecl.Status != 0 && (errDecl.Status < platform.MinHTTPStatus || errDecl.Status > platform.MaxHTTPStatus) {
+			diags = append(diags, ir.Diagnostic{
+				Code:     "FDN0220",
+				Severity: ir.SeverityError,
+				Message: fmt.Sprintf("error status %d must be between %d and %d in error %q",
+					errDecl.Status, platform.MinHTTPStatus, platform.MaxHTTPStatus, errDecl.Name),
+				Span: errDecl.Span,
+			})
+		}
+		registerUniqueDecl(sym.errors, "error", errDecl.Name, *errDecl, errDecl.Span, &diags)
 	}
 	for _, ev := range sem.Events {
 		registerUniqueDecl(sym.events, "event", ev.Name, ev, ev.Span, &diags)

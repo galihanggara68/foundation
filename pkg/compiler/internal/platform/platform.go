@@ -1,8 +1,9 @@
 // Package platform holds the policy vocabulary the compiler owns and every emitter
 // consumes, so platform decisions have a single source instead of per-emitter literals.
 //
-// It is a leaf package: it imports nothing, so validation and emission stages can both
-// depend on it without pulling architecture or wire-protocol concerns into either.
+// It is a leaf package: beyond the ir vocabulary itself it imports nothing, so the
+// validation and emission stages can both depend on it without pulling architecture
+// or wire-protocol concerns into either.
 package platform
 
 // Compiler-owned pagination defaults.

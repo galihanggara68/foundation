@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
@@ -319,13 +320,34 @@ func (p *parser) parseError() (ir.ErrorDecl, bool) {
 			if !ok {
 				return ir.ErrorDecl{}, false
 			}
-			errDecl.Kind = kTok.text
+			errDecl.Kind = ir.ErrorKind(kTok.text)
 		case "message":
 			mTok, ok := p.expect(tokString)
 			if !ok {
 				return ir.ErrorDecl{}, false
 			}
 			errDecl.Message = mTok.text
+		case "status":
+			sign := 1
+			if p.cur().kind == tokMinus {
+				p.advance()
+				sign = -1
+			}
+			sTok, ok := p.expect(tokNumber)
+			if !ok {
+				return ir.ErrorDecl{}, false
+			}
+			status, atoiErr := strconv.Atoi(sTok.text)
+			if atoiErr != nil {
+				p.diags = append(p.diags, ir.Diagnostic{
+					Code:     "FDN0220",
+					Severity: ir.SeverityError,
+					Message:  fmt.Sprintf("error status %q must be an integer", sTok.text),
+					Span:     sTok.span,
+				})
+			} else {
+				errDecl.Status = sign * status
+			}
 		default:
 			p.diags = append(p.diags, ir.Diagnostic{
 				Code:     "FDN0104",

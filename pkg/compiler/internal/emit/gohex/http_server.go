@@ -6,6 +6,7 @@ import (
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 func (lay goLayout) emitGoChiRouter(archIR *arch.ArchitectureIR) string {
@@ -162,31 +163,41 @@ type Server struct {
 		sb.WriteString(fmt.Sprintf("\tw.Header().Set(\"Content-Type\", \"application/json\")\n\tw.WriteHeader(%s)\n\t_ = json.NewEncoder(w).Encode(res)\n}\n\n", status))
 	}
 
-	sb.WriteString(fmt.Sprintf(`func writeError(w http.ResponseWriter, err error) {
+	var statusByKind strings.Builder
+	for _, kind := range platform.StandardErrorKinds() {
+		policy, _ := platform.ErrorPolicyFor(kind)
+		fmt.Fprintf(&statusByKind, "\t%q: %d,\n", kind, policy.Status)
+	}
+
+	sb.WriteString(fmt.Sprintf(`
+var errorStatusByKind = map[string]int{
+%s}
+
+// errorStatus resolves the status of an error the compiler did not stamp — one built
+// by application code. A compiler-stamped status always wins, exactly as a declared
+// status wins over the kind default at build time.
+func errorStatus(domErr *%s.DomainError) int {
+	if domErr.Status >= %d && domErr.Status <= %d {
+		return domErr.Status
+	}
+	if status, standard := errorStatusByKind[string(domErr.Kind)]; standard {
+		return status
+	}
+	return http.StatusInternalServerError
+}
+
+func writeError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	var domErr *%s.DomainError
 	if errors.As(err, &domErr) {
-		status := http.StatusInternalServerError
-		switch domErr.Kind {
-		case "not_found":
-			status = http.StatusNotFound
-		case "validation":
-			status = http.StatusBadRequest
-		case "conflict":
-			status = http.StatusConflict
-		case "unauthenticated", "unauthorized":
-			status = http.StatusUnauthorized
-		case "forbidden":
-			status = http.StatusForbidden
-		}
-		w.WriteHeader(status)
+		w.WriteHeader(errorStatus(domErr))
 		_ = json.NewEncoder(w).Encode(domErr)
 		return
 	}
 	w.WriteHeader(http.StatusBadRequest)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
-`, lay.DomainPkg))
+`, statusByKind.String(), lay.DomainPkg, platform.MinHTTPStatus, platform.MaxHTTPStatus, lay.DomainPkg))
 
 	return sb.String()
 }

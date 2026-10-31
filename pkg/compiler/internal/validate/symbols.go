@@ -36,16 +36,6 @@ func Validate(sem *ir.SemanticIR) []ir.Diagnostic {
 	return diags
 }
 
-var validErrorKinds = map[string]bool{
-	"not_found":       true,
-	"validation":      true,
-	"conflict":        true,
-	"unauthenticated": true,
-	"unauthorized":    true,
-	"forbidden":       true,
-	"internal":        true,
-}
-
 // SymbolTable indexes declared domain constructs for fast, DRY lookup across validation passes.
 type SymbolTable struct {
 	enums       map[string]ir.EnumDecl
@@ -66,8 +56,8 @@ func NewSymbolTable() *SymbolTable {
 		entities: make(map[string]ir.EntityDecl),
 		values:   make(map[string]ir.ValueDecl),
 		errors: map[string]ir.ErrorDecl{
-			"Conflict":        {Name: "Conflict", Kind: "conflict", Message: "optimistic concurrency conflict"},
-			"Unauthenticated": {Name: "Unauthenticated", Kind: "unauthenticated", Message: "unauthenticated actor"},
+			"Conflict":        {Name: "Conflict", Kind: ir.ErrorKindConflict, Message: "optimistic concurrency conflict"},
+			"Unauthenticated": {Name: "Unauthenticated", Kind: ir.ErrorKindUnauthenticated, Message: "unauthenticated actor"},
 		},
 		events:      make(map[string]ir.EventDecl),
 		policies:    make(map[string]ir.PolicyDecl),

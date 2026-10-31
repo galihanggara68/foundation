@@ -142,11 +142,27 @@ type EntityDecl struct {
 	Span   Span        `json:"span"`
 }
 
+// ErrorKind is the closed, compiler-validated classification of a declared error.
+// The vocabulary is owned by the compiler (internal/platform) rather than by each
+// emitter, so sibling emitters cannot drift on what a kind means on the wire.
+type ErrorKind string
+
+const (
+	ErrorKindNotFound        ErrorKind = "not_found"
+	ErrorKindValidation      ErrorKind = "validation"
+	ErrorKindConflict        ErrorKind = "conflict"
+	ErrorKindUnauthenticated ErrorKind = "unauthenticated"
+	ErrorKindUnauthorized    ErrorKind = "unauthorized"
+	ErrorKindForbidden       ErrorKind = "forbidden"
+	ErrorKindInternal        ErrorKind = "internal"
+)
+
 type ErrorDecl struct {
-	Name    string `json:"name"`
-	Kind    string `json:"kind"`
-	Message string `json:"message"`
-	Span    Span   `json:"span"`
+	Name    string    `json:"name"`
+	Kind    ErrorKind `json:"kind"`
+	Message string    `json:"message"`
+	Status  int       `json:"status"`
+	Span    Span      `json:"span"`
 }
 
 type ParamDecl struct {

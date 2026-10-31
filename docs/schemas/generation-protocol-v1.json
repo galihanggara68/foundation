@@ -78,7 +78,7 @@
                 }
               }
             },
-            "errors": { "type": "array", "items": { "type": "object" } },
+            "errors": { "type": "array", "items": { "$ref": "#/definitions/ErrorDecl" } },
             "events": {
               "type": "array",
               "items": {
@@ -114,7 +114,7 @@
             "domain_enums": { "type": "array", "items": { "type": "object" } },
             "domain_values": { "type": "array", "items": { "type": "object" } },
             "domain_entities": { "type": "array", "items": { "type": "object" } },
-            "domain_errors": { "type": "array", "items": { "type": "object" } },
+            "domain_errors": { "type": "array", "items": { "$ref": "#/definitions/ErrorDecl" } },
             "domain_events": { "type": "array", "items": { "type": "object" } },
             "domain_policies": { "type": "array", "items": { "type": "object" } },
             "domain_actor": { "type": "object" },
@@ -237,6 +237,56 @@
         },
         "optional": {
           "type": "boolean"
+        }
+      }
+    },
+    "ErrorDecl": {
+      "type": "object",
+      "description": "A declared domain error: what it is called, how it is classified, and the text a caller may see.",
+      "required": [
+        "name",
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "description": "Closed, compiler-validated error kind, drawn from the platform's standard vocabulary.",
+          "enum": [
+            "not_found",
+            "validation",
+            "conflict",
+            "unauthenticated",
+            "unauthorized",
+            "forbidden",
+            "internal"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "description": "Fallback text for an error with no locale-specific message; empty when a declaration carries only 'messages'."
+        },
+        "messages": {
+          "type": "object",
+          "description": "Text per locale tag (e.g. \"en\", \"en-US\"). Optional: v1 documents produced before locale messages existed omit it.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "integer",
+          "description": "HTTP status the transport answers with, resolved by the compiler: a declared status wins, otherwise the kind's standard status. Optional: v1 documents produced before resolution omit it."
+        },
+        "posture": {
+          "type": "string",
+          "description": "Whether the message is caller-facing text or an internal diagnostic, resolved by the compiler. Optional: v1 documents produced before posture existed omit it.",
+          "enum": [
+            "business",
+            "technical"
+          ]
         }
       }
     }

@@ -41,7 +41,7 @@ Fix the runtime promises broken under multi-replica deployments — the double-c
 
 **Exit:** double-charge, crash-loss, and concurrent lost-update scenarios are impossible in postgres mode; Scenarios run against the memory driver unchanged.
 
-## Phase 3 — Authentication & Flexible Actor Schema *(Implemented & Verified)*
+## Phase 3 — Authentication & Flexible Actor Schema *(Implemented; exit criterion unmet — `jwt-oidc` decodes claims without verifying signatures)*
 
 Close the gap between the Actor/policy language and the runtime that trusts client headers verbatim (ADR [0006](./docs/adr/0006-actor-resolver-port-with-contrib-adapters.md)):
 

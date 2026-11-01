@@ -1,5 +1,5 @@
 ---
-status: ready-for-agent
+status: done
 ---
 
 # Specification 02: Production API Surface & Security (Phases 3–4)

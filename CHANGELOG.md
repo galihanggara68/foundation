@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-29
+
+### Added
+- **`jwt-oidc` verifies tokens** ([ADR 0017](./docs/adr/0017-jwt-verification-contract.md)): the Bearer token's signature is checked against the key set at `AUTH_JWKS_URL` before any claim is read, in both the Go and TypeScript runtimes. `RS256` and `ES256` are accepted, `exp` is required, `nbf` is honoured and `iss`/`aud` are enforced when configured. Neither runtime gains a dependency.
+- `AUTH_JWKS_URL` joins `AUTH_ISSUER`/`AUTH_AUDIENCE` as adapter configuration, so one generated build runs against different identity providers.
+
+### Changed
+- **Behaviour change:** a `jwt-oidc` deployment with no `AUTH_JWKS_URL` now answers 401 instead of trusting unverified tokens, and a token with `alg: none`, an HMAC algorithm, a bad signature or an expired claim is refused. Set the variable before deploying.
+
+### Fixed
+- A TypeScript backend built with `authn: jwt-oidc` no longer trusts `X-Actor-*` headers: the emitter's Postgres container honours the configured adapter, which it previously ignored.
+- `docs/blueprints/build-profile.md` documented a `trusted-headers` adapter the compiler never accepted — the value is `dev-headers` — and now documents the adapter's environment variables.
+
+---
+
 ## [0.4.0] - 2026-10-29
 
 ### Added

@@ -373,7 +373,7 @@ When compiled, Foundation:
 ## 5. JWT Token Generation & Local Authentication
 
 ### The Boundary
-Foundation's `authn: jwt-oidc` provides an **Ingress Token Verifier**. It expects an incoming `Authorization: Bearer <token>` and resolves an `Actor`. Foundation does not generate an Identity Provider or Token Issuer, because enterprise backends typically rely on external IdPs (Keycloak, Auth0, Cognito, Supabase).
+Foundation's `authn: jwt-oidc` provides an **Ingress Token Verifier**. It expects an incoming `Authorization: Bearer <token>` and resolves an `Actor`. The verifier checks the token's signature against the key set named by `AUTH_JWKS_URL` before reading any claim, so an unsigned or tampered token is rejected with HTTP 401; see [ADR 0017](../adr/0017-jwt-verification-contract.md). Foundation does not generate an Identity Provider or Token Issuer, because enterprise backends typically rely on external IdPs (Keycloak, Auth0, Cognito, Supabase).
 
 ### Extension Patterns
 

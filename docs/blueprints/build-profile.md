@@ -17,7 +17,7 @@ storage:
   dialect: "postgres"          # "postgres" | "sqlite"
   mode: "both"                 # "declarative" | "migrations" | "both"
 
-authn: "jwt-oidc"              # "jwt-oidc" | "trusted-headers" (dev)
+authn: "jwt-oidc"              # "jwt-oidc" | "dev-headers" (default, dev-only)
 
 targets:
   # Built-in Go Hexagonal Target
@@ -61,6 +61,23 @@ targets:
 ```
 
 ---
+
+### Authentication (`authn:`)
+
+`authn:` selects the Actor Resolver every generated backend uses. Both accepted values are validated at build time (`FDN0310`):
+
+- `dev-headers` (the default): trusts `X-Actor-ID`/`X-Actor-*` headers with no cryptographic verification, and prints a boot banner plus a warning log line. It exists for local development and is never blessed for production.
+- `jwt-oidc`: verifies the `Authorization: Bearer <token>` against the identity provider's key set before resolving the `Actor`.
+
+`jwt-oidc` takes its configuration from the environment, so one build runs against different identity providers:
+
+| Variable | Purpose |
+| :--- | :--- |
+| `AUTH_JWKS_URL` | Key set endpoint the token signature is verified against. **Required** — with no key set configured, every request is refused rather than trusted. |
+| `AUTH_ISSUER` | Expected `iss`. Validated when set. |
+| `AUTH_AUDIENCE` | Expected `aud`. Validated when set. |
+
+Only `RS256` and `ES256` are accepted, a token must carry `exp`, and claims are read only once the signature verifies — a forged or post-signing-edited token never reaches a policy. See [ADR 0017](../adr/0017-jwt-verification-contract.md) for the contract behind those choices.
 
 ## 2. Target Configuration Parameters
 

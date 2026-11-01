@@ -1,5 +1,122 @@
+import { createPublicKey, verify as cryptoVerify, type KeyObject } from "node:crypto";
+
 export interface AuthnResolver {
   resolveActor(headers: Record<string, string | string[] | undefined>): Promise<Record<string, unknown>>;
+}
+
+/**
+ * Options for JWT verification. The key set URL falls back to AUTH_JWKS_URL, so an application
+ * generated before verification existed gains it by setting that one variable rather than being
+ * regenerated — the promise ADR 0006 makes for a security fix published in a contrib adapter.
+ */
+export interface JWTOIDCConfig {
+  /** JWKS endpoint; defaults to AUTH_JWKS_URL. */
+  jwksUrl?: string;
+  /** Accepted "alg" allow-list; defaults to RS256 and ES256. */
+  algorithms?: string[];
+  /** Tolerance for clock differences when checking exp and nbf. */
+  clockSkewSeconds?: number;
+  /** How long a fetched key set is trusted. */
+  cacheTtlSeconds?: number;
+  /** Shortest gap between two fetches of the key set; 0 disables the throttle. */
+  refreshThrottleSeconds?: number;
+}
+
+/**
+ * Deliberately an allow-list of the two asymmetric algorithms identity providers publish key
+ * sets for. Nothing HMAC is ever accepted — a public key must never be usable as an HMAC
+ * secret — and "none" is not representable at all.
+ */
+const DEFAULT_ALGORITHMS = ["RS256", "ES256"];
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_REFRESH_THROTTLE_MS = 10 * 1000;
+const MAX_JWKS_BYTES = 1 << 20;
+const JWKS_FETCH_TIMEOUT_MS = 10_000;
+
+interface JwkEntry {
+  kty?: string;
+  kid?: string;
+  n?: string;
+  e?: string;
+  crv?: string;
+  x?: string;
+  y?: string;
+}
+
+/** Turns a JWKS document into public keys by key id, skipping entries it cannot represent. */
+function parseJwks(body: string): Map<string, KeyObject> {
+  let doc: { keys?: JwkEntry[] };
+  try {
+    doc = JSON.parse(body) as { keys?: JwkEntry[] };
+  } catch {
+    throw new Error("unauthenticated: key set is not valid JSON");
+  }
+
+  const keys = new Map<string, KeyObject>();
+  for (const entry of doc.keys ?? []) {
+    if (!entry?.kid) continue;
+    try {
+      if (entry.kty === "RSA" && entry.n && entry.e) {
+        keys.set(entry.kid, createPublicKey({ key: { kty: "RSA", n: entry.n, e: entry.e }, format: "jwk" }));
+      } else if (entry.kty === "EC" && entry.crv === "P-256" && entry.x && entry.y) {
+        keys.set(entry.kid, createPublicKey({ key: { kty: "EC", crv: entry.crv, x: entry.x, y: entry.y }, format: "jwk" }));
+      }
+    } catch {
+      // An entry we cannot represent is skipped rather than failing the whole set.
+    }
+  }
+  return keys;
+}
+
+/** Holds a key set fetched from one endpoint, refreshing it when a token names an unknown key. */
+class JwksCache {
+  private keys = new Map<string, KeyObject>();
+  private fetchedAt = 0;
+  private attemptedAt = 0;
+
+  constructor(
+    private readonly url: string,
+    private readonly ttlMs: number,
+    private readonly throttleMs: number,
+  ) {}
+
+  async key(kid: string): Promise<KeyObject> {
+    const known = this.fresh(kid);
+    if (known) return known;
+
+    await this.refresh();
+
+    const afterRefresh = this.fresh(kid);
+    if (afterRefresh) return afterRefresh;
+    throw new Error(`unauthenticated: key "${kid}" is not in the configured key set`);
+  }
+
+  private fresh(kid: string): KeyObject | undefined {
+    if (!this.fetchedAt || Date.now() - this.fetchedAt > this.ttlMs) return undefined;
+    return this.keys.get(kid);
+  }
+
+  private async refresh(): Promise<void> {
+    if (this.throttleMs > 0 && this.attemptedAt && Date.now() - this.attemptedAt < this.throttleMs) {
+      // We asked recently and it did not give us this key. Refusing rather than fetching again
+      // keeps a flood of tokens naming unknown keys from turning every request into a round
+      // trip to the identity provider.
+      throw new Error("unauthenticated: key set was refreshed too recently");
+    }
+    this.attemptedAt = Date.now();
+
+    const response = await fetch(this.url, { signal: AbortSignal.timeout(JWKS_FETCH_TIMEOUT_MS) });
+    if (!response.ok) {
+      throw new Error(`unauthenticated: key set endpoint answered ${response.status}`);
+    }
+    const body = await response.text();
+    if (body.length > MAX_JWKS_BYTES) {
+      throw new Error("unauthenticated: key set is too large");
+    }
+
+    this.keys = parseJwks(body);
+    this.fetchedAt = Date.now();
+  }
 }
 
 export class DevHeadersResolver implements AuthnResolver {
@@ -61,50 +178,128 @@ DO NOT RUN IN PRODUCTION!
   }
 }
 
+/**
+ * Verifies a JWT's signature against a configured key set before trusting any claim. The key
+ * set never comes from the token itself (no jku, x5u or embedded jwk), so a token cannot point
+ * this verifier at an attacker's keys.
+ */
 export class JWTOIDCResolver implements AuthnResolver {
   readonly issuer: string;
   readonly audience: string;
 
-  constructor(issuer: string, audience: string) {
+  private readonly algorithms: Set<string>;
+  private readonly clockSkewSeconds: number;
+  private readonly jwks?: JwksCache;
+
+  constructor(issuer: string, audience: string, options: JWTOIDCConfig = {}) {
     this.issuer = issuer;
     this.audience = audience;
+    this.algorithms = new Set(options.algorithms ?? DEFAULT_ALGORITHMS);
+    this.clockSkewSeconds = options.clockSkewSeconds ?? 0;
+
+    const jwksUrl = options.jwksUrl ?? process.env.AUTH_JWKS_URL ?? "";
+    if (!jwksUrl) {
+      console.warn("[WARN] authn: jwt-oidc adapter has no AUTH_JWKS_URL configured; every request will be rejected");
+      return;
+    }
+    this.jwks = new JwksCache(
+      jwksUrl,
+      (options.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_MS / 1000) * 1000,
+      options.refreshThrottleSeconds === undefined
+        ? DEFAULT_REFRESH_THROTTLE_MS
+        : options.refreshThrottleSeconds * 1000,
+    );
   }
 
   async resolveActor(headers: Record<string, string | string[] | undefined>): Promise<Record<string, unknown>> {
-    const auth = headers["authorization"] ?? headers["Authorization"];
-    const authHeader = Array.isArray(auth) ? auth[0] : auth;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new Error("unauthenticated: missing or invalid authorization header");
-    }
+    try {
+      const auth = headers["authorization"] ?? headers["Authorization"];
+      const authHeader = Array.isArray(auth) ? auth[0] : auth;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        throw new Error("unauthenticated: missing or invalid authorization header");
+      }
 
-    const token = authHeader.substring(7);
+      const claims = await this.verifyToken(authHeader.substring(7));
+      if (typeof claims.sub === "string" && claims.sub) {
+        claims.id = claims.sub;
+      }
+      return claims;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      // Anything that is not already an authentication failure — a fetch that never reached the
+      // key set, say — is still a failure to authenticate, not a reason to trust the request.
+      if (message.startsWith("unauthenticated:")) throw e;
+      throw new Error(`unauthenticated: ${message}`);
+    }
+  }
+
+  private async verifyToken(token: string): Promise<Record<string, unknown>> {
     const parts = token.split(".");
     if (parts.length !== 3) {
       throw new Error("unauthenticated: malformed jwt token");
     }
 
+    let header: { alg?: string; kid?: string };
     try {
-      const payloadStr = Buffer.from(parts[1], "base64url").toString("utf8");
-      const claims = JSON.parse(payloadStr) as Record<string, unknown>;
-      if (claims.sub) {
-        claims.id = claims.sub;
+      header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as { alg?: string; kid?: string };
+    } catch {
+      throw new Error("unauthenticated: invalid jwt header");
+    }
+    const alg = header.alg ?? "";
+    if (!this.algorithms.has(alg)) {
+      throw new Error(`unauthenticated: unsupported jwt alg "${alg}"`);
+    }
+    if (!this.jwks) {
+      throw new Error("unauthenticated: no key set configured");
+    }
+
+    const publicKey = await this.jwks.key(header.kid ?? "");
+    const signingInput = Buffer.from(`${parts[0]}.${parts[1]}`);
+    const signature = Buffer.from(parts[2], "base64url");
+    const verified =
+      alg === "RS256"
+        ? cryptoVerify("sha256", signingInput, publicKey, signature)
+        : cryptoVerify("sha256", signingInput, { key: publicKey, dsaEncoding: "ieee-p1363" }, signature);
+    if (!verified) {
+      throw new Error("unauthenticated: jwt signature does not verify");
+    }
+
+    let claims: Record<string, unknown>;
+    try {
+      claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown>;
+    } catch {
+      throw new Error("unauthenticated: invalid jwt json payload");
+    }
+    this.checkClaims(claims);
+    return claims;
+  }
+
+  /** Enforces exp and nbf, requires a subject, and validates iss and aud when configured. */
+  private checkClaims(claims: Record<string, unknown>): void {
+    const now = Math.floor(Date.now() / 1000);
+
+    const exp = typeof claims.exp === "number" ? claims.exp : undefined;
+    if (exp === undefined) {
+      throw new Error("unauthenticated: jwt has no exp claim");
+    }
+    if (now - this.clockSkewSeconds > exp) {
+      throw new Error("unauthenticated: jwt is expired");
+    }
+    if (typeof claims.nbf === "number" && now + this.clockSkewSeconds < claims.nbf) {
+      throw new Error("unauthenticated: jwt is not valid yet");
+    }
+    if (typeof claims.sub !== "string" && typeof claims.id !== "string") {
+      throw new Error("unauthenticated: jwt missing sub claim");
+    }
+    if (this.issuer && claims.iss !== this.issuer) {
+      throw new Error("unauthenticated: invalid jwt issuer");
+    }
+    if (this.audience) {
+      const aud = claims.aud;
+      const valid = Array.isArray(aud) ? aud.includes(this.audience) : aud === this.audience;
+      if (!valid) {
+        throw new Error("unauthenticated: invalid jwt audience");
       }
-      if (!claims.id) {
-        throw new Error("unauthenticated: jwt missing sub claim");
-      }
-      if (this.issuer && claims.iss !== this.issuer) {
-        throw new Error("unauthenticated: invalid jwt issuer");
-      }
-      if (this.audience) {
-        const aud = claims.aud;
-        const valid = Array.isArray(aud) ? aud.includes(this.audience) : aud === this.audience;
-        if (!valid) {
-          throw new Error("unauthenticated: invalid jwt audience");
-        }
-      }
-      return claims;
-    } catch (e: any) {
-      throw new Error(`unauthenticated: ${e.message}`);
     }
   }
 }

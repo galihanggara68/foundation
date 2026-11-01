@@ -1,10 +1,17 @@
 package e2e_test
 
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,16 +121,75 @@ action ListOrders(cust_id: uuid, cursor: string) -> []Order
 }
 `
 
-func makeTestJWT(sub, role string, verified bool) string {
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
-	claims := map[string]interface{}{
+// jwksFixture mints RS256 tokens and publishes the matching key set over loopback, so the
+// generated servers under test verify real signatures instead of trusting token text.
+type jwksFixture struct {
+	signer *rsa.PrivateKey
+	kid    string
+	url    string
+}
+
+func newJWKSFixture(t *testing.T) *jwksFixture {
+	t.Helper()
+
+	signer, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate test signing key: %v", err)
+	}
+	digest := sha256.Sum256(signer.PublicKey.N.Bytes())
+	kid := "e2e-" + base64.RawURLEncoding.EncodeToString(digest[:6])
+
+	doc, err := json.Marshal(map[string]any{
+		"keys": []map[string]any{{
+			"kty": "RSA",
+			"kid": kid,
+			"alg": "RS256",
+			"use": "sig",
+			"n":   base64.RawURLEncoding.EncodeToString(signer.PublicKey.N.Bytes()),
+			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(signer.PublicKey.E)).Bytes()),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal jwks: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(doc)
+	}))
+	t.Cleanup(srv.Close)
+
+	return &jwksFixture{signer: signer, kid: kid, url: srv.URL}
+}
+
+// env is the environment a generated server needs in order to verify against this key set.
+func (f *jwksFixture) env() string {
+	return "AUTH_JWKS_URL=" + f.url
+}
+
+// token signs a claim set the way an identity provider would.
+func (f *jwksFixture) token(t *testing.T, sub, role string, verified bool) string {
+	t.Helper()
+
+	header := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"alg":"RS256","typ":"JWT","kid":%q}`, f.kid)))
+	claims, err := json.Marshal(map[string]any{
 		"sub":         sub,
 		"role":        role,
 		"is_verified": verified,
+		"exp":         time.Now().Add(time.Hour).Unix(),
+		"iat":         time.Now().Add(-time.Minute).Unix(),
+	})
+	if err != nil {
+		t.Fatalf("marshal claims: %v", err)
 	}
-	payloadBytes, _ := json.Marshal(claims)
-	payload := base64.RawURLEncoding.EncodeToString(payloadBytes)
-	return fmt.Sprintf("%s.%s.sig", header, payload)
+
+	signingInput := header + "." + base64.RawURLEncoding.EncodeToString(claims)
+	digest := sha256.Sum256([]byte(signingInput))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, f.signer, crypto.SHA256, digest[:])
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
 }
 
 const (
@@ -131,9 +197,12 @@ const (
 	testUnverifiedActorID = "00000000-0000-0000-0000-000000000002"
 )
 
-func getTestTokens() (string, string) {
-	return makeTestJWT(testValidActorID, "customer", true),
-		makeTestJWT(testUnverifiedActorID, "customer", false)
+// tokens returns a token whose actor satisfies the suite's policy and one that does not, both
+// validly signed so a rejection is attributable to the policy rather than the signature.
+func (f *jwksFixture) tokens(t *testing.T) (string, string) {
+	t.Helper()
+	return f.token(t, testValidActorID, "customer", true),
+		f.token(t, testUnverifiedActorID, "customer", false)
 }
 
 func getFreePort(t *testing.T) int {
@@ -159,7 +228,7 @@ func waitForPort(t *testing.T, port int) {
 	t.Fatalf("server on %s failed to become ready within deadline", addr)
 }
 
-func buildAndStartGoServer(t *testing.T, targetDir string) (string, func()) {
+func buildAndStartGoServer(t *testing.T, targetDir, jwksEnv string) (string, func()) {
 	binPath := filepath.Join(targetDir, "server-bin")
 	buildCmd := exec.Command("go", "build", "-o", binPath, "./cmd/server")
 	buildCmd.Dir = targetDir
@@ -171,7 +240,7 @@ func buildAndStartGoServer(t *testing.T, targetDir string) (string, func()) {
 	port := getFreePort(t)
 	srvCmd := exec.Command(binPath)
 	srvCmd.Dir = targetDir
-	srvCmd.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", port))
+	srvCmd.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", port), jwksEnv)
 	if err := srvCmd.Start(); err != nil {
 		t.Fatalf("failed to start Go server binary: %v", err)
 	}
@@ -187,7 +256,7 @@ func buildAndStartGoServer(t *testing.T, targetDir string) (string, func()) {
 	return fmt.Sprintf("http://127.0.0.1:%d", port), cleanup
 }
 
-func startTSServer(t *testing.T, targetDir string) (string, func()) {
+func startTSServer(t *testing.T, targetDir, jwksEnv string) (string, func()) {
 	// Install express/pg dependencies
 	npmCmd := exec.Command("npm", "install", "--prefer-offline", "--no-audit", "--no-fund", "--silent")
 	npmCmd.Dir = targetDir
@@ -198,7 +267,7 @@ func startTSServer(t *testing.T, targetDir string) (string, func()) {
 	port := getFreePort(t)
 	srvCmd := exec.Command("node", "--experimental-strip-types", "src/main/server.ts")
 	srvCmd.Dir = targetDir
-	srvCmd.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", port))
+	srvCmd.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", port), jwksEnv)
 	if err := srvCmd.Start(); err != nil {
 		t.Fatalf("failed to start TypeScript server: %v", err)
 	}

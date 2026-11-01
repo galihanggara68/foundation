@@ -2,90 +2,98 @@ package runtime_test
 
 import (
 	"context"
-	"encoding/base64"
-	"fmt"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/galihanggara68/foundation/contrib/go/runtime"
 )
 
-// TestAuthnSecurity_JWTOIDC_ForgedSignatureAccepted probes whether JWTOIDCResolver
-// accepts forged tokens with unverified cryptographic signatures.
-func TestAuthnSecurity_JWTOIDC_ForgedSignatureAccepted(t *testing.T) {
+// TestAuthnSecurity_JWTOIDC_ForgedSignatureRejected asserts that a token whose signature
+// does not verify never authenticates. This test previously *logged* the acceptance as the
+// current state ("CURRENT STATE: ... accepted forged signature"); an authentication bypass
+// that a test only narrates is still an authentication bypass.
+func TestAuthnSecurity_JWTOIDC_ForgedSignatureRejected(t *testing.T) {
+	key := newSigningKey(t, "RS256")
+	srv := serveJWKS(t, key)
+	t.Setenv("AUTH_JWKS_URL", srv.URL)
+
 	resolver := runtime.NewJWTOIDCResolver("https://issuer.example.com", "audience-api")
 
-	// Craft an attacker token claiming to be "admin" with a bogus signature
-	attackerHeader := `{"alg":"HS256","typ":"JWT"}`
-	attackerPayload := fmt.Sprintf(`{
-		"sub": "attacker-user-id",
-		"role": "superadmin",
-		"iss": "https://issuer.example.com",
-		"aud": "audience-api",
-		"exp": %d
-	}`, time.Now().Add(1*time.Hour).Unix())
+	valid := key.token(t, claimsFor(t, "https://issuer.example.com", "audience-api"))
+	if _, err := resolver.ResolveActor(context.Background(), bearerRequest(valid)); err != nil {
+		t.Fatalf("the fixture must authenticate before tampering, got: %v", err)
+	}
 
-	b64Header := base64.RawURLEncoding.EncodeToString([]byte(attackerHeader))
-	b64Payload := base64.RawURLEncoding.EncodeToString([]byte(attackerPayload))
-	fakeSignature := "BOGUS_INVALID_UNVERIFIED_SIGNATURE_BYTES"
-
-	forgedToken := fmt.Sprintf("%s.%s.%s", b64Header, b64Payload, fakeSignature)
-
-	req := httptest.NewRequest("GET", "/v1/secure-action", nil)
-	req.Header.Set("Authorization", "Bearer "+forgedToken)
-
-	claims, err := resolver.ResolveActor(context.Background(), req)
-	if err != nil {
-		t.Logf("PASS: Forged token was rejected: %v", err)
-	} else {
-		// Log the honest reality: JWTOIDCResolver in contrib is an claims-extractor adapter,
-		// relying on external gateways (e.g. Envoy/Kong) for crypto verification.
-		t.Logf("CURRENT STATE: JWTOIDCResolver accepted forged signature and extracted claims: sub=%v, role=%v",
-			claims["id"], claims["role"])
-		if claims["role"] == "superadmin" {
-			t.Logf("NOTE [Cryptographic Verification]: JWTOIDCResolver performs claims decoding without local signature verification.")
-		}
+	// Same key id, same signature, but the claims an attacker would want: the payload changed
+	// after signing, which is exactly what signature verification exists to catch.
+	escalated := claimsFor(t, "https://issuer.example.com", "audience-api")
+	escalated["role"] = "superadmin"
+	forged := tamper(t, valid, escalated)
+	if forged == valid {
+		t.Fatal("the fixture did not change the token, so nothing is being tested")
+	}
+	if _, err := resolver.ResolveActor(context.Background(), bearerRequest(forged)); err == nil {
+		t.Error("SECURITY FAILURE: JWTOIDCResolver accepted a token whose signature does not verify")
 	}
 }
 
-// TestAuthnSecurity_JWTOIDC_TamperedClaimsBoundary verifies that Issuer and Audience
-// checks properly enforce security boundaries even without signature verification.
+// TestAuthnSecurity_JWTOIDC_UnverifiedAlgorithmsRejected covers the two classic JWT
+// confusion attacks: an unsigned token, and a token that claims an HMAC algorithm so a
+// public key would be used as the HMAC secret.
+func TestAuthnSecurity_JWTOIDC_UnverifiedAlgorithmsRejected(t *testing.T) {
+	key := newSigningKey(t, "RS256")
+	srv := serveJWKS(t, key)
+	t.Setenv("AUTH_JWKS_URL", srv.URL)
+
+	resolver := runtime.NewJWTOIDCResolver("https://issuer.example.com", "audience-api")
+	claims := claimsFor(t, "https://issuer.example.com", "audience-api")
+
+	noneHeader := map[string]any{"alg": "none", "typ": "JWT", "kid": key.kid}
+	// An unsigned token: alg "none" with an empty signature segment.
+	segments := strings.Split(key.tokenWithHeader(t, noneHeader, claims), ".")
+	noneToken := segments[0] + "." + segments[1] + "."
+	if _, err := resolver.ResolveActor(context.Background(), bearerRequest(noneToken)); err == nil {
+		t.Error("SECURITY FAILURE: JWTOIDCResolver accepted an unsigned alg:none token")
+	}
+
+	hmacHeader := map[string]any{"alg": "HS256", "typ": "JWT", "kid": key.kid}
+	if _, err := resolver.ResolveActor(context.Background(), bearerRequest(key.tokenWithHeader(t, hmacHeader, claims))); err == nil {
+		t.Error("SECURITY FAILURE: JWTOIDCResolver accepted an HS256 token, letting the public key stand in as an HMAC secret")
+	}
+}
+
+func bearerRequest(token string) *http.Request {
+	req := httptest.NewRequest("GET", "/v1/secure-action", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	return req
+}
+
+// TestAuthnSecurity_JWTOIDC_TamperedClaimsBoundary asserts the claim checks hold for a token
+// that is *validly signed*: the rejection has to come from the claim, not from the signature,
+// or the test would pass for the wrong reason.
 func TestAuthnSecurity_JWTOIDC_TamperedClaimsBoundary(t *testing.T) {
-	resolver := runtime.NewJWTOIDCResolver("https://trusted-auth.com", "my-target-service")
+	key := newSigningKey(t, "RS256")
+	srv := serveJWKS(t, key)
+	resolver := runtime.NewJWTOIDCResolverWithConfig(runtime.JWTOIDCConfig{
+		Issuer:          "https://trusted-auth.com",
+		Audience:        "my-target-service",
+		JWKSURL:         srv.URL,
+		RefreshThrottle: -1, // no throttling, so the unpublished-key case reports the real reason
+	})
 
-	// Case 1: Wrong Issuer
-	wrongIssPayload := `{"sub":"user-1","iss":"https://evil-auth.com","aud":"my-target-service"}`
-	tokenWrongIss := "h." + base64.RawURLEncoding.EncodeToString([]byte(wrongIssPayload)) + ".s"
-	req1 := httptest.NewRequest("GET", "/", nil)
-	req1.Header.Set("Authorization", "Bearer "+tokenWrongIss)
-	if _, err := resolver.ResolveActor(context.Background(), req1); err == nil {
-		t.Errorf("SECURITY FAILURE: JWTOIDCResolver accepted token with mismatched issuer")
-	} else {
-		t.Logf("PASS: Mismatched issuer correctly rejected: %v", err)
-	}
+	assertRejects(t, resolver, key, claimsFor(t, "https://evil-auth.com", "my-target-service"), "invalid jwt issuer")
+	assertRejects(t, resolver, key, claimsFor(t, "https://trusted-auth.com", "wrong-service"), "invalid jwt audience")
 
-	// Case 2: Wrong Audience
-	wrongAudPayload := `{"sub":"user-1","iss":"https://trusted-auth.com","aud":"wrong-service"}`
-	tokenWrongAud := "h." + base64.RawURLEncoding.EncodeToString([]byte(wrongAudPayload)) + ".s"
-	req2 := httptest.NewRequest("GET", "/", nil)
-	req2.Header.Set("Authorization", "Bearer "+tokenWrongAud)
-	if _, err := resolver.ResolveActor(context.Background(), req2); err == nil {
-		t.Errorf("SECURITY FAILURE: JWTOIDCResolver accepted token with mismatched audience")
-	} else {
-		t.Logf("PASS: Mismatched audience correctly rejected: %v", err)
-	}
+	noSubject := claimsFor(t, "https://trusted-auth.com", "my-target-service")
+	delete(noSubject, "sub")
+	assertRejects(t, resolver, key, noSubject, "missing sub claim")
 
-	// Case 3: Missing sub claim
-	noSubPayload := `{"role":"admin","iss":"https://trusted-auth.com","aud":"my-target-service"}`
-	tokenNoSub := "h." + base64.RawURLEncoding.EncodeToString([]byte(noSubPayload)) + ".s"
-	req3 := httptest.NewRequest("GET", "/", nil)
-	req3.Header.Set("Authorization", "Bearer "+tokenNoSub)
-	if _, err := resolver.ResolveActor(context.Background(), req3); err == nil {
-		t.Errorf("SECURITY FAILURE: JWTOIDCResolver accepted token without sub claim")
-	} else {
-		t.Logf("PASS: Missing sub claim correctly rejected: %v", err)
-	}
+	// Validly signed by a key the published set does not contain.
+	unpublished := newSigningKey(t, "RS256")
+	assertRejects(t, resolver, unpublished, claimsFor(t, "https://trusted-auth.com", "my-target-service"),
+		"not in the configured key set")
 }
 
 // TestAuthnSecurity_DevHeaders_ArbitraryImpersonation probes DevHeadersResolver

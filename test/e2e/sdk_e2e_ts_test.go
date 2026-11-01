@@ -162,7 +162,8 @@ targets:
 		t.Fatalf("failed to write ts sdk test file: %v", err)
 	}
 
-	tokenValid, tokenUnverified := getTestTokens()
+	jwks := newJWKSFixture(t)
+	tokenValid, tokenUnverified := jwks.tokens(t)
 
 	runTSSDKTest := func(serverURL, runID string) {
 		cmd := exec.Command("node", "--experimental-strip-types", "--test", "client_e2e.test.ts")
@@ -180,17 +181,17 @@ targets:
 	}
 
 	// 2. Test against Go Hexagonal server
-	hexURL, stopHex := buildAndStartGoServer(t, filepath.Join(dir, "dist", "hex"))
+	hexURL, stopHex := buildAndStartGoServer(t, filepath.Join(dir, "dist", "hex"), jwks.env())
 	defer stopHex()
 	runTSSDKTest(hexURL, "hex")
 
 	// 3. Test against Go Layered server
-	layeredURL, stopLayered := buildAndStartGoServer(t, filepath.Join(dir, "dist", "layered"))
+	layeredURL, stopLayered := buildAndStartGoServer(t, filepath.Join(dir, "dist", "layered"), jwks.env())
 	defer stopLayered()
 	runTSSDKTest(layeredURL, "layered")
 
 	// 4. Test against TypeScript Clean server
-	tsURL, stopTS := startTSServer(t, filepath.Join(dir, "dist", "ts-clean"))
+	tsURL, stopTS := startTSServer(t, filepath.Join(dir, "dist", "ts-clean"), jwks.env())
 	defer stopTS()
 	runTSSDKTest(tsURL, "tsclean")
 }

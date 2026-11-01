@@ -8,7 +8,7 @@ Phases are sequential; each links its decision records.
 
 ---
 
-## Phase 0 — Versioning, Publishing Contract, & Contrib Architecture *(prerequisite for all contrib releases)*
+## Phase 0 — Versioning, Publishing Contract, & Contrib Architecture *(Implemented & Verified; prerequisite for all contrib releases)*
 
 Compiler, authn adapters, and trait runtimes become versioned artifacts. Before the first contrib package is published:
 
@@ -19,7 +19,7 @@ Compiler, authn adapters, and trait runtimes become versioned artifacts. Before 
 
 **Exit:** contract documented and enforced; contrib packages buildable and testable offline. See ADRs [0006](./docs/adr/0006-actor-resolver-port-with-contrib-adapters.md), [0009](./docs/adr/0009-contrib-runtimes-for-stateful-traits.md).
 
-## Phase 1 — Honest Grammar, Event Dispatch, & Runnable Go Server
+## Phase 1 — Honest Grammar, Event Dispatch, & Runnable Go Server *(Implemented & Verified)*
 
 Kill the traits that lower but never run, and establish runtime parity between Go and TypeScript (ADR [0007](./docs/adr/0007-post-commit-in-process-event-dispatch.md)):
 
@@ -30,7 +30,7 @@ Kill the traits that lower but never run, and establish runtime parity between G
 
 **Exit:** a Blueprint with `@event_handler` runs handlers post-commit on every target; `@cron` fails fast with a clear message; `go run ./cmd/server` boots a functional server out of the box.
 
-## Phase 2 — Durable Tactical Traits & Concurrency Control
+## Phase 2 — Durable Tactical Traits & Concurrency Control *(Implemented & Verified; one open design item below)*
 
 Fix the runtime promises broken under multi-replica deployments — the double-charge (`@idempotent`), the vanished event (`@outbox`), and silent lost updates (ADRs [0009](./docs/adr/0009-contrib-runtimes-for-stateful-traits.md), [0010](./docs/adr/0010-optimistic-concurrency-control.md)):
 
@@ -41,7 +41,7 @@ Fix the runtime promises broken under multi-replica deployments — the double-c
 
 **Exit:** double-charge, crash-loss, and concurrent lost-update scenarios are impossible in postgres mode; Scenarios run against the memory driver unchanged.
 
-## Phase 3 — Authentication & Flexible Actor Schema
+## Phase 3 — Authentication & Flexible Actor Schema *(Implemented & Verified)*
 
 Close the gap between the Actor/policy language and the runtime that trusts client headers verbatim (ADR [0006](./docs/adr/0006-actor-resolver-port-with-contrib-adapters.md)):
 
@@ -57,7 +57,7 @@ Close the gap between the Actor/policy language and the runtime that trusts clie
 
 **Exit:** generated backends verify real tokens before policies run; multi-tenant claims type-check in policies; quick-start opts into dev headers with one line.
 
-## Phase 4 — Deterministic Query Many & Domain Types
+## Phase 4 — Deterministic Query Many & Domain Types *(Implemented & Verified)*
 
 Make the read surface of a real API expressible (ADR [0008](./docs/adr/0008-deterministic-query-many.md)):
 
@@ -70,7 +70,7 @@ Make the read surface of a real API expressible (ADR [0008](./docs/adr/0008-dete
 
 **Exit:** `GET /v1/orders` with keyset cursoring, status filtering, and exact arithmetic builds in-language on every target.
 
-## Phase 5 — SDK Client Emitters
+## Phase 5 — SDK Client Emitters *(Implemented & Verified)*
 
 The existing [ticket #07](./.scratch/00-baseline-compiler-and-architecture/issues/07-go-and-typescript-sdk-client-emitters.md), deferred so it incorporates the full trustworthy runtime contract in a single move:
 
@@ -137,4 +137,4 @@ Enable real-time, high-contention financial and event-driven workloads (e.g., co
 - **Broker event delivery** — the outbox table plus in-process replay is the contract; broker adapters arrive in Phase 8 as contrib libraries.
 - **Secure-by-default flip** — decided at the 1.0 gate (ADR [0006](./docs/adr/0006-actor-resolver-port-with-contrib-adapters.md)).
 
-**1.0** = Phases 0–5 landed, the versioning contract proven through at least one breaking-change cycle, and the secure-by-default decision made. Phases 6–8 open the pluggable generator ecosystem, editor tooling, broker adapters, and the real-time high-contention engine post-1.0.
+**1.0** = Phases 0–5 landed, the versioning contract proven through at least one breaking-change cycle, and the secure-by-default decision made. Phases 6–8 open the pluggable generator ecosystem, editor tooling, broker adapters, and the real-time high-contention engine post-1.0. Phases 0–7 have landed as of `v0.4.0`; what remains for 1.0 is the breaking-change cycle and the secure-by-default decision, and Phase 8 is untouched.

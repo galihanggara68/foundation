@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-10-29
 
 ### Added
 - **Compiler-Owned Standard Error Vocabulary** ([ADR 0016](./docs/adr/0016-error-vocabulary-ownership.md)): each error kind's default HTTP status and posture now live in one compiler table, and every declared error carries the `status`, `posture` and per-locale `messages` the compiler resolved for it.

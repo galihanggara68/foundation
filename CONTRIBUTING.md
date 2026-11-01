@@ -142,7 +142,7 @@ Please document the design rationale in an **Architecture Decision Record** in [
    * `docs: add recipe for custom sql join slot`
    * `test: add stress fuzzer for action parser`
 3. **Verify Your Branch**:
-   Ensure `make verify` and all relevant test suites pass cleanly.
+   Ensure `make verify` and all relevant test suites pass cleanly. The gate type-checks emitted TypeScript targets and so needs a `tsc` on your `PATH`: if your shell exports `NODE_ENV=production`, npm skips devDependencies, the TypeScript suites fail with `exec: "tsc": executable file not found in $PATH`, and you should run it as `env -u NODE_ENV make verify` instead (see the Development & Testing section of the [README](./README.md)).
 4. **Submit Your PR**:
    Open your Pull Request against the `main` branch with a clear description of the problem solved and test coverage included.
 

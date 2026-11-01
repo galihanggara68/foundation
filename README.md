@@ -267,6 +267,8 @@ make snapshot          # Cross-compile release archives into dist/ without taggi
 
 The version is derived from `git describe` and injected at build time; `make build` therefore produces a `bin/foundation` that reports its exact version via `foundation version`.
 
+> **The TypeScript target suites need a `tsc` on your `PATH`.** `make test-unit`, `make test-e2e` and `make verify` build emitted TypeScript targets and type-check them with `tsc`, which the emitted `package.json` declares as a devDependency. A shell running with `NODE_ENV=production` makes npm skip devDependencies, so that install leaves no `tsc` and the suites fail with `exec: "tsc": executable file not found in $PATH` (`FDN0600`). Run the gate as `env -u NODE_ENV make verify`. If an earlier run already created a `node_modules` inside an emitted target, remove it first: the compiler's test runner installs dependencies only when `node_modules` is absent, so a dev-dependency-less one is reused as is.
+
 ---
 
 ## 📚 Blueprint Guides & Documentation

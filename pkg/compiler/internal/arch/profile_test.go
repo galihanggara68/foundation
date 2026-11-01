@@ -37,14 +37,14 @@ targets:
 		t.Fatalf("expected diagnostic code FDN0007, got %s", diags[0].Code)
 	}
 
-	// Compatible runtime ~0.1.0 should pass
+	// A runtime pin matching the version the compiler emits should pass
 	compatibleYAML := `
 project:
   name: test
   module: example.com/test
 
 dependencies:
-  runtime: "^0.1.0"
+  runtime: "^0.2.0"
 
 targets:
   - name: server
@@ -60,8 +60,8 @@ targets:
 	if len(diags2) > 0 {
 		t.Fatalf("expected compatible runtime to pass, got: %v", diags2)
 	}
-	if bp.Dependencies.Runtime != "^0.1.0" {
-		t.Fatalf("expected bp.Dependencies.Runtime == ^0.1.0, got %s", bp.Dependencies.Runtime)
+	if bp.Dependencies.Runtime != "^0.2.0" {
+		t.Fatalf("expected bp.Dependencies.Runtime == ^0.2.0, got %s", bp.Dependencies.Runtime)
 	}
 }
 

@@ -129,13 +129,15 @@ go 1.23
 
 require (
 	github.com/go-chi/chi/v5 v5.3.0
-	github.com/galihanggara68/foundation/contrib/go/runtime v0.1.0
+	github.com/galihanggara68/foundation/contrib/go/runtime v%s
 	github.com/lib/pq v1.10.9
 )
-%s`, archIR.Module, replaceClause))
+%s`, archIR.Module, arch.ContribRuntimeVersion, replaceClause))
 
 	files["go.sum"] = []byte(`github.com/go-chi/chi/v5 v5.3.0 h1:halUjDxhshgXHMrao5bB8eNBXo/rnzwr8m5m36glehM=
 github.com/go-chi/chi/v5 v5.3.0/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
+github.com/galihanggara68/foundation/contrib/go/runtime v0.2.0 h1:VtXqASyTpNVsrMqAYY1djnyhngnbiwvoZEHcWGWyqZ8=
+github.com/galihanggara68/foundation/contrib/go/runtime v0.2.0/go.mod h1:bCZAvMoLAlBlBUN4vIvMgPf1REVLpWKjq8Wej1+wPeU=
 github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
 github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
 `)

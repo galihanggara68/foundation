@@ -264,11 +264,11 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 	}
 
 	if bp.Dependencies.Runtime != "" {
-		if !isSemVerCompatible("0.1.0", bp.Dependencies.Runtime) {
+		if !isSemVerCompatible(ContribRuntimeVersion, bp.Dependencies.Runtime) {
 			return nil, []ir.Diagnostic{{
 				Code:     "FDN0007",
 				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("incompatible contrib runtime version %q: compiler v0.1.0 requires ~0.1.0", bp.Dependencies.Runtime),
+				Message:  fmt.Sprintf("incompatible contrib runtime version %q: this compiler emits contrib/go/runtime %s", bp.Dependencies.Runtime, ContribRuntimeVersion),
 				Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
 			}}
 		}
@@ -277,10 +277,16 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 	return bp, nil
 }
 
-func isSemVerCompatible(compilerVer, pinned string) bool {
+// ContribRuntimeVersion is the contrib/go/runtime release the compiler emits into a generated
+// go.mod and accepts through the build profile's dependencies.runtime. The emitted pin, its
+// checksum and the compatibility check all read it from here, so a runtime release cannot
+// leave them disagreeing.
+const ContribRuntimeVersion = "0.2.0"
+
+func isSemVerCompatible(requiredVer, pinned string) bool {
 	clean := strings.TrimLeft(pinned, "^~>=v ")
 	parts := strings.Split(clean, ".")
-	cClean := strings.TrimLeft(compilerVer, "v ")
+	cClean := strings.TrimLeft(requiredVer, "v ")
 	cParts := strings.Split(cClean, ".")
 	if len(parts) < 2 || len(cParts) < 2 {
 		return false

@@ -184,6 +184,17 @@ export class ExpressController {
 	return sb.String()
 }
 
+// emitTSActorResolver writes the resolver construction for the configured authn adapter. Both
+// containers call it, so a build cannot end up running one adapter in the in-memory container
+// and another in Postgres — which is exactly how a jwt-oidc profile once trusted dev headers.
+func emitTSActorResolver(sb *strings.Builder, archIR *arch.ArchitectureIR) {
+	if archIR.AuthnAdapter == "jwt-oidc" {
+		sb.WriteString("  const actorResolver = new JWTOIDCResolver(process.env.AUTH_ISSUER || \"\", process.env.AUTH_AUDIENCE || \"\");\n")
+		return
+	}
+	sb.WriteString("  const actorResolver = new DevHeadersResolver();\n")
+}
+
 func emitTSContainer(archIR *arch.ArchitectureIR) string {
 	var sb strings.Builder
 	sb.WriteString(`import * as memory from "../gateways/memory_repositories.ts";
@@ -245,11 +256,7 @@ import { createMemoryDriver, createPostgresDriver, DevHeadersResolver, JWTOIDCRe
 		sb.WriteString(fmt.Sprintf("  events.subscribe(%q, async (payload) => {\n    await %s.execute({ id: \"system\", role: \"system\", is_verified: true }, payload as any);\n  });\n", eh.EventName, toCamelCase(eh.ActionName)))
 	}
 	if archIR.HasActorPort {
-		if archIR.AuthnAdapter == "jwt-oidc" {
-			sb.WriteString("  const actorResolver = new JWTOIDCResolver(process.env.AUTH_ISSUER || \"\", process.env.AUTH_AUDIENCE || \"\");\n")
-		} else {
-			sb.WriteString("  const actorResolver = new DevHeadersResolver();\n")
-		}
+		emitTSActorResolver(&sb, archIR)
 		ctrlArgs = append([]string{"actorResolver"}, ctrlArgs...)
 	}
 	sb.WriteString(fmt.Sprintf("  const controller = new ExpressController(%s);\n", strings.Join(ctrlArgs, ", ")))
@@ -310,7 +317,7 @@ import { createMemoryDriver, createPostgresDriver, DevHeadersResolver, JWTOIDCRe
 		sb.WriteString(fmt.Sprintf("  events.subscribe(%q, async (payload) => {\n    await %s.execute({ id: \"system\", role: \"system\", is_verified: true }, payload as any);\n  });\n", eh.EventName, toCamelCase(eh.ActionName)))
 	}
 	if archIR.HasActorPort {
-		sb.WriteString("  const actorResolver = new DevHeadersResolver();\n")
+		emitTSActorResolver(&sb, archIR)
 		pgCtrlArgs = append([]string{"actorResolver"}, pgCtrlArgs...)
 	}
 	sb.WriteString(fmt.Sprintf("  const controller = new ExpressController(%s);\n", strings.Join(pgCtrlArgs, ", ")))

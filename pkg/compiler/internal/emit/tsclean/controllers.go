@@ -6,6 +6,7 @@ import (
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 func emitTSExpressController(archIR *arch.ArchitectureIR) string {
@@ -39,28 +40,60 @@ export interface ExpressRouterLike {
   delete(path: string, handler: (req: ExpressRequest, res: ExpressResponse) => Promise<void>): void;
 }
 
+`)
+
+	var standardPolicy strings.Builder
+	for _, kind := range platform.StandardErrorKinds() {
+		pol, _ := platform.ErrorPolicyFor(kind)
+		fmt.Fprintf(&standardPolicy, "  %q: {status: %d, posture: %q},\n", kind, pol.Status, emitTSPostureLiteral(pol.Posture))
+	}
+
+	sb.WriteString(fmt.Sprintf(`interface ErrorPolicy {
+  status: number;
+  posture: string;
+}
+
+// standardErrorPolicy is the platform's standard treatment of each error kind,
+// generated from the compiler's vocabulary.
+const standardErrorPolicy: Record<string, ErrorPolicy> = {
+%s}
+
+// policyFor resolves the platform's standard treatment of an error the compiler did
+// not stamp — one built by application code. A compiler-stamped value always wins,
+// exactly as a declared value wins over the kind default at build time, and anything
+// unrecognised stays diagnostic so an unknown message never reaches a caller.
+function policyFor(domErr: domain.DomainError): ErrorPolicy {
+  let policy: ErrorPolicy = { status: 500, posture: "technical" };
+  const standard = standardErrorPolicy[domErr.kind];
+  if (standard) {
+    policy = standard;
+  }
+  if (domErr.status >= %d && domErr.status <= %d) {
+    policy = { status: domErr.status, posture: policy.posture };
+  }
+  if (domErr.posture === "business" || domErr.posture === "technical") {
+    policy = { status: policy.status, posture: domErr.posture };
+  }
+  return policy;
+}
+
 function writeError(res: ExpressResponse, err: unknown): void {
   if (err instanceof domain.DomainError) {
-    let status = 500;
-    switch (err.kind) {
-      case "not_found":
-        status = 404;
-        break;
-      case "validation":
-        status = 400;
-        break;
-      case "conflict":
-        status = 409;
-        break;
-      case "unauthenticated":
-      case "unauthorized":
-        status = 401;
-        break;
-      case "forbidden":
-        status = 403;
-        break;
+    const policy = policyFor(err);
+    res.status(policy.status);
+    if (policy.posture === "technical") {
+      console.error("error %%s (%%s): %%s", err.code, err.kind, err.message);
+      res.json({ code: err.code, kind: err.kind });
+      return;
     }
-    res.status(status).json({ code: err.code, kind: err.kind, message: err.message });
+    res.json({
+      code: err.code,
+      kind: err.kind,
+      message: err.message,
+      ...(err.messages ? { messages: err.messages } : {}),
+      status: err.status,
+      posture: err.posture,
+    });
     return;
   }
   const msg = err instanceof Error ? err.message : String(err);
@@ -68,7 +101,7 @@ function writeError(res: ExpressResponse, err: unknown): void {
 }
 
 export class ExpressController {
-`)
+`, standardPolicy.String(), platform.MinHTTPStatus, platform.MaxHTTPStatus))
 
 	if archIR.HasActorPort {
 		sb.WriteString("  readonly actorResolver: ports.ActorResolverGateway;\n")

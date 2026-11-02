@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 func emitErrors(archIR *arch.ArchitectureIR) string {
@@ -30,29 +31,24 @@ export class ApiError extends FoundationError {
   }
 }
 
-export class UnauthenticatedError extends ApiError {}
-export class ForbiddenError extends ApiError {}
-export class NotFoundError extends ApiError {}
-export class ConflictError extends ApiError {}
-export class ValidationError extends ApiError {}
-
 `)
+
+	kinds := platform.StandardErrorKinds()
+	nameForKind := make(map[string]string, len(kinds))
+	for _, name := range platform.ReservedErrorNames() {
+		if kind, ok := platform.ReservedErrorName(name); ok {
+			nameForKind[string(kind)] = name
+		}
+	}
+	for _, kind := range kinds {
+		sb.WriteString(fmt.Sprintf("export class %sError extends ApiError {}\n", nameForKind[string(kind)]))
+	}
+	sb.WriteString("\n")
 
 	for _, dErr := range archIR.DomainErrors {
 		parent := "ApiError"
-		switch dErr.Kind {
-		case "unauthenticated":
-			parent = "UnauthenticatedError"
-		case "forbidden":
-			parent = "ForbiddenError"
-		case "not_found":
-			parent = "NotFoundError"
-		case "conflict":
-			parent = "ConflictError"
-		case "validation":
-			parent = "ValidationError"
-		case "internal":
-			parent = "InternalError"
+		if name, standard := nameForKind[string(dErr.Kind)]; standard {
+			parent = name + "Error"
 		}
 		sb.WriteString(fmt.Sprintf("// %sError represents domain error %s (%s).\nexport class %sError extends %s {}\n\n",
 			dErr.Name, dErr.Name, dErr.Kind, dErr.Name, parent))
@@ -71,29 +67,38 @@ export class ValidationError extends ApiError {}
 	sb.WriteString(`  }
 
   switch (kind) {
-    case "unauthenticated":
-      return new UnauthenticatedError(status, code, kind, message);
-    case "forbidden":
-      return new ForbiddenError(status, code, kind, message);
-    case "not_found":
-      return new NotFoundError(status, code, kind, message);
-    case "conflict":
-      return new ConflictError(status, code, kind, message);
-    case "validation":
-      return new ValidationError(status, code, kind, message);
-    default:
+`)
+	for _, kind := range kinds {
+		sb.WriteString(fmt.Sprintf("    case %q:\n      return new %sError(status, code, kind, message);\n", string(kind), nameForKind[string(kind)]))
+	}
+	sb.WriteString(`    default:
       return new ApiError(status, code, kind, message);
   }
 }
 
 function defaultKindForStatus(status: number): string {
   switch (status) {
-    case 401: return "unauthenticated";
-    case 403: return "forbidden";
-    case 404: return "not_found";
-    case 409: return "conflict";
-    case 400: return "validation";
-    default: return "internal";
+`)
+
+	byStatus := make(map[int][]string, len(kinds))
+	for _, kind := range kinds {
+		policy, _ := platform.ErrorPolicyFor(kind)
+		byStatus[policy.Status] = append(byStatus[policy.Status], string(kind))
+	}
+	seen := make(map[int]bool, len(byStatus))
+	for _, kind := range kinds {
+		policy, _ := platform.ErrorPolicyFor(kind)
+		if seen[policy.Status] {
+			continue
+		}
+		seen[policy.Status] = true
+		if tie := byStatus[policy.Status]; len(tie) > 1 {
+			sb.WriteString(fmt.Sprintf("    // %d is answered by %s; %s wins the tie-break.\n",
+				policy.Status, strings.Join(tie, " and "), kind))
+		}
+		sb.WriteString(fmt.Sprintf("    case %d: return %q;\n", policy.Status, kind))
+	}
+	sb.WriteString(`    default: return "internal";
   }
 }
 `)

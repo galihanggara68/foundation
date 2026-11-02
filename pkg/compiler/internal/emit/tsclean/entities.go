@@ -2,10 +2,12 @@ package tsclean
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 func emitTSDomain(archIR *arch.ArchitectureIR) string {
@@ -77,11 +79,24 @@ func emitTSDomain(archIR *arch.ArchitectureIR) string {
 export class DomainError extends Error {
   readonly code: string;
   readonly kind: string;
+  readonly messages?: Record<string, string>;
+  readonly status: number;
+  readonly posture: string;
 
-  constructor(code: string, kind: string, message: string) {
+  constructor(
+    code: string,
+    kind: string,
+    message: string,
+    messages?: Record<string, string>,
+    status?: number,
+    posture?: string,
+  ) {
     super(message);
     this.code = code;
     this.kind = kind;
+    this.messages = messages;
+    this.status = status ?? 0;
+    this.posture = posture ?? "";
   }
 }
 
@@ -92,17 +107,16 @@ export interface PageInfo {
   has_prev: boolean;
 }
 
-export const ErrConflict = new DomainError("Conflict", "conflict", "optimistic concurrency conflict");
-export const ErrUnauthenticated = new DomainError("Unauthenticated", "unauthenticated", "unauthenticated actor");
-
 `)
 
+	for _, errDecl := range platform.BuiltinErrors() {
+		sb.WriteString(emitTSDomainErrorVar(errDecl))
+	}
 	for _, errDecl := range archIR.DomainErrors {
-		if errDecl.Name == "Conflict" || errDecl.Name == "Unauthenticated" {
+		if platform.IsBuiltinErrorName(errDecl.Name) {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("export const Err%s = new DomainError(%q, %q, %q);\n",
-			errDecl.Name, errDecl.Name, errDecl.Kind, errDecl.Message))
+		sb.WriteString(emitTSDomainErrorVar(errDecl))
 	}
 	sb.WriteString("\n")
 
@@ -136,6 +150,40 @@ export const ErrUnauthenticated = new DomainError("Unauthenticated", "unauthenti
 	}
 
 	return sb.String()
+}
+
+func emitTSDomainErrorVar(errDecl ir.ErrorDecl) string {
+	return fmt.Sprintf("export const Err%s = new DomainError(%q, %q, %q, %s, %d, %q);\n",
+		errDecl.Name, errDecl.Name, errDecl.Kind, errDecl.Message,
+		emitTSDomainMessages(errDecl.Messages), errDecl.Status, emitTSPostureLiteral(errDecl.Posture))
+}
+
+// emitTSDomainMessages renders the declared per-locale messages in key order, so a
+// rebuild of the same blueprint emits byte-identical TypeScript.
+func emitTSDomainMessages(messages map[string]string) string {
+	if len(messages) == 0 {
+		return "undefined"
+	}
+	locales := make([]string, 0, len(messages))
+	for locale := range messages {
+		locales = append(locales, locale)
+	}
+	sort.Strings(locales)
+	parts := make([]string, 0, len(locales))
+	for _, locale := range locales {
+		parts = append(parts, fmt.Sprintf("%q: %q", locale, messages[locale]))
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
+}
+
+// emitTSPostureLiteral names the emitted posture. A posture the language does not define
+// cannot reach here — validation rejects it — and if one did, the safe reading is to treat
+// the message as a diagnostic rather than hand it to a caller.
+func emitTSPostureLiteral(posture ir.ErrorPosture) string {
+	if posture == ir.PostureBusiness {
+		return string(ir.PostureBusiness)
+	}
+	return string(ir.PostureTechnical)
 }
 
 func emitTSInterface(sb *strings.Builder, name string, fields []ir.FieldDecl) {

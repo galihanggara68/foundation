@@ -5,16 +5,42 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 
 	"github.com/galihanggara68/foundation/pkg/compiler"
 )
 
 // Injected at build time via -ldflags "-X main.version=... -X main.commit=... -X main.date=...".
+// Defaults are overwritten at runtime by debug.ReadBuildInfo() if not set via ldflags.
 var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
 )
+
+func init() {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
+			version = info.Main.Version
+		}
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				if commit == "none" {
+					commit = setting.Value
+				}
+			case "vcs.time":
+				if date == "unknown" {
+					date = setting.Value
+				}
+			case "vcs.modified":
+				if setting.Value == "true" && commit != "none" {
+					commit += "-dirty"
+				}
+			}
+		}
+	}
+}
 
 func main() {
 	os.Exit(runWithStdin(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))

@@ -82,9 +82,32 @@ To guarantee architectural integrity, predictability, and safety, Foundation def
 
 ## 🚀 Quickstart in 60 Seconds
 
-### 1. Build or Install the CLI
+### 1. Install the CLI
 
-Requires **Go 1.23+**:
+Choose between prebuilt binary installation or installing directly with Go:
+
+#### Option A: Quick Install via `curl` (Prebuilt Binaries, no Go required)
+
+Downloads the prebuilt binary for your platform (`Linux`, `macOS`, or `Windows` on `amd64` / `arm64`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/galihanggara68/foundation/main/install.sh | sh
+```
+
+> **Tip:** You can specify a custom installation directory or version if desired:
+> ```bash
+> FOUNDATION_INSTALL_DIR=$HOME/.local/bin FOUNDATION_VERSION=v0.7.0 curl -fsSL https://raw.githubusercontent.com/galihanggara68/foundation/main/install.sh | sh
+> ```
+
+#### Option B: Install via `go install` (Requires Go 1.23+)
+
+```bash
+go install github.com/galihanggara68/foundation/cmd/foundation@latest
+# Or install a specific version:
+go install github.com/galihanggara68/foundation/cmd/foundation@v0.7.0
+```
+
+#### Option C: Build from Source
 
 ```bash
 git clone https://github.com/galihanggara68/foundation.git

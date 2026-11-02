@@ -103,9 +103,13 @@ func ActorFromContext(ctx context.Context) Actor {
 
 	for _, uc := range archIR.UseCases {
 		if uc.IsListReturning {
-			entName := strings.TrimPrefix(uc.ReturnType, "[]")
+			elemName := strings.TrimPrefix(uc.ReturnType, "[]")
+			ptr := ""
+			if archIR.EntityByName(elemName).Name == elemName {
+				ptr = "*"
+			}
 			sb.WriteString(fmt.Sprintf(`type %sResult struct {
-	Items    []*%s   `+"`json:\"items\"`"+`
+	Items    []%s%s   `+"`json:\"items\"`"+`
 	PageInfo PageInfo `+"`json:\"page_info\"`"+`
 }
 
@@ -116,7 +120,7 @@ func (r *%sResult) Count() int {
 	return len(r.Items)
 }
 
-`, uc.ActionName, entName, uc.ActionName))
+`, uc.ActionName, ptr, lay.goType(elemName, true), uc.ActionName))
 		}
 	}
 

@@ -36,6 +36,14 @@ _Avoid_: DTO, payload, schema, POJO
 A reusable, side-effect-free boolean rule declared in a Blueprint that evaluates whether an actor is authorized to perform an action or access an entity.
 _Avoid_: Middleware, guard, RBAC filter, interceptor
 
+**Trait**:
+A declarative metadata annotation prefixed with `@` attached to an Entity, Field, Action, or Slot Method that specifies transport exposure, storage mapping, concurrency control, or transactional behavior consumed by the compiler or external tooling.
+_Avoid_: Decorator, annotation, tag, attribute, directive
+
+**Trait Namespace**:
+A prefix preceding a colon in a trait name (e.g. `@acme:cached`) that delegates trait ownership to external tooling or plugins; the compiler guarantees that non-reserved namespaced traits pass through uninspected without diagnostic errors or warnings.
+_Avoid_: Trait prefix, plugin tag, custom attribute scope
+
 
 **Actor**:
 The principal on whose behalf an Action is performed, supplied to Policies for authorization decisions; resolved from an incoming request by the Actor Resolver.

@@ -217,3 +217,56 @@ let item_count   = active_items.count()
 let has_bulky    = active_items.any(item => item.weight > 50)
 let all_in_stock = active_items.all(item => item.in_stock == true)
 ```
+
+---
+
+## 5. Traits and Trait Namespaces
+
+Traits are declarative annotations prefixed with `@` attached to entities, fields, actions, or slot methods.
+
+### Standard Traits
+
+The compiler provides built-in standard traits written without a namespace:
+
+| Trait | Host | Arguments | Purpose |
+|---|---|---|---|
+| `@table` | Entity | `name` (or positional `_`) | Maps entity to physical relational table |
+| `@version` | Field | — | Marks field as OCC version column |
+| `@pk` | Field | — | Marks field as primary key |
+| `@fk` | Field | — | Marks field as foreign key |
+| `@unique` | Field | — | Enforces unique constraint |
+| `@index` | Field | — | Generates database index |
+| `@auto_now_add` | Field | — | Initializes timestamp upon creation |
+| `@renamed_from` | Field | — | Tracks field schema migration origin |
+| `@http` | Action | `method`, `path` | Exposes action as an HTTP API endpoint |
+| `@event_handler` | Action | `event` (or positional `_`) | Subscribes action to a domain event |
+| `@transactional` | Action | — | Runs action inside database transaction |
+| `@idempotent` | Action | `key` | Enforces client idempotency key |
+| `@retry` | Action | `attempts`, `backoff` | Configures transient retry policy |
+| `@cache` | Action | `ttl` | Configures caching duration |
+| `@internal` | Action | — | Marks action internal to domain service |
+| `@outbox` | Action | — | Emits events via transactional outbox |
+| `@external` | Slot Method | — | Marks slot method as external I/O |
+
+#### Trait Diagnostics
+
+- **`FDN0224` (Warning)**: An un-namespaced trait is not part of the compiler's standard vocabulary.
+- **`FDN0226` (Warning)**: An argument problem on a standard trait:
+  - Unknown argument name.
+  - Missing required argument (e.g. `event` on `@event_handler`).
+  - Non-numeric value for numeric arguments (e.g. `ttl` on `@cache`, `attempts` on `@retry`).
+
+### Namespaced Traits (`@ns:name`)
+
+Third-party generators, linters, or plugins can define domain metadata using namespaced traits:
+
+```fdn
+@acme:export(format: "parquet")
+entity Order {
+  id: uuid @pk
+  total: decimal(10, 2) @acme:metric(kind: "gauge")
+}
+```
+
+- **The Ignore Guarantee**: Non-reserved namespaced traits are never judged or validated by the compiler. They are retained on AST/IR and passed along cleanly to downstream tooling.
+- **Reserved Namespace (`FDN0225`)**: The `foundation` namespace is strictly reserved for the compiler. Using `@foundation:...` is rejected as an error (`FDN0225`); standard traits must be written without a namespace.

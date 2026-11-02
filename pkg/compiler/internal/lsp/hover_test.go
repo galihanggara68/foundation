@@ -3,6 +3,8 @@ package lsp
 import (
 	"strings"
 	"testing"
+
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 func TestComputeHover_Traits(t *testing.T) {
@@ -37,6 +39,16 @@ func TestComputeHover_Traits(t *testing.T) {
 	}
 	if !strings.Contains(h3.Contents.Value, "@http") || !strings.Contains(h3.Contents.Value, "HTTP API") {
 		t.Fatalf("expected @http doc, got: %s", h3.Contents.Value)
+	}
+}
+
+func TestCatalog_AllStandardTraitsDocumented(t *testing.T) {
+	for _, tr := range platform.StandardTraits() {
+		key := "@" + tr.Name
+		doc, ok := hoverCatalog[key]
+		if !ok || len(doc) == 0 {
+			t.Errorf("standard trait %q missing in LSP hover catalog", key)
+		}
 	}
 }
 

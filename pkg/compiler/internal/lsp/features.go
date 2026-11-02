@@ -1,8 +1,11 @@
 package lsp
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 // ComputeHover finds semantic documentation for the token under the cursor.
@@ -83,6 +86,12 @@ func ComputeCompletion(docContent string, pos Position) *CompletionList {
 func init() {
 	keywordCompletions = withSnippets(keywordCompletions)
 	traitCompletions = withSnippets(traitCompletions)
+	for _, tr := range platform.StandardTraits() {
+		key := "@" + tr.Name
+		if _, exists := hoverCatalog[key]; !exists {
+			hoverCatalog[key] = fmt.Sprintf("### `@%s` Trait\n\nStandard compiler trait.", tr.Name)
+		}
+	}
 }
 
 func withSnippets(items []CompletionItem) []CompletionItem {
@@ -171,21 +180,37 @@ func isWordRune(r rune) bool {
 
 var hoverCatalog = map[string]string{
 	// Traits
-	"@table": "### `@table` Trait\n\nMaps the entity to a relational SQL database table.\n\n" +
+	"@auto_now_add": "### `@auto_now_add` Trait\n\nAutomatically initializes a timestamp field to the current time on record creation.",
+	"@cache": "### `@cache` Trait\n\nCaches the action output in the runtime caching layer.\n\n" +
 		"**Arguments:**\n" +
-		"- `name`: Override default physical table name (e.g. `@table(name = \"app_users\")`).\n" +
-		"- `audit`: Automatically provision and track audit metadata (`created_at`, `updated_at`).",
-	"@version": "### `@version` Trait\n\nMarks an integer field as the optimistic concurrency control (OCC) column.\n\n" +
-		"The compiler guarantees atomic compare-and-swap on mutations, aborting with `409 Conflict` on race conditions.",
+		"- `ttl`: Time to live in seconds (numeric).",
+	"@cron":          "### `@cron` Trait\n\nReserved, not implemented: the parser rejects it with `FDN0115` until distributed leader election exists.",
 	"@event_handler": "### `@event_handler` Trait\n\nDeclares an asynchronous consumer action triggered whenever the named domain event is published.",
+	"@external":      "### `@external` Trait\n\nMarks a slot method as an external integration call across network boundaries.",
+	"@fk":            "### `@fk` Trait\n\nDeclares a relational foreign key constraint referencing another entity.",
 	"@http": "### `@http` Trait\n\nExposes an action as a public HTTP API endpoint.\n\n" +
 		"**Examples:**\n" +
 		"- `@http(method: \"POST\", path: \"/orders\")`\n" +
 		"- `@http(method: \"GET\", path: \"/orders/{id}\")`",
-	"@cron":       "### `@cron` Trait\n\nReserved, not implemented: the parser rejects it with `FDN0115` until distributed leader election exists.",
-	"@audit":      "### `@audit` Trait\n\nEnforces immutable audit trail logging for all mutations executed in this transaction pipeline.",
-	"@lock":       "### `@lock` Trait\n\nDeclares pessimistic row-level locking (`SELECT ... FOR UPDATE`) on read queries within this action.",
-	"@idempotent": "### `@idempotent` Trait\n\nEnforces client idempotency keys to guarantee at-most-once mutation semantics across network retries.",
+	"@idempotent":   "### `@idempotent` Trait\n\nEnforces client idempotency keys to guarantee at-most-once mutation semantics across network retries.",
+	"@index":        "### `@index` Trait\n\nCreates a database index on the field for optimized queries.",
+	"@internal":     "### `@internal` Trait\n\nMarks an action as internal to the domain service, inaccessible via public APIs.",
+	"@outbox":       "### `@outbox` Trait\n\nGuarantees transactional event publishing via the transactional outbox pattern.",
+	"@pk":           "### `@pk` Trait\n\nMarks a field as the primary key of the entity.",
+	"@pure":         "### `@pure` Trait\n\nMarks a slot method as pure and free of side effects.",
+	"@renamed_from": "### `@renamed_from` Trait\n\nRecords the previous name of a field for database schema migrations.",
+	"@retry": "### `@retry` Trait\n\nConfigures automatic retry policies for transient failures.\n\n" +
+		"**Arguments:**\n" +
+		"- `attempts`: Maximum retry attempts (numeric).\n" +
+		"- `backoff`: Backoff duration in milliseconds (numeric).",
+	"@table": "### `@table` Trait\n\nMaps the entity to a relational SQL database table.\n\n" +
+		"**Arguments:**\n" +
+		"- `name`: Override default physical table name (e.g. `@table(name = \"app_users\")`).\n" +
+		"- `audit`: Automatically provision and track audit metadata (`created_at`, `updated_at`).",
+	"@transactional": "### `@transactional` Trait\n\nExecutes the action within an atomic database transaction.",
+	"@unique":        "### `@unique` Trait\n\nEnforces a unique constraint on the field in the database table.",
+	"@version": "### `@version` Trait\n\nMarks an integer field as the optimistic concurrency control (OCC) column.\n\n" +
+		"The compiler guarantees atomic compare-and-swap on mutations, aborting with `409 Conflict` on race conditions.",
 
 	// Scalar Types
 	"uuid":      "### `UUID` Primitive Type\n\n128-bit RFC 4122 Universally Unique Identifier. Stored as `UUID` in PostgreSQL.",

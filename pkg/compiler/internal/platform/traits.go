@@ -55,6 +55,7 @@ var standardTraits = []Trait{
 	{Name: "internal", Hosts: []TraitHost{TraitOnAction}},
 	{Name: "outbox", Hosts: []TraitHost{TraitOnAction}},
 	{Name: "pk", Hosts: []TraitHost{TraitOnField}},
+	{Name: "pure", Hosts: []TraitHost{TraitOnSlotMethod}},
 	{Name: "renamed_from", Hosts: []TraitHost{TraitOnField}},
 	{Name: "retry", Hosts: []TraitHost{TraitOnAction}, Args: []TraitArg{{Name: "attempts", Numeric: true}, {Name: "backoff", Numeric: true}}},
 	{Name: "table", Hosts: []TraitHost{TraitOnEntity}, Args: []TraitArg{{Name: "name", Aliases: []string{"_"}}}},

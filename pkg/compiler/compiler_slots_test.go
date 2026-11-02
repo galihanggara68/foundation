@@ -88,6 +88,174 @@ action CheckoutOrder(address: Address, skus: []string) -> ShippingQuote
 	}
 }
 
+func TestCompile_SlotTraits_BindToTheFollowingMethod_WithExactSpans(t *testing.T) {
+	src := `slot CredentialCipher {
+  @external
+  Encrypt(plaintext: string) -> string
+  @idempotent
+  Decrypt(ciphertext: string) -> string
+}
+`
+	sem, diags := compiler.Compile([]compiler.SourceFile{{Path: "slots.fdn", Content: src}})
+	if len(diags) != 0 {
+		t.Fatalf("expected slot blueprint to compile, got: %+v", diags)
+	}
+	if len(sem.Slots) != 1 || len(sem.Slots[0].Methods) != 2 {
+		t.Fatalf("expected one slot with two methods, got: %+v", sem.Slots)
+	}
+
+	encrypt := sem.Slots[0].Methods[0]
+	if encrypt.Name != "Encrypt" {
+		t.Fatalf("expected first method Encrypt, got %q", encrypt.Name)
+	}
+	if len(encrypt.Traits) != 1 || encrypt.Traits[0].Name != "external" {
+		t.Fatalf("expected Encrypt to carry exactly its own leading @external, got: %+v", encrypt.Traits)
+	}
+	if encrypt.Traits[0].Span.Line != 2 {
+		t.Errorf("expected Encrypt's @external on line 2, got: %+v", encrypt.Traits[0].Span)
+	}
+
+	decrypt := sem.Slots[0].Methods[1]
+	if decrypt.Name != "Decrypt" {
+		t.Fatalf("expected second method Decrypt, got %q", decrypt.Name)
+	}
+	if len(decrypt.Traits) != 1 || decrypt.Traits[0].Name != "idempotent" {
+		t.Fatalf("expected Decrypt to carry exactly its own leading @idempotent, got: %+v", decrypt.Traits)
+	}
+	if decrypt.Traits[0].Span.Line != 4 {
+		t.Errorf("expected Decrypt's @idempotent on line 4, got: %+v", decrypt.Traits[0].Span)
+	}
+}
+
+func TestCompile_ThreeMethodSlot_EachMethodKeepsExactlyItsOwnTrait(t *testing.T) {
+	src := `slot CredentialCipher {
+  @external
+  Encrypt(plaintext: string) -> string
+  @idempotent
+  Decrypt(ciphertext: string) -> string
+  @pure
+  Digest(input: string) -> string
+}
+`
+	sem, diags := compiler.Compile([]compiler.SourceFile{{Path: "slots.fdn", Content: src}})
+	if len(diags) != 0 {
+		t.Fatalf("expected slot blueprint to compile, got: %+v", diags)
+	}
+	if len(sem.Slots) != 1 || len(sem.Slots[0].Methods) != 3 {
+		t.Fatalf("expected one slot with three methods, got: %+v", sem.Slots)
+	}
+
+	want := []struct {
+		method string
+		trait  string
+		line   int
+	}{
+		{"Encrypt", "external", 2},
+		{"Decrypt", "idempotent", 4},
+		{"Digest", "pure", 6},
+	}
+	for i, w := range want {
+		m := sem.Slots[0].Methods[i]
+		if m.Name != w.method {
+			t.Fatalf("expected method[%d] %s, got %q", i, w.method, m.Name)
+		}
+		if len(m.Traits) != 1 || m.Traits[0].Name != w.trait {
+			t.Fatalf("expected method[%d] %s to carry exactly one %s trait, got: %+v", i, w.method, w.trait, m.Traits)
+		}
+		if m.Traits[0].Span.Line != w.line {
+			t.Errorf("expected %s's @%s on line %d, got: %+v", w.method, w.trait, w.line, m.Traits[0].Span)
+		}
+	}
+}
+
+func TestCompile_ExternalSlotTraitBindsToItsOwnMethod_AndFDN0213FollowsIt(t *testing.T) {
+	src := `slot CredentialCipher {
+  ComputeDigest(input: string) -> string
+  @external
+  Encrypt(plaintext: string) -> string
+}
+
+action RotateSecret(secret: string) -> string
+  @transactional
+{
+  let digest = slot CredentialCipher.ComputeDigest(secret)
+  let sealed = slot CredentialCipher.Encrypt(digest)
+  return sealed
+}
+`
+	sem, diags := compiler.Compile([]compiler.SourceFile{{Path: "slots.fdn", Content: src}})
+	if sem != nil {
+		t.Fatalf("expected nil SemanticIR when an @external slot method is called inside @transactional, got: %+v", sem)
+	}
+
+	var externalCalls, safeCalls int
+	for _, d := range diags {
+		if d.Code != "FDN0213" {
+			continue
+		}
+		if strings.Contains(d.Message, ".Encrypt") {
+			externalCalls++
+			if d.Span.Line != 11 {
+				t.Errorf("expected FDN0213 for the @external Encrypt call at slots.fdn:11, got: %+v", d.Span)
+			}
+		}
+		if strings.Contains(d.Message, ".ComputeDigest") {
+			safeCalls++
+		}
+	}
+
+	if externalCalls != 1 {
+		t.Errorf("expected exactly one FDN0213 for the genuinely @external Encrypt call inside @transactional, got %d: %+v", externalCalls, diags)
+	}
+	if safeCalls != 0 {
+		t.Errorf("expected no FDN0213 for the non-external ComputeDigest call inside @transactional, got %d: %+v", safeCalls, diags)
+	}
+}
+
+func TestCompile_TraitBeforeSlotDeclaration_ReturnsFDN0223_AndPostNameFormIsParseError(t *testing.T) {
+	leading := `@external slot CredentialCipher {
+  Encrypt(plaintext: string) -> string
+}
+`
+	sem, diags := compiler.Compile([]compiler.SourceFile{{Path: "slots.fdn", Content: leading}})
+	if sem != nil {
+		t.Fatalf("expected a trait on a slot declaration to be rejected, got: %+v", sem)
+	}
+	var found bool
+	for _, d := range diags {
+		if d.Code == "FDN0223" {
+			found = true
+			if d.Severity != compiler.SeverityError {
+				t.Errorf("expected FDN0223 to be an error, got severity %q", d.Severity)
+			}
+			if d.Span.Line != 1 {
+				t.Errorf("expected FDN0223 on the misplaced trait at slots.fdn:1, got: %+v", d.Span)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected FDN0223 when a trait precedes a slot declaration, got: %+v", diags)
+	}
+
+	trailing := `slot CredentialCipher @external {
+  Encrypt(plaintext: string) -> string
+}
+`
+	sem, diags = compiler.Compile([]compiler.SourceFile{{Path: "slots.fdn", Content: trailing}})
+	if sem != nil {
+		t.Fatalf("expected a trait after the slot name to fail parsing, got: %+v", sem)
+	}
+	found = false
+	for _, d := range diags {
+		if d.Code == "FDN0102" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected FDN0102 for `slot Name @trait {`, got: %+v", diags)
+	}
+}
+
 func TestBuild_SlotsStubsScenarioMocksAndContractTests_CompilesPreservesStubsAndPassesTests(t *testing.T) {
 	dir := t.TempDir()
 

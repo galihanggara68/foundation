@@ -87,13 +87,6 @@ func (p *parser) parseSlot() (ir.SlotDecl, bool) {
 				throws = append(throws, eTok.text)
 			}
 		}
-		for p.cur().kind == tokAt {
-			tr, tOk := p.parseTrait()
-			if !tOk {
-				return ir.SlotDecl{}, false
-			}
-			mTraits = append(mTraits, tr)
-		}
 		methods = append(methods, ir.SlotMethodDecl{
 			Name:       mName.text,
 			Params:     params,

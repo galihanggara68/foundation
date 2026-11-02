@@ -78,8 +78,8 @@ scenario TransferFailsWhenBalanceIsInsufficient {
 When an action interacts with a `slot`, scenarios use generated test doubles:
 
 ```fdn
-slot FraudDetection @external {
-  Evaluate(user_id: string, amount: int) -> bool
+slot FraudDetection {
+  @external Evaluate(user_id: string, amount: int) -> bool
 }
 
 scenario HighRiskTransferBlocked {

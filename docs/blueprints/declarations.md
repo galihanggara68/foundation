@@ -120,6 +120,7 @@ policy CanPlaceOrder(actor: Actor) {
 ### 7. `slot`
 Interface contract separating generated code from handwritten integration code.
 - `@external`: Marks methods executing external third-party I/O (cannot be called inside `@transactional`).
+- A trait attaches to the declaration that follows it, so `@external` is written on the method, never on the `slot` itself (a trait ahead of a `slot` is `FDN0223`).
 
 ```fdn
 slot PaymentGateway {

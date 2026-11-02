@@ -133,6 +133,14 @@ func (p *parser) parseBlueprint() *ir.SemanticIR {
 				sem.Policies = append(sem.Policies, pol)
 			}
 		case "slot":
+			if len(preTraits) > 0 {
+				p.diags = append(p.diags, ir.Diagnostic{
+					Code:     "FDN0223",
+					Severity: ir.SeverityError,
+					Message:  "traits cannot be attached to a slot declaration; attach the trait to each method instead",
+					Span:     preTraits[0].Span,
+				})
+			}
 			if sl, ok := p.parseSlot(); ok {
 				sem.Slots = append(sem.Slots, sl)
 			}

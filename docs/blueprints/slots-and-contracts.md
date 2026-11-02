@@ -18,13 +18,12 @@ value ChargeResult {
   status: string
 }
 
-slot PaymentGateway @external {
-  Charge(token: string, amount: int) -> ChargeResult
-  Refund(charge_id: string, amount: int) -> bool
+slot PaymentGateway {
+  @external Charge(token: string, amount: int) -> ChargeResult
+  @external Refund(charge_id: string, amount: int) -> bool
 }
 
 action Checkout(req: CheckoutRequest) -> CheckoutResponse
-  @transactional
   @http(method: POST, path: "/checkout")
 {
   let order = get Order where id == req.order_id or fail OrderNotFound
@@ -47,8 +46,8 @@ action Checkout(req: CheckoutRequest) -> CheckoutResponse
 When a slot interacts with a third-party service, external database, or network endpoint, it should be annotated with `@external`:
 
 ```fdn
-slot EmailService @external {
-  SendWelcomeEmail(to: string, name: string) -> bool
+slot EmailService {
+  @external SendWelcomeEmail(to: string, name: string) -> bool
 }
 ```
 

@@ -6,7 +6,7 @@ Scope source: item 3 of [spec 05](../specs/05-emitter-feedback-ir-and-protocol-e
 
 ## Target user
 
-The author of an emitter or an SDK generator that has to turn a declared error into a status code and a message. Today each one re-derives both: `gohex` and `tsclean` each carry their own kind→status switch, `gosdk` and `tssdk` each carry their own reverse status→kind map, and none of them can express "this error is the caller's problem" versus "this error is ours".
+The author of an emitter or an SDK generator that has to turn a declared error into a status code and a message. At the time, each one re-derived both: `gohex` and `tsclean` each carried their own kind→status switch, `gosdk` and `tssdk` each carried their own reverse status→kind map, and none of them could express "this error is the caller's problem" versus "this error is ours".
 
 ## Success signal
 
@@ -25,7 +25,7 @@ The author of an emitter or an SDK generator that has to turn a declared error i
 
 ## Out of scope
 
-- **`tsclean`, `gosdk`, `tssdk` migration** — same table, their own tickets. The drift they carry is recorded, not fixed here.
+- **`tsclean`, `gosdk`, `tssdk` migration** — same table, deferred to their own tickets at the time and landed in 0.6.0. Their drift was recorded here rather than fixed in this MVP.
 - **Validating `throws` clauses.** `SlotMethodDecl.Throws` is parsed and emitted but never checked against declared errors; `validateErrorRef` exists but is wired only to else-clauses.
 - **Publishing the vocabulary on the request's `platform` section.** Its only consumers are in-process emitters, which never see a `GenerationRequest` — publishing it would repeat the unconsumed-field trap trimmed from `identity`/`db_schema`. Adding it later is additive.
 - **Locale negotiation and a default locale.** The compiler records declared locales; it does not invent one.

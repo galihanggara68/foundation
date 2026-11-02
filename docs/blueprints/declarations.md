@@ -94,7 +94,7 @@ error ProductNotFound {
 - `message`: Fallback text, used when the error carries no locale-specific text.
 - `messages`: Text per locale tag (`en`, `id`, `"en-US"`). Locales are recorded, never negotiated: the compiler does not pick one for a caller.
 - `status`: HTTP status the transport answers with, between 100 and 599. Omit it to take the kind's default; declaring one overrides that default.
-- `posture`: `business` or `technical`. Every kind defaults to `business` except `internal`, which is `technical`. A `technical` message is an internal diagnostic rather than text for a caller: the Go hexagonal transport logs it and answers with a generic body, while emitters that have not migrated still write it out.
+- `posture`: `business` or `technical`. Every kind defaults to `business` except `internal`, which is `technical`. A `technical` message is an internal diagnostic rather than text for a caller: both generated transports log it and answer with a generic body instead.
 
 The vocabulary also reserves each kind's name (`NotFound`, `Validation`, `Conflict`, `Unauthenticated`, `Unauthorized`, `Forbidden`, `Internal`). Declaring an error with one of those names is legal, but warns (`FDN0219`): the platform owns the name, so that declaration risks being shadowed downstream.
 

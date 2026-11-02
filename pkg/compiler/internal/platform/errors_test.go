@@ -8,9 +8,9 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
-// These are the statuses the emitters hard-coded before the vocabulary existed:
-// gohex http_server.go, tsclean controllers.go, and docs/blueprints/declarations.md.
-// Keeping them here means a change to a kind's standard status has to be deliberate.
+// These are the statuses the emitters hard-coded before the vocabulary existed. Every
+// emitter reads the table now; the pins stay so that changing a kind's standard status has
+// to be deliberate.
 func TestErrorVocabulary_MatchesTheStatusesEmittersUsedToHardCode(t *testing.T) {
 	want := map[ir.ErrorKind]int{
 		ir.ErrorKindNotFound:        404,

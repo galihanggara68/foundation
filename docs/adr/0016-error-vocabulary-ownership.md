@@ -8,10 +8,10 @@ A status code instantiates a client-side error type, so error mapping is a contr
 
 ## Decision
 
-1. **The compiler owns kind → `{status, posture}`.** `pkg/compiler/internal/platform` holds the one table; the validator and `gohex` read it rather than repeating a switch.
+1. **The compiler owns kind → `{status, posture}`.** `pkg/compiler/internal/platform` holds the one table; the validator and every emitter read it rather than repeating a switch.
 2. **The compiler reserves each kind's name.** `NotFound`, `Conflict` and the rest belong to the vocabulary, so a declaration reusing one stays legal but is reported (`FDN0219`): it risks being shadowed downstream.
 3. **A declaration wins over the kind default.** Resolved `Status` and `Posture` are written onto every `ErrorDecl`, so omitting `status:`/`posture:` reproduces the previous behaviour. The generated transport mirrors the rule: a stamped value wins, and the kind's policy is the fallback.
-4. **Posture is data, not a convention.** `business` text is the caller's; a `technical` message is an internal diagnostic, which `gohex` logs and replaces with a generic body.
+4. **Posture is data, not a convention.** `business` text is the caller's; a `technical` message is an internal diagnostic, which the generated transports log and replace with a generic body.
 
 ## Considered Options
 
@@ -24,5 +24,5 @@ A status code instantiates a client-side error type, so error mapping is a contr
 - Changing a kind's default status is a **breaking change**: generated servers and SDKs branch on the status and on the kind, so the table changes only deliberately.
 - The vocabulary keeps both `unauthenticated` and `unauthorized`, each answering 401; dropping a kind would invalidate Blueprints that declare it.
 - The vocabulary is not published on the wire: its consumers are in-process emitters, which never see a `GenerationRequest`. Publishing it later is additive.
-- Locales are recorded, never negotiated: the compiler does not invent a default locale.
-- Migration is incremental: `gohex` consumes the resolved values today; `tsclean`, `gosdk` and `tssdk` still map kinds themselves, so masking reaches a caller in Go only.
+- Locales are recorded, never negotiated.
+- Migration was incremental: `gohex` first, then `tsclean`, `gosdk` and `tssdk` in 0.6.0. All four consume the resolved values now, so masking reaches a caller on both backends.

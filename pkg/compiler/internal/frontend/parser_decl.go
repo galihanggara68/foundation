@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
 
 func (p *parser) parseEnum() (ir.EnumDecl, bool) {
@@ -242,7 +243,23 @@ func (p *parser) parseTrait() (ir.TraitDecl, bool) {
 	if !ok {
 		return ir.TraitDecl{}, false
 	}
-	if nameTok.text == "cron" {
+	traitName := nameTok.text
+	if p.cur().kind == tokColon {
+		p.advance()
+		localTok, ok := p.expect(tokIdent)
+		if !ok {
+			return ir.TraitDecl{}, false
+		}
+		traitName = nameTok.text + ":" + localTok.text
+		if nameTok.text == platform.ReservedTraitNamespace {
+			p.diags = append(p.diags, ir.Diagnostic{
+				Code:     "FDN0225",
+				Severity: ir.SeverityError,
+				Message:  fmt.Sprintf("trait namespace %q is reserved for standard traits; standard traits are written without a namespace", platform.ReservedTraitNamespace),
+				Span:     nameTok.span,
+			})
+		}
+	} else if nameTok.text == "cron" {
 		p.diags = append(p.diags, ir.Diagnostic{
 			Code:     "FDN0115",
 			Severity: ir.SeverityError,
@@ -287,7 +304,7 @@ func (p *parser) parseTrait() (ir.TraitDecl, bool) {
 		}
 	}
 	return ir.TraitDecl{
-		Name: nameTok.text,
+		Name: traitName,
 		Args: args,
 		Span: atTok.span,
 	}, true

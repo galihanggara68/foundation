@@ -50,12 +50,13 @@ func (lay goLayout) emitGoExpr(e ir.Expr, inDomainPkg bool) string {
 		if len(e.Items) == 0 && (e.InferredType == "" || e.InferredType == "[]") {
 			return "nil"
 		}
-		sliceGoType := lay.goType(e.InferredType, inDomainPkg)
+		elemType := strings.TrimPrefix(e.InferredType, "[]")
+		elemGoType := lay.identityGoType(elemType, inDomainPkg)
 		var items []string
 		for _, it := range e.Items {
-			items = append(items, lay.emitGoExpr(it, inDomainPkg))
+			items = append(items, lay.emitGoListElem(it, elemGoType, inDomainPkg))
 		}
-		return fmt.Sprintf("%s{%s}", sliceGoType, strings.Join(items, ", "))
+		return fmt.Sprintf("[]%s{%s}", elemGoType, strings.Join(items, ", "))
 	case ir.ExprIdent:
 		return e.Value
 	case ir.ExprField:
@@ -133,14 +134,33 @@ func (lay goLayout) emitGoExpr(e ir.Expr, inDomainPkg bool) string {
 		if inDomainPkg {
 			prefix = ""
 		}
-		var parts []string
-		for _, f := range e.Fields {
-			parts = append(parts, fmt.Sprintf("%s: %s", arch.ExportIdent(f.Name), lay.emitGoExpr(f.Value, inDomainPkg)))
-		}
-		return fmt.Sprintf("%s%s{%s}", prefix, e.TypeName, strings.Join(parts, ", "))
+		return prefix + e.TypeName + lay.emitGoCompositeFields(e, inDomainPkg)
 	default:
 		return e.Value
 	}
+}
+
+// emitGoCompositeFields renders a composite literal's field initialisations, the form an
+// element of a slice of that type elides its type to.
+func (lay goLayout) emitGoCompositeFields(e ir.Expr, inDomainPkg bool) string {
+	var parts []string
+	for _, f := range e.Fields {
+		parts = append(parts, fmt.Sprintf("%s: %s", arch.ExportIdent(f.Name), lay.emitGoExpr(f.Value, inDomainPkg)))
+	}
+	return fmt.Sprintf("{%s}", strings.Join(parts, ", "))
+}
+
+// emitGoListElem renders one element of a list literal. A composite literal elides its
+// type inside the slice; any other expression is addressed, since a pointer element type
+// means the element the slice holds is the address of that value.
+func (lay goLayout) emitGoListElem(it ir.Expr, elemGoType string, inDomainPkg bool) string {
+	if !strings.HasPrefix(elemGoType, "*") {
+		return lay.emitGoExpr(it, inDomainPkg)
+	}
+	if it.Kind == ir.ExprConstruct {
+		return lay.emitGoCompositeFields(it, inDomainPkg)
+	}
+	return "&" + lay.emitGoExpr(it, inDomainPkg)
 }
 
 func (lay goLayout) emitGoCombinatorExpr(e ir.Expr, inDomainPkg bool) string {

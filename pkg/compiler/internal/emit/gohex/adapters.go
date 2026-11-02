@@ -113,23 +113,19 @@ func (tm *InMemoryTransactionManager) WithinTransaction(ctx context.Context, fn 
 
 func (lay goLayout) emitGoSingleMemoryRepo(archIR *arch.ArchitectureIR, p arch.RepositoryPortIR) string {
 	var sb strings.Builder
-	hasTime := false
 	hasFindMany := false
+	var whereTypes []string
 	for _, m := range p.Methods {
 		if m.Kind == arch.RepoMethodFindMany {
 			hasFindMany = true
 		}
+		whereTypes = append(whereTypes, m.WhereType)
 		for _, wp := range m.WherePredicates {
-			if wp.Type == "timestamp" {
-				hasTime = true
-			}
-		}
-		if m.WhereType == "timestamp" {
-			hasTime = true
+			whereTypes = append(whereTypes, wp.Type)
 		}
 	}
 	timeImport := ""
-	if hasTime {
+	if fileNeedsTime(whereTypes) {
 		timeImport = "\t\"time\"\n"
 	}
 	findManyImports := ""

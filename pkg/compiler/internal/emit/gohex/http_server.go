@@ -15,6 +15,16 @@ func (lay goLayout) emitGoChiRouter(archIR *arch.ArchitectureIR) string {
 	if archIR.HasActorPort {
 		portsImport = fmt.Sprintf("\t\"%s/%s\"\n", archIR.Module, lay.PortsDir)
 	}
+	var paramTypes []string
+	for _, h := range archIR.HTTPHandlers {
+		for _, p := range h.Params {
+			paramTypes = append(paramTypes, p.Type)
+		}
+	}
+	timeImport := ""
+	if fileNeedsTime(paramTypes) {
+		timeImport = "\t\"time\"\n"
+	}
 	sb.WriteString(fmt.Sprintf(`package %s
 
 import (
@@ -25,7 +35,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
+%s
 	"github.com/go-chi/chi/v5"
 	"%s/%s"
 %s	"%s/%s"
@@ -39,7 +49,7 @@ var (
 
 type Server struct {
 	router *chi.Mux
-`, lay.HTTPPkg, archIR.Module, lay.DomainDir, portsImport, archIR.Module, lay.UseCasesDir))
+`, lay.HTTPPkg, timeImport, archIR.Module, lay.DomainDir, portsImport, archIR.Module, lay.UseCasesDir))
 
 	if archIR.HasActorPort {
 		sb.WriteString(fmt.Sprintf("\tactorResolver %s.ActorResolver\n", lay.PortsPkg))

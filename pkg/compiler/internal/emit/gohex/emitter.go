@@ -32,6 +32,9 @@ type goLayout struct {
 	HTTPDir         string
 	AuthnPkg        string
 	AuthnDir        string
+	// Entities holds the declared entity names. An entity has identity, so a list of one
+	// is a list of pointers; every other declared type keeps its value.
+	Entities map[string]bool
 	// UnifiedRepositories marks layouts whose memory/postgres adapters live in the
 	// same package as the repository ports (layered); hexagonal keeps them separate.
 	UnifiedRepositories bool
@@ -116,6 +119,11 @@ func (LayeredEmitter) Emit(archIR *arch.ArchitectureIR) (emit.Emission, []ir.Dia
 func emitWithLayout(archIR *arch.ArchitectureIR, lay goLayout) (map[string][]byte, map[string][]byte, []ir.Diagnostic) {
 	files := make(map[string][]byte)
 	stubs := make(map[string][]byte)
+
+	lay.Entities = make(map[string]bool, len(archIR.DomainEntities))
+	for _, e := range archIR.DomainEntities {
+		lay.Entities[e.Name] = true
+	}
 
 	contribGoPath := emit.FindContribGoRuntime()
 	replaceClause := ""
@@ -327,7 +335,7 @@ func errDiag(file string, err error) ir.Diagnostic {
 
 func (lay goLayout) goType(fdnType string, inDomainPkg bool) string {
 	if strings.HasPrefix(fdnType, "[]") {
-		return "[]" + lay.goType(strings.TrimPrefix(fdnType, "[]"), inDomainPkg)
+		return "[]" + lay.identityGoType(strings.TrimPrefix(fdnType, "[]"), inDomainPkg)
 	}
 	switch fdnType {
 	case "uuid", "string":
@@ -352,7 +360,11 @@ func (lay goLayout) goType(fdnType string, inDomainPkg bool) string {
 // from the declared type string; a field's Kind is the kind of its element type.
 func (lay goLayout) goKindType(kind ir.FieldKind, declaredType string, inDomainPkg bool) string {
 	if strings.HasPrefix(declaredType, "[]") {
-		return "[]" + lay.goKindType(kind, strings.TrimPrefix(declaredType, "[]"), inDomainPkg)
+		elem := strings.TrimPrefix(declaredType, "[]")
+		if lay.isEntity(elem) {
+			return "[]" + lay.identityGoType(elem, inDomainPkg)
+		}
+		return "[]" + lay.goKindType(kind, elem, inDomainPkg)
 	}
 	switch kind {
 	case ir.KindUUID, ir.KindString:

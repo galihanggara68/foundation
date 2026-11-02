@@ -26,14 +26,7 @@ func (lay goLayout) emitGoDomainEnums(archIR *arch.ArchitectureIR) string {
 func (lay goLayout) emitGoEntityFile(e ir.EntityDecl) string {
 	var sb strings.Builder
 	sb.WriteString("package " + lay.DomainPkg + "\n\n")
-	hasTime := false
-	for _, f := range e.Fields {
-		if f.Kind == ir.KindTimestamp {
-			hasTime = true
-			break
-		}
-	}
-	if hasTime {
+	if fileNeedsTime(declaredFieldTypes(e.Fields)) {
 		sb.WriteString("import \"time\"\n\n")
 	}
 	sb.WriteString(lay.emitGoStructDef(e.Name, e.Fields))
@@ -57,14 +50,29 @@ func (lay goLayout) emitGoFieldInits(sb *strings.Builder, fields []ir.FieldInitD
 }
 
 func (lay goLayout) emitGoDomainValues(archIR *arch.ArchitectureIR) string {
+	var declaredTypes []string
+	if archIR.DomainActor != nil {
+		declaredTypes = append(declaredTypes, declaredFieldTypes(archIR.DomainActor.Fields)...)
+	}
+	for _, v := range archIR.DomainValues {
+		declaredTypes = append(declaredTypes, declaredFieldTypes(v.Fields)...)
+	}
+	for _, uc := range archIR.UseCases {
+		if uc.IsListReturning {
+			declaredTypes = append(declaredTypes, strings.TrimPrefix(uc.ReturnType, "[]"))
+		}
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`package %s
+	sb.WriteString(fmt.Sprintf("package %s\n\n", lay.DomainPkg))
+	if fileNeedsTime(declaredTypes) {
+		sb.WriteString("import (\n\t\"context\"\n\t\"time\"\n)\n\n")
+	} else {
+		sb.WriteString("import \"context\"\n\n")
+	}
+	sb.WriteString(`type actorCtxKey struct{}
 
-import "context"
-
-type actorCtxKey struct{}
-
-`, lay.DomainPkg))
+`)
 
 	if archIR.DomainActor != nil {
 		sb.WriteString(lay.emitGoStructDef("Actor", archIR.DomainActor.Fields))
@@ -104,12 +112,8 @@ func ActorFromContext(ctx context.Context) Actor {
 	for _, uc := range archIR.UseCases {
 		if uc.IsListReturning {
 			elemName := strings.TrimPrefix(uc.ReturnType, "[]")
-			ptr := ""
-			if archIR.EntityByName(elemName).Name == elemName {
-				ptr = "*"
-			}
 			sb.WriteString(fmt.Sprintf(`type %sResult struct {
-	Items    []%s%s   `+"`json:\"items\"`"+`
+	Items    []%s   `+"`json:\"items\"`"+`
 	PageInfo PageInfo `+"`json:\"page_info\"`"+`
 }
 
@@ -120,7 +124,7 @@ func (r *%sResult) Count() int {
 	return len(r.Items)
 }
 
-`, uc.ActionName, ptr, lay.goType(elemName, true), uc.ActionName))
+`, uc.ActionName, lay.identityGoType(elemName, true), uc.ActionName))
 		}
 	}
 
@@ -226,19 +230,15 @@ func emitGoPostureConst(posture ir.ErrorPosture) string {
 
 func (lay goLayout) emitGoSinglePort(module string, p arch.RepositoryPortIR) string {
 	var sb strings.Builder
-	hasTime := false
+	var whereTypes []string
 	for _, m := range p.Methods {
+		whereTypes = append(whereTypes, m.WhereType)
 		for _, wp := range m.WherePredicates {
-			if wp.Type == "timestamp" {
-				hasTime = true
-			}
-		}
-		if m.WhereType == "timestamp" {
-			hasTime = true
+			whereTypes = append(whereTypes, wp.Type)
 		}
 	}
 	timeImport := ""
-	if hasTime {
+	if fileNeedsTime(whereTypes) {
 		timeImport = "\t\"time\"\n"
 	}
 	sb.WriteString(fmt.Sprintf(`package %s

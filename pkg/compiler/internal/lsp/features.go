@@ -182,9 +182,9 @@ var hoverCatalog = map[string]string{
 		"**Examples:**\n" +
 		"- `@http(method: \"POST\", path: \"/orders\")`\n" +
 		"- `@http(method: \"GET\", path: \"/orders/{id}\")`",
-	"@cron":        "### `@cron` Trait\n\nReserved, not implemented: the parser rejects it with `FDN0115` until distributed leader election exists.",
-	"@audit":       "### `@audit` Trait\n\nEnforces immutable audit trail logging for all mutations executed in this transaction pipeline.",
-	"@lock":        "### `@lock` Trait\n\nDeclares pessimistic row-level locking (`SELECT ... FOR UPDATE`) on read queries within this action.",
+	"@cron":       "### `@cron` Trait\n\nReserved, not implemented: the parser rejects it with `FDN0115` until distributed leader election exists.",
+	"@audit":      "### `@audit` Trait\n\nEnforces immutable audit trail logging for all mutations executed in this transaction pipeline.",
+	"@lock":       "### `@lock` Trait\n\nDeclares pessimistic row-level locking (`SELECT ... FOR UPDATE`) on read queries within this action.",
 	"@idempotent": "### `@idempotent` Trait\n\nEnforces client idempotency keys to guarantee at-most-once mutation semantics across network retries.",
 
 	// Scalar Types

@@ -29,14 +29,14 @@ func TestComputeHover_Traits(t *testing.T) {
 		t.Fatalf("expected @version OCC doc, got: %s", h2.Contents.Value)
 	}
 
-	// 3. Hover on '@route'
-	routeDoc := `action CreateItem() -> Item @route(post = "/items") { return item }`
-	h3 := ComputeHover(routeDoc, Position{Line: 0, Character: 32})
+	// 3. Hover on '@http'
+	httpDoc := `action CreateItem() -> Item @http(method: "POST", path: "/items") { return item }`
+	h3 := ComputeHover(httpDoc, Position{Line: 0, Character: 31})
 	if h3 == nil {
-		t.Fatalf("expected hover for @route, got nil")
+		t.Fatalf("expected hover for @http, got nil")
 	}
-	if !strings.Contains(h3.Contents.Value, "@route") || !strings.Contains(h3.Contents.Value, "HTTP API") {
-		t.Fatalf("expected @route doc, got: %s", h3.Contents.Value)
+	if !strings.Contains(h3.Contents.Value, "@http") || !strings.Contains(h3.Contents.Value, "HTTP API") {
+		t.Fatalf("expected @http doc, got: %s", h3.Contents.Value)
 	}
 }
 

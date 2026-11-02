@@ -5,9 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - 2026-10-29
+## [0.7.0] - 2026-11-02
 
 ### Added
+- **Trait namespaces and trait validation** ([ADR 0019](./docs/adr/0019-trait-namespaces-and-validation.md)):
+  - Grammar: `@ns:name` syntax allows downstream code generators and third-party tooling to embed metadata annotations with the ignore guarantee (the compiler never judges non-reserved namespaced traits).
+  - `FDN0224`: an un-namespaced trait outside the compiler's standard vocabulary produces a compile warning.
+  - `FDN0225`: the `foundation` namespace is reserved for compiler-owned features; writing `@foundation:...` is a compile error.
+  - `FDN0226`: an argument problem on a standard trait (unknown argument, missing required argument, or non-numeric value for numeric arguments) produces a compile warning.
+  - Central platform traits registry (`platform/traits.go`) with automated drift prevention for LSP hover and completions.
 - `FDN0222`: an `@http` route path segment with no matching action parameter is a compile error. Previously such a blueprint validated and the emitted server routed the segment while never reading it.
 - `FDN0223`: a trait written ahead of a `slot` declaration is an error. `SlotDecl` has no field for it, so it was silently discarded.
 

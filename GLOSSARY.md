@@ -51,7 +51,7 @@ A built-in domain error indicating that a concurrent mutation has rendered the t
 _Avoid_: Race condition, concurrency error, stale data, mismatch
 
 **Error Posture**:
-Whether a declared error's message is caller-facing text (`business`) or an internal diagnostic (`technical`), resolved by the compiler from the error's kind unless the declaration states one; the Go hexagonal transport logs and masks a technical message rather than returning it to a caller.
+Whether a declared error's message is caller-facing text (`business`) or an internal diagnostic (`technical`), resolved by the compiler from the error's kind unless the declaration states one; a generated transport logs and masks a technical message rather than returning it to a caller.
 _Avoid_: Severity, error level, log level, visibility
 
 **Standard Error Vocabulary**:

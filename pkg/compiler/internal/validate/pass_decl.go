@@ -67,7 +67,13 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 				Span: errDecl.Span,
 			})
 		}
-		registerUniqueDecl(sym.errors, "error", errDecl.Name, *errDecl, errDecl.Span, &diags)
+		// The platform already ships this error: keep the seeded entry, so the standard
+		// error shadows the declaration exactly as FDN0219 warns. Registering it would
+		// report the declaration against the symbol it collides with, making a
+		// warned-but-legal name fatal.
+		if !platform.IsBuiltinErrorName(errDecl.Name) {
+			registerUniqueDecl(sym.errors, "error", errDecl.Name, *errDecl, errDecl.Span, &diags)
+		}
 	}
 	for _, ev := range sem.Events {
 		registerUniqueDecl(sym.events, "event", ev.Name, ev, ev.Span, &diags)

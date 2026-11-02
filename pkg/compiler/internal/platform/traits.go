@@ -91,8 +91,8 @@ func IsStandardTrait(name string) bool {
 // TraitNamespace splits a trait name into its namespace and local name. An un-namespaced
 // trait yields an empty namespace and the name unchanged.
 func TraitNamespace(name string) (namespace, local string) {
-	namespace, local, _ = strings.Cut(name, ":")
-	if local == "" {
+	namespace, local, found := strings.Cut(name, ":")
+	if !found {
 		return "", name
 	}
 	return namespace, local

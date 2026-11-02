@@ -259,12 +259,7 @@ func LowerActionHTTP(a ir.ActionDecl) (HTTPHandlerIR, bool) {
 		return HTTPHandlerIR{}, false
 	}
 
-	var pathParams []string
-	for _, seg := range strings.Split(httpPath, "/") {
-		if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
-			pathParams = append(pathParams, strings.TrimSuffix(strings.TrimPrefix(seg, "{"), "}"))
-		}
-	}
+	pathParams := ir.HTTPPathParamNames(httpPath)
 
 	var expectedVersionParam string
 	for _, p := range a.Params {

@@ -2,7 +2,6 @@ package validate
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
@@ -28,7 +27,7 @@ func (HTTPPathParamsPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Di
 		}
 
 		reported := make(map[string]bool)
-		for _, name := range httpPathParamNames(path) {
+		for _, name := range ir.HTTPPathParamNames(path) {
 			if name == "" || params[name] || reported[name] {
 				continue
 			}
@@ -58,16 +57,4 @@ func actionHTTPPath(a ir.ActionDecl) (string, bool) {
 		}
 	}
 	return path, ok && path != ""
-}
-
-// httpPathParamNames lists the {name} segments of a route path, mirroring LowerActionHTTP's
-// reading of a path segment so validation and lowering agree on what is a path parameter.
-func httpPathParamNames(path string) []string {
-	var names []string
-	for _, seg := range strings.Split(path, "/") {
-		if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
-			names = append(names, strings.TrimSuffix(strings.TrimPrefix(seg, "{"), "}"))
-		}
-	}
-	return names
 }

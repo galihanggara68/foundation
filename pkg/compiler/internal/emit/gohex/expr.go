@@ -47,6 +47,9 @@ func (lay goLayout) emitGoExpr(e ir.Expr, inDomainPkg bool) string {
 		}
 		return fmt.Sprintf("%q", e.Value)
 	case ir.ExprList:
+		if len(e.Items) == 0 && (e.InferredType == "" || e.InferredType == "[]") {
+			return "nil"
+		}
 		sliceGoType := lay.goType(e.InferredType, inDomainPkg)
 		var items []string
 		for _, it := range e.Items {

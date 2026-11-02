@@ -86,6 +86,9 @@ func ComputeCompletion(docContent string, pos Position) *CompletionList {
 func init() {
 	keywordCompletions = withSnippets(keywordCompletions)
 	traitCompletions = withSnippets(traitCompletions)
+	for k, v := range standardTraitDocs {
+		hoverCatalog[k] = v
+	}
 	for _, tr := range platform.StandardTraits() {
 		key := "@" + tr.Name
 		if _, exists := hoverCatalog[key]; !exists {
@@ -178,8 +181,7 @@ func isWordRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
 }
 
-var hoverCatalog = map[string]string{
-	// Traits
+var standardTraitDocs = map[string]string{
 	"@auto_now_add": "### `@auto_now_add` Trait\n\nAutomatically initializes a timestamp field to the current time on record creation.",
 	"@cache": "### `@cache` Trait\n\nCaches the action output in the runtime caching layer.\n\n" +
 		"**Arguments:**\n" +
@@ -211,7 +213,9 @@ var hoverCatalog = map[string]string{
 	"@unique":        "### `@unique` Trait\n\nEnforces a unique constraint on the field in the database table.",
 	"@version": "### `@version` Trait\n\nMarks an integer field as the optimistic concurrency control (OCC) column.\n\n" +
 		"The compiler guarantees atomic compare-and-swap on mutations, aborting with `409 Conflict` on race conditions.",
+}
 
+var hoverCatalog = map[string]string{
 	// Scalar Types
 	"uuid":      "### `UUID` Primitive Type\n\n128-bit RFC 4122 Universally Unique Identifier. Stored as `UUID` in PostgreSQL.",
 	"string":    "### `String` Primitive Type\n\nVariable-length UTF-8 text. Stored as `TEXT` in SQL.",
@@ -294,7 +298,10 @@ var traitCompletions = []CompletionItem{
 	{Label: "@version", Kind: CompletionKindProperty, Detail: "OCC optimistic concurrency control trait", InsertText: "@version"},
 	{Label: "@http", Kind: CompletionKindProperty, Detail: "HTTP routing endpoint trait", InsertText: "@http(method: \"${1:POST}\", path: \"${2:/path}\")"},
 	{Label: "@event_handler", Kind: CompletionKindProperty, Detail: "Asynchronous event subscriber trait", InsertText: "@event_handler(\"${1:EventName}\")"},
-	{Label: "@audit", Kind: CompletionKindProperty, Detail: "Immutable audit log trait", InsertText: "@audit"},
-	{Label: "@lock", Kind: CompletionKindProperty, Detail: "Pessimistic row locking trait", InsertText: "@lock(exclusive)"},
 	{Label: "@idempotent", Kind: CompletionKindProperty, Detail: "Idempotency key enforcement trait", InsertText: "@idempotent"},
+	{Label: "@transactional", Kind: CompletionKindProperty, Detail: "Atomic database transaction trait", InsertText: "@transactional"},
+	{Label: "@pk", Kind: CompletionKindProperty, Detail: "Primary key field trait", InsertText: "@pk"},
+	{Label: "@fk", Kind: CompletionKindProperty, Detail: "Foreign key field trait", InsertText: "@fk(${1:Target.id})"},
+	{Label: "@cache", Kind: CompletionKindProperty, Detail: "Cache output trait", InsertText: "@cache(ttl: ${1:60})"},
+	{Label: "@retry", Kind: CompletionKindProperty, Detail: "Retry transient failures trait", InsertText: "@retry(attempts: ${1:3}, backoff: ${2:100})"},
 }

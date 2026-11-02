@@ -1,6 +1,7 @@
 package validate_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/frontend"
@@ -115,5 +116,47 @@ action Handle() -> int @event_handler {
 	matches := findDiags(diags, "FDN0226")
 	if len(matches) == 0 {
 		t.Fatalf("expected FDN0226 warning for missing required 'event' argument, got none: %+v", diags)
+	}
+}
+
+func TestValidate_StandardTrait_ZeroArgTraitWithArgs_ReturnsFDN0226Warning(t *testing.T) {
+	src := `
+entity Product {
+  id: uuid @pk(unexpected: "arg")
+}
+`
+	sem, parseDiags := frontend.ParseFile("test.fdn", src)
+	if len(parseDiags) > 0 {
+		t.Fatalf("unexpected parse diagnostics: %+v", parseDiags)
+	}
+
+	diags := validate.Validate(sem)
+	matches := findDiags(diags, "FDN0226")
+	if len(matches) == 0 {
+		t.Fatalf("expected FDN0226 warning for unexpected argument on zero-arg @pk, got none: %+v", diags)
+	}
+}
+
+func TestValidate_StandardTrait_MultipleUnknownArguments_AreDeterministicallyOrdered(t *testing.T) {
+	src := `
+entity Product {
+  id: uuid @pk(zebra: "1", apple: "2", middle: "3")
+}
+`
+	sem, parseDiags := frontend.ParseFile("test.fdn", src)
+	if len(parseDiags) > 0 {
+		t.Fatalf("unexpected parse diagnostics: %+v", parseDiags)
+	}
+
+	diags := validate.Validate(sem)
+	matches := findDiags(diags, "FDN0226")
+	if len(matches) != 3 {
+		t.Fatalf("expected 3 FDN0226 warnings, got %d: %+v", len(matches), matches)
+	}
+	expectedOrder := []string{`"apple"`, `"middle"`, `"zebra"`}
+	for i, exp := range expectedOrder {
+		if !strings.Contains(matches[i].Message, exp) {
+			t.Errorf("diagnostic %d: expected message to contain %s, got %q", i, exp, matches[i].Message)
+		}
 	}
 }

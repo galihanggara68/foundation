@@ -75,4 +75,28 @@ func TestTrait_Arg(t *testing.T) {
 	if _, ok := tr.Arg("unknown"); ok {
 		t.Errorf("expected Arg('unknown') to return false")
 	}
+
+	// FK trait argument contract
+	fkTrait, ok := platform.StandardTrait("fk")
+	if !ok {
+		t.Fatalf("expected 'fk' trait")
+	}
+	if fkArg, ok := fkTrait.Arg("target"); !ok || !fkArg.Required {
+		t.Errorf("expected required 'target' arg on @fk, got %+v", fkArg)
+	}
+	if _, ok := fkTrait.Arg("_"); !ok {
+		t.Errorf("expected positional '_' alias on @fk")
+	}
+
+	// Renamed_from trait argument contract
+	rfTrait, ok := platform.StandardTrait("renamed_from")
+	if !ok {
+		t.Fatalf("expected 'renamed_from' trait")
+	}
+	if rfArg, ok := rfTrait.Arg("name"); !ok || !rfArg.Required {
+		t.Errorf("expected required 'name' arg on @renamed_from, got %+v", rfArg)
+	}
+	if _, ok := rfTrait.Arg("_"); !ok {
+		t.Errorf("expected positional '_' alias on @renamed_from")
+	}
 }

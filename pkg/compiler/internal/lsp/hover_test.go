@@ -45,9 +45,13 @@ func TestComputeHover_Traits(t *testing.T) {
 func TestCatalog_AllStandardTraitsDocumented(t *testing.T) {
 	for _, tr := range platform.StandardTraits() {
 		key := "@" + tr.Name
-		doc, ok := hoverCatalog[key]
+		doc, ok := standardTraitDocs[key]
 		if !ok || len(doc) == 0 {
-			t.Errorf("standard trait %q missing in LSP hover catalog", key)
+			t.Errorf("standard trait %q missing authored documentation in standardTraitDocs", key)
+		}
+		catalogDoc, ok := hoverCatalog[key]
+		if !ok || len(catalogDoc) == 0 {
+			t.Errorf("standard trait %q missing in hoverCatalog", key)
 		}
 	}
 }

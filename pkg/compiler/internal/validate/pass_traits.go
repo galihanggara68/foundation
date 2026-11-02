@@ -2,6 +2,7 @@ package validate
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -39,9 +40,15 @@ func (TraitValidationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 			return
 		}
 
-		// 1. Check for unknown arguments
-		if len(stdTrait.Args) > 0 {
-			for argName := range tr.Args {
+		// 1. Check for unknown arguments (sorted to guarantee deterministic diagnostic ordering)
+		if len(tr.Args) > 0 {
+			argNames := make([]string, 0, len(tr.Args))
+			for k := range tr.Args {
+				argNames = append(argNames, k)
+			}
+			sort.Strings(argNames)
+
+			for _, argName := range argNames {
 				if _, found := stdTrait.Arg(argName); !found {
 					diags = append(diags, ir.Diagnostic{
 						Code:     "FDN0226",
@@ -58,16 +65,8 @@ func (TraitValidationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 			if !arg.Required {
 				continue
 			}
-			val := tr.Args[arg.Name]
-			if val == "" {
-				for _, alias := range arg.Aliases {
-					if v, ok := tr.Args[alias]; ok && v != "" {
-						val = v
-						break
-					}
-				}
-			}
-			if strings.TrimSpace(val) == "" {
+			val, found := resolveTraitArg(tr.Args, arg)
+			if !found || strings.TrimSpace(val) == "" {
 				diags = append(diags, ir.Diagnostic{
 					Code:     "FDN0226",
 					Severity: ir.SeverityWarning,
@@ -82,15 +81,7 @@ func (TraitValidationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 			if !arg.Numeric {
 				continue
 			}
-			val, found := tr.Args[arg.Name]
-			if !found {
-				for _, alias := range arg.Aliases {
-					if v, ok := tr.Args[alias]; ok {
-						val, found = v, true
-						break
-					}
-				}
-			}
+			val, found := resolveTraitArg(tr.Args, arg)
 			if found && val != "" {
 				unquoted := strings.Trim(val, `"'`)
 				if _, err := strconv.Atoi(unquoted); err != nil {
@@ -105,51 +96,52 @@ func (TraitValidationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 		}
 	}
 
-	// Entities and their fields
-	for _, e := range sem.Entities {
-		for _, tr := range e.Traits {
-			checkTrait(tr)
-		}
-		for _, f := range e.Fields {
-			for _, tr := range f.Traits {
-				checkTrait(tr)
-			}
-		}
-	}
-
-	// Value types and their fields
-	for _, v := range sem.Values {
-		for _, f := range v.Fields {
-			for _, tr := range f.Traits {
-				checkTrait(tr)
-			}
-		}
-	}
-
-	// Actor and its fields
-	if sem.Actor != nil {
-		for _, f := range sem.Actor.Fields {
-			for _, tr := range f.Traits {
-				checkTrait(tr)
-			}
-		}
-	}
-
-	// Actions
-	for _, a := range sem.Actions {
-		for _, tr := range a.Traits {
-			checkTrait(tr)
-		}
-	}
-
-	// Slots and their methods
-	for _, s := range sem.Slots {
-		for _, m := range s.Methods {
-			for _, tr := range m.Traits {
-				checkTrait(tr)
-			}
-		}
+	for _, tr := range collectAllTraits(sem) {
+		checkTrait(tr)
 	}
 
 	return diags
+}
+
+// resolveTraitArg resolves a trait argument value by its primary name or accepted aliases.
+func resolveTraitArg(args map[string]string, arg platform.TraitArg) (string, bool) {
+	if val, ok := args[arg.Name]; ok && val != "" {
+		return val, true
+	}
+	for _, alias := range arg.Aliases {
+		if val, ok := args[alias]; ok && val != "" {
+			return val, true
+		}
+	}
+	return "", false
+}
+
+// collectAllTraits traverses all declarations in the semantic IR and returns attached traits.
+func collectAllTraits(sem *ir.SemanticIR) []ir.TraitDecl {
+	var traits []ir.TraitDecl
+	for _, e := range sem.Entities {
+		traits = append(traits, e.Traits...)
+		for _, f := range e.Fields {
+			traits = append(traits, f.Traits...)
+		}
+	}
+	for _, v := range sem.Values {
+		for _, f := range v.Fields {
+			traits = append(traits, f.Traits...)
+		}
+	}
+	if sem.Actor != nil {
+		for _, f := range sem.Actor.Fields {
+			traits = append(traits, f.Traits...)
+		}
+	}
+	for _, a := range sem.Actions {
+		traits = append(traits, a.Traits...)
+	}
+	for _, s := range sem.Slots {
+		for _, m := range s.Methods {
+			traits = append(traits, m.Traits...)
+		}
+	}
+	return traits
 }

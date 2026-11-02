@@ -233,11 +233,11 @@ The compiler provides built-in standard traits written without a namespace:
 | `@table` | Entity | `name` (or positional `_`) | Maps entity to physical relational table |
 | `@version` | Field | — | Marks field as OCC version column |
 | `@pk` | Field | — | Marks field as primary key |
-| `@fk` | Field | — | Marks field as foreign key |
+| `@fk` | Field | `target` (or positional `_`) | Marks field as foreign key referencing another entity |
 | `@unique` | Field | — | Enforces unique constraint |
 | `@index` | Field | — | Generates database index |
 | `@auto_now_add` | Field | — | Initializes timestamp upon creation |
-| `@renamed_from` | Field | — | Tracks field schema migration origin |
+| `@renamed_from` | Field | `name` (or positional `_`) | Tracks field schema migration origin |
 | `@http` | Action | `method`, `path` | Exposes action as an HTTP API endpoint |
 | `@event_handler` | Action | `event` (or positional `_`) | Subscribes action to a domain event |
 | `@transactional` | Action | — | Runs action inside database transaction |
@@ -247,6 +247,7 @@ The compiler provides built-in standard traits written without a namespace:
 | `@internal` | Action | — | Marks action internal to domain service |
 | `@outbox` | Action | — | Emits events via transactional outbox |
 | `@external` | Slot Method | — | Marks slot method as external I/O |
+| `@pure` | Slot Method | — | Marks slot method as side-effect free |
 
 #### Trait Diagnostics
 

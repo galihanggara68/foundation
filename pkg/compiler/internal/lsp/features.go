@@ -178,14 +178,14 @@ var hoverCatalog = map[string]string{
 	"@version": "### `@version` Trait\n\nMarks an integer field as the optimistic concurrency control (OCC) column.\n\n" +
 		"The compiler guarantees atomic compare-and-swap on mutations, aborting with `409 Conflict` on race conditions.",
 	"@event_handler": "### `@event_handler` Trait\n\nDeclares an asynchronous consumer action triggered whenever the named domain event is published.",
-	"@route": "### `@route` Trait\n\nExposes an action as a public HTTP API endpoint.\n\n" +
+	"@http": "### `@http` Trait\n\nExposes an action as a public HTTP API endpoint.\n\n" +
 		"**Examples:**\n" +
-		"- `@route(post = \"/orders\")`\n" +
-		"- `@route(get = \"/orders/{id}\")`",
-	"@cron":        "### `@cron` Trait\n\nSchedules periodic background execution using standard 5-field cron syntax (e.g. `@cron(\"0 * * * *\")`).",
+		"- `@http(method: \"POST\", path: \"/orders\")`\n" +
+		"- `@http(method: \"GET\", path: \"/orders/{id}\")`",
+	"@cron":        "### `@cron` Trait\n\nReserved, not implemented: the parser rejects it with `FDN0115` until distributed leader election exists.",
 	"@audit":       "### `@audit` Trait\n\nEnforces immutable audit trail logging for all mutations executed in this transaction pipeline.",
 	"@lock":        "### `@lock` Trait\n\nDeclares pessimistic row-level locking (`SELECT ... FOR UPDATE`) on read queries within this action.",
-	"@idempotency": "### `@idempotency` Trait\n\nEnforces client idempotency keys to guarantee at-most-once mutation semantics across network retries.",
+	"@idempotent": "### `@idempotent` Trait\n\nEnforces client idempotency keys to guarantee at-most-once mutation semantics across network retries.",
 
 	// Scalar Types
 	"uuid":      "### `UUID` Primitive Type\n\n128-bit RFC 4122 Universally Unique Identifier. Stored as `UUID` in PostgreSQL.",
@@ -267,10 +267,9 @@ var typeCompletions = []CompletionItem{
 var traitCompletions = []CompletionItem{
 	{Label: "@table", Kind: CompletionKindProperty, Detail: "Relational table mapping trait", InsertText: "@table(name = \"${1:table_name}\")"},
 	{Label: "@version", Kind: CompletionKindProperty, Detail: "OCC optimistic concurrency control trait", InsertText: "@version"},
-	{Label: "@route", Kind: CompletionKindProperty, Detail: "HTTP routing endpoint trait", InsertText: "@route(post = \"${1:/path}\")"},
+	{Label: "@http", Kind: CompletionKindProperty, Detail: "HTTP routing endpoint trait", InsertText: "@http(method: \"${1:POST}\", path: \"${2:/path}\")"},
 	{Label: "@event_handler", Kind: CompletionKindProperty, Detail: "Asynchronous event subscriber trait", InsertText: "@event_handler(\"${1:EventName}\")"},
-	{Label: "@cron", Kind: CompletionKindProperty, Detail: "Scheduled cron execution trait", InsertText: "@cron(\"${1:0 * * * *}\")"},
 	{Label: "@audit", Kind: CompletionKindProperty, Detail: "Immutable audit log trait", InsertText: "@audit"},
 	{Label: "@lock", Kind: CompletionKindProperty, Detail: "Pessimistic row locking trait", InsertText: "@lock(exclusive)"},
-	{Label: "@idempotency", Kind: CompletionKindProperty, Detail: "Idempotency key enforcement trait", InsertText: "@idempotency"},
+	{Label: "@idempotent", Kind: CompletionKindProperty, Detail: "Idempotency key enforcement trait", InsertText: "@idempotent"},
 }

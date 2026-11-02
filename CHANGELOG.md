@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-29
+
+### Added
+- `FDN0222`: an `@http` route path segment with no matching action parameter is a compile error. Previously such a blueprint validated and the emitted server routed the segment while never reading it.
+- `FDN0223`: a trait written ahead of a `slot` declaration is an error. `SlotDecl` has no field for it, so it was silently discarded.
+
+### Changed
+- **Behaviour change:** a trait binds to the declaration that follows it ([ADR 0018](./docs/adr/0018-trait-attachment.md)). The slot parser's post-signature loop could not tell a trailing trait from the next method's leading trait, so each slot method absorbed its neighbour's annotations and the last kept none. A trailing trait is no longer accepted.
+- **Behaviour change:** a reserved error name is legal for all seven kinds. `error Conflict` and `error Unauthenticated` failed with `FDN0200` while the other five names only warned; the shipped error now shadows the declaration for all seven, as [ADR 0016](./docs/adr/0016-error-vocabulary-ownership.md) always said.
+- A list of Values, enums or scalars now emits a value slice. The result field was hard-coded to a pointer slice, so `-> []Money` emitted Go that did not compile.
+
+### Fixed
+- Slot method traits were associated with the wrong method, which made `FDN0213` (calling an `@external` method inside `@transactional`) fire on a safe call and stay silent on the genuinely external one.
+- An empty list literal emitted `[]domain.{}` and failed the gofmt step with `FDN0500`. It now renders as `nil`.
+- The reference pages taught `slot PaymentGateway @external {`, a form the parser has never accepted.
+
+---
+
 ## [0.6.0] - 2026-10-29
 
 ### Added

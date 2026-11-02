@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-29
+
+### Added
+- **TypeScript backends honour error posture** ([ADR 0016](./docs/adr/0016-error-vocabulary-ownership.md)): a `technical` error is logged server-side and answered with a generic body, so an internal diagnostic no longer reaches a caller. Generated `DomainError`s carry the `status` and `posture` the compiler resolved, plus the declared per-locale `messages`, matching the Go backend.
+- Generated Go and TypeScript SDKs declare an error type for every standard kind, including the previously absent `UnauthorizedError` and `InternalError`.
+
+### Changed
+- **Behaviour change:** a TypeScript backend no longer returns a `technical` error's message — a caller sees `code` and `kind` only. Business errors still return their message and locales, and declared `status:`/`posture:` now reach a TypeScript caller instead of being ignored.
+- `tsclean`, `gosdk` and `tssdk` read the compiler's error vocabulary rather than keeping copies, so a status, posture or kind-name change lands in one place.
+
+### Fixed
+- A generated SDK could reference an `InternalError` type it never declared, for any domain error of kind `internal`.
+
+---
+
 ## [0.5.0] - 2026-10-29
 
 ### Added

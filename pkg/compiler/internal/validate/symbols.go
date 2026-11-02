@@ -23,6 +23,7 @@ func Validate(sem *ir.SemanticIR) []ir.Diagnostic {
 	passes := []Pass{
 		DeclarationPass{},
 		ActionTypeCheckPass{},
+		HTTPPathParamsPass{},
 		SargableWherePass{},
 		QueryManyUniqueOrderPass{},
 		QueryManyLimitCapPass{},

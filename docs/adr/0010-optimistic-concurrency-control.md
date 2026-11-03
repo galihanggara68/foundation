@@ -1,11 +1,20 @@
 # Optimistic Concurrency Control with Entity Versions
 
-Entity mutations gain **Optimistic Concurrency Control (OCC)** via an optional `@version` field trait that prevents silent lost updates across horizontal replicas, and mutation conflicts resolve through a built-in `conflict` error kind (HTTP 409). Pessimistic row locking (`SELECT FOR UPDATE`) was rejected because holding database locks across multi-step action pipelines invites deadlocks, degrades throughput, and cannot protect workflows that span separate user interactions (e.g., reading a form and submitting an update seconds later). Delta/patch updates were rejected because they bypass domain invariant checking on the full entity state. Under OCC, `update` steps compile to conditional version increments (`WHERE id = $1 AND version = $2` in PostgreSQL and atomic version assertions in memory); if zero rows are updated, the pipeline raises `conflict`, which HTTP adapters map to `409 Conflict` and pair with standard `ETag` and `If-Match` header evaluation.
+## Context
+
+Pessimistic row locking (`SELECT FOR UPDATE`) causes deadlocks and lowers throughput in distributed systems.
+Concurrent entity updates can cause silent lost updates when multiple workers mutate state simultaneously.
+Patch updates bypass invariant validation checks on the complete entity state.
+
+## Decision
+
+Foundation implements **Optimistic Concurrency Control (OCC)** through the `@version` field trait.
+The compiler lowers entity updates to conditional version increments in database queries.
+When zero rows change during an update, the runtime raises a built-in `conflict` error (HTTP 409).
+HTTP adapters emit `ETag` headers on read requests and evaluate `If-Match` headers on mutations.
 
 ## Consequences
 
-- The Blueprint grammar adds the `@version` field trait, validated strictly on integer entity fields (`int`), with at most one `@version` field per entity.
-- The compiler adds a built-in `conflict` error kind (HTTP 409) to the diagnostic and runtime error taxonomy, joining `unauthenticated` (401), `forbidden` (403), `not_found` (404), `bad_request` (400), and `internal` (500).
-- Emitted storage adapters conditionally assert and increment versions: PostgreSQL emits `UPDATE ... SET ..., version = version + 1 WHERE id = $1 AND version = $2 RETURNING version`, raising `conflict` when zero rows are affected; in-memory adapters enforce identical semantics.
-- HTTP adapters emit `ETag` headers representing entity versions on reads and validate incoming `If-Match` headers on mutations for versioned entities.
-- Clients compose cleanly with `@retry` for transient version conflicts under concurrent access.
+- The compiler permits only one `@version` integer field per entity.
+- The runtime error taxonomy includes `conflict` (mapped to HTTP 409).
+- Clients handle concurrency conflicts through standard HTTP conditional headers and `@retry` traits.

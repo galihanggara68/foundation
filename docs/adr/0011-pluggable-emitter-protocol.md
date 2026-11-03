@@ -1,12 +1,22 @@
 # Standardized IR Protocol and External Generator Plugins
 
-Foundation adopts a **standardized IR protocol for pluggable generator plugins** (`foundation-gen-*`) modeled after the `protoc` plugin architecture, while keeping official targets (Go Hexagonal, Go Layered, TypeScript Clean) built into the compiler binary. Text templating engines (e.g., Mustache, Jinja) were rejected because statement-level Action Pipeline compilation — with dynamic variable scoping, combinator chains, transactional boundaries, and language-specific loops — cannot be reliably rendered or type-checked via string interpolation without producing brittle, unmaintainable macros and risking silent syntax corruption. Instead, the compiler communicates with external generator executables over standard I/O via a strictly versioned JSON protocol: `GenerationRequest` delivers the validated `SemanticIR` along with an optional pre-lowered `ArchitectureIR`, and `GenerationResponse` returns a list of target file paths and contents. The compiler's Generation Manifest engine retains exclusive ownership of disk writes, content hashing, conflict detection, and stale-file pruning so no external plugin can bypass project filesystem hygiene.
+## Context
+
+Text templating engines cannot compile statement-level action pipelines with dynamic scoping and type rules.
+String interpolation produces brittle macros and causes syntax errors in target languages.
+The compiler needed a protocol to support external generator plugins without sacrificing filesystem safety.
+
+## Decision
+
+Foundation adopts a standardized JSON protocol for generator plugins (`foundation-gen-*`) based on the `protoc` model.
+The compiler communicates with external generator executables over standard I/O using versioned JSON payloads.
+The compiler passes `GenerationRequest` with `SemanticIR` and optional `ArchitectureIR` to the plugin.
+The plugin returns `GenerationResponse` with generated file paths and contents.
+The compiler Manifest Engine retains exclusive control over file writing, checksums, and stale file cleanup.
 
 ## Consequences
 
-- The Foundation compiler publishes a formal JSON Schema for `GenerationRequest` and `GenerationResponse`, establishing a stable wire protocol for third-party language emitters and proprietary corporate targets.
-- Official emitters remain compiled into the core `foundation` binary; developers using standard targets require zero external plugin installations.
-- The `GenerationRequest` provides a hybrid payload containing both the pure domain `SemanticIR` and an optional pre-lowered `ArchitectureIR`, empowering plugins to either map pre-structured layers or synthesize custom architectural topologies (e.g. CQRS, actor runtimes, gRPC microservices).
-- Plugins never write to the filesystem directly; all emitted files pass through the compiler's Generation Manifest engine to preserve `.foundation-manifest.json` integrity and protect handwritten Slot files.
-- Testing of code produced by third-party generator plugins is delegated to native language toolchains (e.g., `cargo test`, `pytest`) outside of `foundation test` until an external test-runner protocol is formalized.
-- An official Go `emitterkit` will be published to allow plugin authors to compose existing SQL, AST, and pipeline lowerers rather than reimplementing statement generation from scratch.
+- Third-party language targets connect to the compiler through a published JSON schema.
+- Official language targets remain built into the compiler binary.
+- Plugins never write directly to the disk, which protects handwritten slot files.
+- Authors can use `pkg/emitterkit` to build custom generator plugins in Go.

@@ -1,3 +1,19 @@
 # Constrained Action Pipelines with Generated Slot Interfaces
 
-Foundation expresses application logic through constrained, declarative Action Pipelines rather than a Turing-complete general-purpose language, and isolates custom imperative logic behind generated native interfaces (**Slots**). A general-purpose transpiler fails across languages with incompatible memory and concurrency models (e.g., Rust vs. Go vs. TypeScript), while mixing handwritten code into generated files via protected comment regions is brittle and breaks deterministic regeneration. Emitting strict native interfaces for the remaining 10% of custom logic guarantees that generated files can be completely wiped and deterministically regenerated at any time.
+## Context
+
+A general-purpose transpiler fails across languages with incompatible memory and concurrency models (such as Rust, Go, and TypeScript).
+Mixing handwritten code into generated files with protected comment blocks breaks deterministic regeneration.
+The compiler required a clean boundary between generated logic and custom algorithms.
+
+## Decision
+
+Foundation expresses application logic through constrained, declarative Action Pipelines rather than a general-purpose language.
+The compiler isolates custom imperative logic behind generated native interfaces (**Slots**).
+Developers write custom algorithms and third-party integrations inside these slot implementations.
+
+## Consequences
+
+- The compiler regenerates all generated files deterministically at any time.
+- Custom code lives in dedicated slot files outside the generated core.
+- Action pipelines remain verifiable and portable across all target architectures.

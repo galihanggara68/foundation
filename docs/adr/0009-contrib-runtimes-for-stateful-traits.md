@@ -1,11 +1,21 @@
 # Contrib Runtime Libraries for Stateful Tactical Traits
 
-Stateful tactical traits — `@idempotent`, `@cache`, `@outbox` — stop being emitted plumbing and resolve through published contrib runtime libraries with swappable drivers (`memory`, `postgres`) selected by the Build Profile's storage mode; stateless traits (`@retry`, `@transactional`) remain emitted inline control flow. This generalizes ADR 0006: Foundation already treats frameworks (chi, express, pg) as imports rather than generated code, and durable runtime machinery — outbox relay with at-least-once redelivery, concurrency-safe idempotency keys, cache stores — is infrastructure in the same sense. Emitting it would pin every production fix to a compiler release and a full project regeneration. The principle: the compiler owns the shape (structure, wiring, ports); libraries own the behavior (anything with state or a trust boundary).
+## Context
+
+Stateful mechanisms (outbox relays, idempotency stores, and cache drivers) represent shared infrastructure.
+Emitting stateful runtime machinery inline pins every bug fix to a new compiler release.
+The compiler needed a separation between structural code generation and runtime infrastructure.
+
+## Decision
+
+Stateful tactical traits (`@idempotent`, `@cache`, `@outbox`) resolve through published contrib runtime libraries.
+The Build Profile storage mode selects swappable storage drivers (`memory` or `postgres`).
+Stateless traits (`@retry`, `@transactional`) remain inline generated control flow.
+The compiler defines structural ports, while runtime libraries implement stateful behavior.
 
 ## Consequences
 
-- Composes with ADR 0007: the happy path remains post-commit in-process dispatch; the library's relay replays from the durable outbox table after a crash. Correctness holds in every driver — postgres persists `idempotency_keys` and outbox rows inside the action transaction; the memory driver preserves dev/test semantics with documented limits.
-- `@cache` gains a driver seam (memory today, external stores later) without grammar or compiler changes.
-- Generated projects gain compile-time dependencies on the runtime libraries; a declared, checkable compatibility contract between compiler and library versions becomes mandatory before the first release (see the versioning policy).
-- Scenarios and contract tests run against the memory driver of the same libraries production uses — one runtime, two drivers.
-- Open for the implementation ticket: DDL ownership for library-owned tables (compiler-emitted migrations vs. migrations shipped with the library).
+- Developers update runtime behavior through library dependency updates without regenerating blueprints.
+- In-memory drivers allow tests to execute offline without external databases.
+- The PostgreSQL driver persists idempotency keys and outbox rows inside the action transaction.
+- The `@cache` trait supports alternative storage drivers without grammar modifications.

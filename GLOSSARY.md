@@ -1,162 +1,191 @@
-# Foundation
+# Foundation Glossary
 
-A deterministic, multi-target architecture and application compiler that transforms declarative domain blueprints and action pipelines into production source code with zero runtime LLM dependency.
+Foundation is an application compiler.
+The compiler converts domain blueprints into production code without large language models.
 
 ## Language
 
 **Blueprint**:
-A user-authored source file (`.fdn`) that declares a domain's data structures, contracts, policies, and action pipelines independent of any programming language or architectural pattern.
+A source file (`.fdn`) that declares domain data structures, contracts, policies, and action pipelines.
+The blueprint does not depend on target languages or architectures.
 _Avoid_: Schema, spec, template, config
 
 **Action Pipeline**:
-A deterministic, guaranteed-terminating sequence of domain operations (validation guards, policy checks, state queries, mutations, bounded iterations, conditional branches, slot calls, and event emissions) declared within a Blueprint to express application behavior.
+A sequence of operations that expresses application behavior.
+The pipeline contains validation guards, policy checks, queries, mutations, slot calls, and event emissions.
+The pipeline always stops in finite steps.
 _Avoid_: Workflow, script, controller, handler
 
 **Event**:
-A declared domain occurrence that an Action emits to announce a completed state change, delivered to subscribed Event Handlers after the emitting Action commits.
+A domain occurrence that an action emits after a state change.
+The system delivers the event to event handlers after the transaction commits.
 _Avoid_: Message, notification, signal
 
 **Event Handler**:
-An Action triggered by a subscribed Event instead of an HTTP route, executed in-process after the emitting Action's transaction commits; its own Traits govern its robustness and delivery guarantees.
+An action that starts when the system emits a subscribed event.
+The event handler runs in-process after the emitting transaction commits.
+Traits control handler reliability and delivery rules.
 _Avoid_: Listener, subscriber, cron job
 
 **Entity**:
-A persistent domain object with identity and lifecycle declared in a Blueprint, lowered by the compiler into storage schemas and domain models.
+A persistent domain object with identity and lifecycle.
+The compiler lowers entities into database schemas and domain models.
 _Avoid_: Table, model, record, struct
 
 **Entity Version**:
-A monotonically increasing integer field on an Entity annotated with `@version` that enables Optimistic Concurrency Control during mutations to prevent silent lost updates.
+An integer field on an entity with the `@version` trait.
+The field enables optimistic concurrency control during updates to prevent lost updates.
 _Avoid_: Revision, sequence number, timestamp, generation
 
 **Value**:
-An immutable, identity-less data structure declared in a Blueprint for action inputs, outputs, or embedded fields.
+An immutable data structure with no identity.
+Blueprints use values for action inputs, action outputs, and embedded fields.
 _Avoid_: DTO, payload, schema, POJO
 
 **Policy**:
-A reusable, side-effect-free boolean rule declared in a Blueprint that evaluates whether an actor is authorized to perform an action or access an entity.
+A reusable boolean rule with no side effects.
+A policy checks if an actor can run an action or access an entity.
 _Avoid_: Middleware, guard, RBAC filter, interceptor
 
-**Trait**:
-A declarative metadata annotation prefixed with `@` attached to an Entity, Field, Action, or Slot Method that specifies transport exposure, storage mapping, concurrency control, or transactional behavior consumed by the compiler or external tooling.
-_Avoid_: Decorator, annotation, tag, attribute, directive
-
-**Trait Namespace**:
-A prefix preceding a colon in a trait name (e.g. `@acme:cached`) that delegates trait ownership to external tooling or plugins; the compiler guarantees that non-reserved namespaced traits pass through uninspected without diagnostic errors or warnings.
-_Avoid_: Trait prefix, plugin tag, custom attribute scope
-
-
 **Actor**:
-The principal on whose behalf an Action is performed, supplied to Policies for authorization decisions; resolved from an incoming request by the Actor Resolver.
+The principal that requests an action.
+The actor resolver provides the actor to policies for authorization checks.
 _Avoid_: User, session, caller
 
-
 **Actor Resolver**:
-The built-in port present in every generated backend that resolves an incoming request into a verified Actor before any Policy evaluates; its adapter is selected via the Build Profile's authn setting, defaulting to the trusted-headers dev adapter.
+A built-in port that extracts an actor from an incoming request.
+The build profile selects the adapter for the actor resolver.
 _Avoid_: Auth middleware, session filter, identity provider
 
 **Conflict**:
-A built-in domain error indicating that a concurrent mutation has rendered the target Entity state stale due to an Entity Version mismatch (mapped to HTTP 409).
+A built-in domain error that maps to HTTP 409.
+The error occurs when a concurrent update causes an entity version mismatch.
 _Avoid_: Race condition, concurrency error, stale data, mismatch
 
 **Error Posture**:
-Whether a declared error's message is caller-facing text (`business`) or an internal diagnostic (`technical`), resolved by the compiler from the error's kind unless the declaration states one; a generated transport logs and masks a technical message rather than returning it to a caller.
+The visibility of an error message.
+A `business` error shows text to the caller.
+A `technical` error hides text from the caller and logs details on the server.
 _Avoid_: Severity, error level, log level, visibility
 
 **Standard Error Vocabulary**:
-The compiler-owned table mapping each built-in error kind to its default HTTP status and posture and reserving each kind's name, so a kind's treatment is decided once by the compiler instead of re-derived by every emitter.
+A compiler table that maps built-in error kinds to default HTTP status codes and postures.
+The vocabulary also reserves error kind names.
 _Avoid_: Error enum, status map, error registry, error taxonomy
 
 **Keyset Cursor**:
-An opaque, deterministic pagination token representing the unique ordering key of the first or last item in a paginated read, used to navigate forward (`next_cursor`) or backward (`prev_cursor`) without offset scanning.
+A deterministic pagination token that holds the unique key of a boundary item.
+Callers use the cursor to navigate pages without database offset scans.
 _Avoid_: Page number, offset, seek token, continuation token
 
-
 **Slot**:
-A strongly-typed contract declared in a Blueprint for custom logic that cannot be expressed in an Action Pipeline, emitted as a native interface or trait in the target language for the developer to implement in handwritten files.
+A typed contract in a blueprint for custom logic outside an action pipeline.
+The compiler emits a slot as an interface in the target language.
+The developer writes the slot implementation by hand.
 _Avoid_: Escape hatch, hook, callback, protected region
 
 **Trait**:
-A tactical operational rule attached to a Blueprint element (such as idempotency, caching, retry policy, or transactional outbox) that specifies runtime behavior without dictating structural folder or layer layout.
-_Avoid_: Annotation, decorator, pattern directive
+A metadata annotation prefixed with `@` on an entity, field, action, or slot method.
+Traits control storage mapping, transport exposure, concurrency, and transactions.
+_Avoid_: Decorator, annotation, tag, attribute, directive
+
+**Trait Namespace**:
+A prefix before a colon in a trait name (such as `@acme:cached`).
+A trait namespace assigns trait ownership to external tools or plugins.
+The compiler passes namespaced traits through without validation checks.
+_Avoid_: Trait prefix, plugin tag, custom attribute scope
 
 **Build Profile**:
-The project-level configuration that binds a set of Blueprints to one or more compilation targets, defining the structural architecture pattern, target language, and infrastructure adapters.
+A configuration file (`foundation.build.yaml`) that binds blueprints to compilation targets.
+The build profile sets the architecture pattern, target language, and infrastructure adapters.
 _Avoid_: Compiler config, target settings, manifest
 
 **Semantic IR**:
-The language-agnostic and architecture-agnostic intermediate representation of validated domain concepts (entities, policies, action pipelines, slots, and traits) produced by parsing Blueprints.
+An intermediate data structure that represents validated domain concepts.
+The Semantic IR does not depend on target languages or architectures.
 _Avoid_: AST, domain graph
 
 **Architecture IR**:
-The lowered intermediate representation produced by applying a structural architecture pattern (such as Hexagonal, Layered CRUD, or Clean Architecture) to the Semantic IR before emitting target language code.
+An intermediate data structure produced by applying an architecture pattern to the Semantic IR.
+The compiler uses the Architecture IR to emit target code.
 _Avoid_: Codegen tree, file template tree
 
 **Field Kind**:
-The compiler-validated classification of a type-bearing position's value type — a scalar, an enum, a declared reference, or a built-in — carried by the Semantic IR so an Emitter maps types as a total function instead of guessing from an open type string.
+The verified category of a field value type.
+Field kinds include scalars, enums, declared references, and built-in types.
 _Avoid_: Field type, type tag, data type
 
 **Emitter**:
-A target-specific backend module that translates the Architecture IR into deterministic, formatted source files for a concrete language or infrastructure stack (such as Go, TypeScript, or PostgreSQL DDL).
+A backend compiler module.
+The emitter translates Architecture IR into source files for a specific target stack.
 _Avoid_: Transpiler, generator, printer
 
 **External Generator Plugin**:
-An executable binary (`foundation-gen-<target>`) invoked by the compiler over standard I/O that consumes a serialized `GenerationRequest` and returns a `GenerationResponse` containing generated file paths and contents.
+An executable program (`foundation-gen-<target>`) that the compiler runs through standard input and output.
+The program receives a generation request and returns generated files.
 _Avoid_: Template engine, custom script, codegen hook
 
 **Generation Protocol**:
-The standardized JSON schema contract governing wire communication between the Foundation compiler and external generator plugins over standard I/O.
+The JSON contract for communication between the compiler and generator plugins over standard input and output.
 _Avoid_: Plugin API, RPC protocol
 
 **Generator Pipeline**:
-An ordered sequence of External Generator Plugins invoked over standard I/O that iteratively transforms, augments, or replaces an in-memory virtual file tree before disk reconciliation.
+An ordered sequence of generator plugins.
+The pipeline transforms the virtual file tree before the compiler writes files to disk.
 _Avoid_: Plugin chain, codegen pipeline, filter pipe
 
 **Scaffolding Pre-population**:
-The compiler capability that pre-populates a GenerationRequest's virtual file tree with built-in emitter files (`scaffold: builtin`) before invoking external plugins, enabling partial overrides (such as Rich DDD or custom middleware) without rewriting complete backends.
+A compiler feature that fills the virtual file tree with built-in emitter files before plugins run.
+Plugins can override specific files without regenerating the full backend.
 _Avoid_: Template priming, base generation
 
 **SDK Client**:
-A strongly-typed, zero-boilerplate client package emitted directly from a Blueprint's exposed Actions, Value types, and Error contracts for consumption by external services or frontends.
+A typed client package generated from actions, values, and errors.
+External services and frontends use the SDK client to call the backend.
 _Avoid_: API wrapper, frontend stub
 
 **Scenario**:
-A declarative domain test block authored in a Blueprint (`given` state/slot behavior, `when` Action invoked, `expect` result/error/events) that compiles into executable native unit tests across every target stack.
+A declarative test block in a blueprint with `given`, `when`, and `expect` clauses.
+The compiler compiles scenarios into native unit tests.
 _Avoid_: Test case, spec test
 
 **Generation Manifest**:
-The deterministic registry (`.foundation-manifest.json`) tracking the exact file paths and content hashes emitted by the compiler, enabling full-project architectural scaffolding and stale-file pruning without touching handwritten Slot files.
+A record file (`.foundation-manifest.json`) that tracks emitted files and content hashes.
+The compiler uses the manifest to clean obsolete files without touching handwritten slot code.
 _Avoid_: Build cache, file list
 
 **Slot Stub**:
-A create-if-missing implementation file emitted once for a newly declared Slot (and excluded from the Generation Manifest) so the generated project compiles immediately while awaiting the developer's handwritten logic.
+A template file generated once for a new slot.
+The developer adds custom logic to this file.
+The compiler never overwrites an existing slot stub.
 _Avoid_: Boilerplate file, placeholder
 
 **Contract Test**:
-A compiler-emitted native test suite that executes against a developer's handwritten Slot implementation to verify that it satisfies the Blueprint's input/output invariants and error semantics.
+A generated test suite that runs against a handwritten slot implementation.
+The test confirms that the implementation satisfies blueprint invariants.
 _Avoid_: Integration test, manual unit test
 
 **Pessimistic Row Lock**:
-A transactional database row lock (`SELECT ... FOR UPDATE` in PostgreSQL, fine-grained mutex in memory) acquired during an Action Pipeline query via `@lock(exclusive)` to serialize concurrent mutations on high-contention domain resources without triggering Optimistic Concurrency Control conflict aborts.
+A database row lock (`SELECT ... FOR UPDATE`) requested with `@lock(exclusive)`.
+The lock prevents concurrent mutations on high-contention resources.
 _Avoid_: Table lock, spinlock, advisory lock
 
 **Worker**:
-A scheduled background process declared in a Blueprint that polls and processes persistent domain state at fixed intervals using transactional row locking (`FOR UPDATE SKIP LOCKED`), ensuring safe multi-replica execution without distributed leader election.
+A background process declared in a blueprint.
+The worker reads domain state at scheduled intervals with row locks (`FOR UPDATE SKIP LOCKED`).
 _Avoid_: Cron job, ticker loop, daemon thread
 
 **Server-Sent Events Stream**:
-An HTTP streaming response (`text/event-stream`) emitted for real-time query Actions that continuously pushes domain Events to clients with deterministic offset resumption via `Last-Event-ID`.
+An HTTP streaming response (`text/event-stream`) for real-time actions.
+The stream pushes events to clients and supports offset resumption through `Last-Event-ID`.
 _Avoid_: WebSocket channel, long polling, socket connection
 
 **Language Server**:
-The in-tree Language Server Protocol implementation (`foundation lsp`) that serves live diagnostics, hover, completion, and go-to-definition for Blueprints by running the same compiler as `foundation check` over standard I/O.
+The language server protocol service (`foundation lsp`).
+The server provides diagnostics, hover documentation, completion, and definition lookups to editors.
 _Avoid_: IDE plugin, editor extension, autocomplete daemon
 
 **Symbol Index**:
-The workspace-wide declaration index built and memoized by the Language Server, resolving Blueprints' declarations across files so hover and go-to-definition work on symbols declared outside the current document.
+A workspace index that tracks all blueprint declarations across files.
+The language server uses the symbol index to resolve cross-file references.
 _Avoid_: AST cache, symbol table dump
-
-
-
-
-
-

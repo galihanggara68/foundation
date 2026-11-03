@@ -1,10 +1,10 @@
-# Slots & Handwritten Boundaries
+# Slots and Handwritten Boundaries
 
-The Foundation architecture is built around the **90/10 Rule**:
-- **90% Generated**: Domain entities, CRUD pipelines, input validation, HTTP transport, database migrations, authentication guards, and durability traits are declared in `.fdn` blueprints and generated deterministically.
-- **10% Handcrafted**: External APIs (Stripe, Twilio), proprietary math or ML models, and custom hardware/legacy protocols live in handwritten code.
+The Foundation architecture uses the **90/10 Rule**:
+- **90 Percent Generated**: Domain entities, CRUD pipelines, input validation, HTTP transport, database migrations, authentication guards, and durability traits.
+- **10 Percent Handcrafted**: External APIs (Stripe, Twilio), proprietary algorithms, and custom hardware protocols.
 
-The boundary between generated code and handcrafted logic is defined declaratively by **Slots**.
+**Slots** define the boundary between generated code and handcrafted logic.
 
 ---
 
@@ -41,9 +41,9 @@ action Checkout(req: CheckoutRequest) -> CheckoutResponse
 
 ---
 
-## 2. The `@external` Attribute & Transaction Safety
+## 2. The `@external` Attribute and Transaction Safety
 
-When a slot interacts with a third-party service, external database, or network endpoint, it should be annotated with `@external`:
+When a slot interacts with a third-party service, external database, or network endpoint, annotate methods with `@external`:
 
 ```fdn
 slot EmailService {
@@ -52,24 +52,28 @@ slot EmailService {
 ```
 
 ### Architectural Guardrails
-1. **Network Latency & Connection Pooling**: Calling slow network operations inside a database transaction (`@transactional`) holds connection pool slots open, leading to starvation under load.
-2. **Compiler Diagnostics**: The Foundation compiler checks action call graphs. If an `@external` slot is called inside a `@transactional` block, the compiler warns or enforces compensation strategies (such as publishing an event via `@outbox` and handling the external call in an asynchronous worker).
+
+1. **Network Latency and Connection Pools**: Slow network calls inside a database transaction (`@transactional`) hold database connections open. This pattern exhausts connection pools under load.
+2. **Compiler Diagnostics**: The Foundation compiler checks action call graphs. If an action calls an `@external` slot inside `@transactional`, the compiler warns or enforces compensation strategies (such as publishing an event through `@outbox`).
 
 ---
 
 ## 3. Non-Destructive Starter Stubs
 
-When `foundation build` encounters a newly declared slot, it generates a starter stub:
+When `foundation build` encounters a newly declared slot, the compiler generates a starter stub:
 
 - **Go Target**: `internal/slots/payment_gateway.go`
 - **TypeScript Target**: `src/slots/payment_gateway.ts`
 
 ### Manifest Protection
-Foundation manages generated files using a build manifest (`.foundation.manifest.json`). 
-- Generated files (repositories, routers, models) are tracked with cryptographic hashes and regenerated on every build.
-- **Slot implementations are explicitly excluded from the manifest.** Once generated, your custom slot implementation is never overwritten, wiped, or modified by subsequent runs of `foundation build`.
+
+Foundation manages generated files with a build manifest (`.foundation-manifest.json`).
+- The compiler tracks generated files (repositories, routers, models) with cryptographic hashes.
+- The compiler regenerates tracked files on every build.
+- **The manifest excludes slot implementations.** Once generated, builds never overwrite or delete custom slot files.
 
 ### Example Generated Go Stub
+
 ```go
 package slots
 
@@ -98,9 +102,9 @@ func (s *PaymentGatewayImpl) Charge(ctx context.Context, token string, amount in
 
 ---
 
-## 4. Dependency Injection & Wire-up
+## 4. Dependency Injection and Wiring
 
-The generated application entrypoint (`cmd/server/main.go` or `src/server.ts`) instantiates slots and passes them into the dependency injection container:
+The generated application entrypoint (`cmd/server/main.go` or `src/server.ts`) instantiates slots and passes them to the container:
 
 ```go
 func main() {
@@ -123,8 +127,8 @@ func main() {
 
 ## 5. Automated Slot Mocks for Testing
 
-For hermetic testing, Foundation automatically generates mock implementations for every slot in `test/mocks/`:
+Foundation generates mock implementations for every slot in `test/mocks/`:
 
-- **Go**: Generated `MockPaymentGateway` with struct methods to record invocations or stub returns.
-- **TypeScript**: Jest/Vitest compatible mock objects.
-- **Scenario Testing**: Used automatically by `foundation test` to run blueprint scenarios without live network access.
+- **Go**: The compiler generates `MockPaymentGateway` to record calls or stub return values.
+- **TypeScript**: The compiler generates mock objects compatible with Jest and Vitest.
+- **Scenario Testing**: The test runner uses mocks automatically to run blueprint scenarios without network access.

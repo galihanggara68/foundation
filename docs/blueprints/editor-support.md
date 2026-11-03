@@ -1,26 +1,30 @@
-# Editor Support & Language Server
+# Editor Support and Language Server
 
-Foundation ships an **in-tree language server** so `.fdn` Blueprints are first-class in any editor that speaks the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/). It runs offline, uses the same compiler as `foundation check`, and needs no separate build or daemon.
+Foundation includes an **in-tree language server**.
+This server supports editors that implement the [Language Server Protocol](https://microsoft.github.io/language-server-protocol/).
+The server runs offline, uses the compiler core, and requires no external daemon.
 
 ---
 
 ## Editor Integrations
 
-Official editor integrations live in sibling repositories and are under active development:
+Sibling repositories provide official editor integrations:
 
-| Project | Editor / Use | What it adds |
+| Project | Editor or Tool | Provided Features |
 | :--- | :--- | :--- |
-| [`tree-sitter-foundation`](https://github.com/galihanggara68/tree-sitter-foundation) | Tree-sitter grammar for **Zed**, **Neovim**, and **Helix** | The `.fdn` grammar plus highlights, indents, brackets, and code-folding queries. |
-| [`foundation-zed`](https://github.com/galihanggara68/foundation-zed) | [Zed](https://zed.dev) | Tree-sitter highlighting, block folding and indentation, and auto-discovery of the `foundation` CLI to launch `foundation lsp`. |
-| [`foundation-vscode`](https://github.com/galihanggara68/foundation-vscode) | VS Code / Open VSX | TextMate syntax highlighting, `foundation lsp` diagnostics and hover, and `entity` / `action` / `scenario` snippets. |
+| [`tree-sitter-foundation`](https://github.com/galihanggara68/tree-sitter-foundation) | Tree-sitter grammar for **Zed**, **Neovim**, and **Helix** | Blueprint grammar with syntax highlights, indentation, brackets, and code folding. |
+| [`foundation-zed`](https://github.com/galihanggara68/foundation-zed) | [Zed](https://zed.dev) | Tree-sitter highlighting, block folding, indentation, and automatic discovery of `foundation lsp`. |
+| [`foundation-vscode`](https://github.com/galihanggara68/foundation-vscode) | VS Code and Open VSX | Syntax highlighting, compiler diagnostics, hover help, and declaration snippets. |
 
-Every client launches the same `foundation lsp` server; the integrations differ only in how they locate the binary and render syntax. See each repository's README for installation and configuration.
+Every client launches the same `foundation lsp` server.
+The integrations differ only in how they discover the binary and render syntax.
+Read the README file in each repository for installation instructions.
 
 ---
 
 ## Launching the Server
 
-The server is a subcommand of the CLI and communicates over **stdio** using LSP 3.17:
+The language server is a CLI subcommand and communicates over **standard I/O** using LSP 3.17:
 
 ```bash
 foundation lsp [--dir <path>] [--debug]
@@ -29,11 +33,15 @@ foundation lsp [--dir <path>] [--debug]
 | Flag | Description |
 | :--- | :--- |
 | `--dir <path>` | Workspace directory to resolve relative to (defaults to `.`). |
-| `--debug` | Reserved for verbose diagnostic tracing. |
+| `--debug` | Enables verbose diagnostic tracing. |
 
-An editor client launches `foundation` with the argument `lsp` as a stdio server and then exchanges JSON-RPC frames with it. The workspace roots come from the client's `initialize` request (`rootUri` and any `workspaceFolders`), so the server indexes whatever folders the editor has open.
+An editor client launches `foundation lsp` as a background server process and exchanges JSON-RPC messages.
+The server receives workspace roots from the client `initialize` request (`rootUri` and `workspaceFolders`).
+The server then indexes files in all open folders.
 
-The integrations discover `foundation` on your `$PATH` by default and let you point at a specific binary when it lives elsewhere (for example, a project-local `bin/foundation`). When a client sets an explicit binary path, it must also pass the `lsp` argument — the server is a subcommand, not the default entry point.
+Integrations discover `foundation` on your `$PATH` by default.
+You can configure a direct path to a project binary (for example `bin/foundation`).
+When you configure an explicit path, you must include the `lsp` argument.
 
 ---
 
@@ -41,50 +49,55 @@ The integrations discover `foundation` on your `$PATH` by default and let you po
 
 | Capability | Supported | Notes |
 | :--- | :---: | :--- |
-| Live diagnostics | ✅ | Compiler error/warning/information diagnostics published on open, change, and save. |
-| Hover | ✅ | DSL catalog documentation and workspace-declared symbols with inferred types. |
-| Completion | ✅ | Keywords, scalar types, traits, and struct members, with snippet tab stops. |
-| Go-to-definition | ✅ | Resolves declarations across files. |
-| Formatting / Rename / Code actions | ❌ | Not implemented; unknown requests are answered with `method not found`. |
+| Live diagnostics | Yes | The server publishes diagnostics when you open, edit, and save files. |
+| Hover | Yes | Shows DSL catalog documentation and symbol types. |
+| Completion | Yes | Suggests keywords, scalar types, traits, and struct members with snippet tab stops. |
+| Go-to-definition | Yes | Resolves declarations across all workspace files. |
+| Formatting / Rename / Code actions | No | The server does not implement these capabilities. Unknown requests return `method not found`. |
 
 ### Diagnostics
 
-Every open, edit, and save re-compiles the workspace and publishes diagnostics for each affected `.fdn` document, so errors from one file surface even while you are editing another. Diagnostics map to the same codes, severities, and spans that `foundation check` reports on the command line.
+When you open, edit, or save a document, the server recompiles the workspace.
+The server publishes diagnostics for each affected `.fdn` document.
+Diagnostics show the same codes, severities, and source spans as `foundation check`.
 
 ### Hover
 
-Hover resolves in two layers:
+Hover resolves documentation in two layers:
 
-1. **DSL catalog** — documentation for constructs (`entity`, `action`, `slot`, `policy`, …), pipeline steps (`query`, `validate`, `require`, `emit`), scalar types (`uuid`, `decimal`, `timestamp`, …), scenario clauses (`given`, `when`, `expect`), and traits (`@version`, `@table`, `@lock`, …).
-2. **Workspace symbols** — declarations found in the indexed Blueprints, rendered with their kind, source line, and inferred type.
+1. **DSL catalog**: Explains constructs (`entity`, `action`, `slot`, `policy`), steps (`query`, `guard`, `require`, `emit`), scalar types (`uuid`, `decimal`, `timestamp`), scenario clauses (`given`, `when`, `expect`), and traits (`@version`, `@table`, `@index`).
+2. **Workspace symbols**: Displays declarations found in indexed blueprints with kind, source line, and inferred type.
 
-Local bindings are type-inferred: `let` and `for` variables report entity types (including `[]T` for `query many`), slot method return types, action return types, and struct field types reached through expressions, with types propagated to later bindings in the same scope.
+The server infers types for local variables.
+Variables in `let` and `for` blocks report entity types, slot return types, and action return types.
+The server propagates types to later bindings in the same scope.
 
 ### Completion
 
-Completions are context-aware, with trigger characters `@`, `:`, and `.`:
+Completions are context-aware and use trigger characters `@`, `:`, and `.`:
 
-- After `@`, trait completions.
-- In a type position (after `:`), scalar type completions.
-- After `value.`, **member completion** — the fields of the receiver's struct type. When a declaration is mid-edit the parser can discard it, so the server falls back to scanning the visible source text for the receiver's type.
-- Otherwise, the keyword catalog plus scalar types and traits.
+- After `@`, the server suggests trait completions.
+- After `:`, the server suggests scalar type completions.
+- After `.`, the server suggests member completions for receiver struct fields. When editing incomplete declarations, the server falls back to scanning visible source text.
+- In general positions, the server suggests keywords, scalar types, and traits.
 
-Items that carry an insertion template declare `insertTextFormat: Snippet`, so clients expand `${1:placeholder}` tab stops rather than inserting the literal text.
+Items with insertion templates declare `insertTextFormat: Snippet`.
+Editor clients expand `${1:placeholder}` tab stops instead of inserting literal text.
 
 ### Go-to-Definition
 
-Definition resolves entities, values, enums, events, errors, policies, slots, and their fields/parameters/methods, actions separated from scenarios, and `let`/`for` locals — across every indexed file, not just the current one.
+Go-to-definition resolves entities, values, enums, events, errors, policies, slots, actions, and local variables across all indexed files.
 
 ---
 
-## How the Workspace is Indexed
+## How the Server Indexes the Workspace
 
-- The server walks each workspace root for `*.fdn` sources, skipping hidden directories and dependency/build directories (`node_modules`, `vendor`, `dist`, `build`, `out`, `target`, `tmp`, `coverage`). On large repositories this keeps a scan from walking the installed dependency tree.
-- Gathered sources and per-document symbol indexes are **memoized**. Repeated hover, definition, and member-completion requests reuse the cache, and an edit invalidates only the changed document's index.
+- The server searches workspace root directories for `*.fdn` files. The search ignores hidden directories and dependency folders (`node_modules`, `vendor`, `dist`, `build`, `out`, `target`, `tmp`, `coverage`).
+- The server caches parsed sources and document symbol indexes. Repeated requests reuse cached indexes. Editing a file invalidates only that file's index.
 
 ---
 
 ## Related Documentation
 
-- [Declarations & Grammar](./declarations.md): the constructs and steps the server offers documentation and completions for.
-- [Build Profile & Configuration](./build-profile.md): the CLI surface, including `foundation check` whose diagnostics the server mirrors.
+- [Declarations and Grammar](./declarations.md): Reference for constructs and steps documented by hover and completion.
+- [Build Profile and Configuration](./build-profile.md): Reference for the CLI and `foundation check`.

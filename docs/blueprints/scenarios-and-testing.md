@@ -1,12 +1,14 @@
-# Declarative Scenarios & Testing
+# Declarative Scenarios and Testing
 
-Foundation allows you to write executable specification tests directly within your `.fdn` blueprints using `scenario` blocks. These scenarios compile into native Go (`go test`) or TypeScript test suites that execute 100% offline with zero external dependencies.
+You can write executable test specifications in `.fdn` blueprints with `scenario` blocks.
+These scenarios compile into native Go or TypeScript test suites.
+Scenarios run offline without external dependencies.
 
 ---
 
 ## 1. The Anatomy of a `scenario`
 
-A scenario is composed of three structured phases: **Given**, **When**, and **Expect**:
+A scenario contains three structured phases: **Given**, **When**, and **Expect**:
 
 ```fdn
 scenario SuccessfulMoneyTransfer {
@@ -31,9 +33,9 @@ scenario SuccessfulMoneyTransfer {
 
 ---
 
-## 2. Testing Failure Paths & Errors
+## 2. Testing Failure Paths and Errors
 
-Scenarios can verify that pipelines abort correctly and return expected domain errors:
+Scenarios can confirm that pipelines abort correctly and return expected domain errors:
 
 ```fdn
 scenario TransferFailsWhenBalanceIsInsufficient {
@@ -61,21 +63,21 @@ scenario TransferFailsWhenBalanceIsInsufficient {
 
 ## 3. Scenario Assertions Reference
 
-| Keyword / Pattern | Phase | Description |
+| Keyword or Pattern | Phase | Description |
 |---|---|---|
 | `EntityName(...)` | `given` | Seeds an initial record into the test database. |
 | `ActionName(args...)` | `when` | Dispatches an action with specified arguments. |
 | `EventName(payload...)` | `when` | Dispatches an asynchronous event to trigger an event handler. |
-| `EntityName(expected...)` | `expect` | Asserts that an entity record matches the expected field values. |
-| `fail ErrorName` | `expect` | Asserts that the action failed with the designated error. |
-| `emitted EventName(...)` | `expect` | Asserts that a domain event was published to the outbox/bus. |
-| `result == Value` | `expect` | Asserts the returned value of the action. |
+| `EntityName(expected...)` | `expect` | Asserts that an entity record matches expected field values. |
+| `fail ErrorName` | `expect` | Asserts that the action returned the specified error. |
+| `emitted EventName(...)` | `expect` | Asserts that the action emitted a domain event. |
+| `result == Value` | `expect` | Asserts the return value of the action. |
 
 ---
 
 ## 4. Slot Mocking in Scenarios
 
-When an action interacts with a `slot`, scenarios use generated test doubles:
+When an action calls a `slot`, scenarios use generated test doubles:
 
 ```fdn
 slot FraudDetection {
@@ -100,21 +102,22 @@ scenario HighRiskTransferBlocked {
 
 ---
 
-## 5. Offline & Hermetic Execution
+## 5. Offline and Hermetic Execution
 
-Scenarios compile into standard idiomatic test code in your target language:
+Scenarios compile into standard test code in your target language:
 
 ```bash
-# Run blueprint scenario tests via the Foundation CLI
+# Run blueprint scenario tests through Foundation CLI
 foundation test
 
-# Or run directly via native tooling
+# Or run directly with native tooling
 go test -v ./test/scenarios/...
 # In TypeScript:
 npm test
 ```
 
 ### Key Guarantees
-- **Hermeticity**: Tests require no internet connection, external microservices, or external third-party API credentials.
-- **In-Memory Storage**: Tests automatically execute against an ephemeral in-memory SQLite or mock repository instance unless configured to run against a test PostgreSQL container.
-- **Fast Execution**: Entire scenario suites execute in milliseconds.
+
+- **Hermeticity**: Tests require no network connection, external microservices, or third-party API keys.
+- **In-Memory Storage**: Tests run against an ephemeral in-memory repository unless configured to use a PostgreSQL container.
+- **Fast Runs**: Full scenario suites run in milliseconds.

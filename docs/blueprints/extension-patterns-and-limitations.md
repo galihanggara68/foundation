@@ -1,16 +1,16 @@
-# Extension Patterns, Architectural Seams & Platform Boundaries
+# Extension Patterns, Architectural Seams, and Platform Boundaries
 
-Foundation is designed around deterministic code compilation following the **90/10 Rule**:
-- **90% Generated Core**: Domain models, relational schemas, optimistic concurrency control, deterministic action pipelines, input validation, HTTP routing, and port interfaces.
-- **10% Handcrafted Seam**: Proprietary business calculations, custom database drivers, complex SQL joins, third-party APIs, and authentication issuance.
+Foundation uses deterministic code compilation based on the **90/10 Rule**:
+- **90 Percent Generated Core**: Domain models, relational schemas, optimistic concurrency control, deterministic action pipelines, input validation, HTTP routing, and port interfaces.
+- **10 Percent Handcrafted Seam**: Custom business calculations, custom database drivers, complex SQL joins, third-party APIs, and authentication issuance.
 
-This document serves as a practical, cookbook-style reference for real-world backend engineering requirements that fall along Foundation's architectural seams or current platform boundaries.
+This document provides solutions for real-world backend requirements that touch Foundation seams or platform boundaries.
 
 ---
 
 ## Architectural Seam Overview
 
-Foundation lowers blueprints into **Hexagonal Architecture** (Ports and Adapters):
+Foundation compiles blueprints into **Hexagonal Architecture** (Ports and Adapters):
 
 ```
        ┌────────────────────────────────────────────────────────┐
@@ -32,19 +32,25 @@ Foundation lowers blueprints into **Hexagonal Architecture** (Ports and Adapters
        └────────────────────────────────────────────────────────┘
 ```
 
-Because ports are pure Go interfaces emitted in `internal/domain`, the boundary between generated and handwritten code is clean, testable, and swappable without modifying the compiler.
+Generated code defines ports as Go interfaces in `internal/domain`.
+The boundary between generated and handwritten code remains clean, testable, and swappable.
 
 ---
 
-## 1. Join Tables & Relational Aggregates
+## 1. Join Tables and Relational Aggregates
 
 ### The Boundary
-Foundation maps each `entity` 1:1 to a database table and repository interface. There is no SQL `JOIN` keyword or relational association syntax (`hasMany`, `belongsToMany`) in the `.fdn` grammar.
+
+Foundation maps each `entity` to one database table and one repository interface.
+The `.fdn` grammar does not include SQL `JOIN` keywords or relational association syntax (`hasMany`, `belongsToMany`).
 
 ### Extension Patterns
 
 #### Pattern A: Embedded Value Objects (JSONB)
-When child records belong exclusively to an Aggregate Root and do not require foreign keys from other tables (e.g., line items in an order, metadata tags, address blocks):
+
+Use this pattern when child records belong exclusively to an Aggregate Root.
+Child records must not need foreign keys from other tables.
+Examples include order line items, metadata tags, and address blocks:
 
 ```fdn
 value OrderItem {
@@ -62,10 +68,12 @@ entity Order {
 }
 ```
 
-*Mechanism*: The PostgreSQL adapter serializes `list<OrderItem>` into a native `JSONB` column. The entire aggregate is loaded and persisted atomically in a single query.
+*Mechanism*: The PostgreSQL adapter serializes `list<OrderItem>` into a native `JSONB` column.
+A single query loads and saves the aggregate atomically.
 
 #### Pattern B: Multi-Query Action Pipelines (Normalized Entities)
-When child entities require their own lifecycle, independent querying, or database foreign keys:
+
+Use this pattern when child entities require independent lifecycles, queries, or foreign keys:
 
 ```fdn
 entity Order {
@@ -88,10 +96,12 @@ action GetOrderDetails(id: uuid) -> OrderDetailsView {
 }
 ```
 
-*Mechanism*: The generated use case executes two indexed SQL queries (`SELECT ... FROM orders WHERE id = $1` and `SELECT ... FROM order_items WHERE order_id = $1`). Both queries participate in the active transaction context (`connFromContext`).
+*Mechanism*: The generated use case runs two indexed SQL queries (`SELECT ... FROM orders WHERE id = $1` and `SELECT ... FROM order_items WHERE order_id = $1`).
+Both queries participate in the active transaction context (`connFromContext`).
 
-#### Pattern C: CQRS Read-Model Query Slots (True SQL JOIN)
-For complex reporting, multi-table joins, aggregations (`COUNT`, `SUM`), or analytical views:
+#### Pattern C: CQRS Read-Model Query Slots (True SQL Joins)
+
+Use this pattern for reporting, multi-table joins, aggregations (`COUNT`, `SUM`), and analytical views:
 
 ```fdn
 value OrderSummaryView {
@@ -112,6 +122,7 @@ action GetOrderSummary(id: uuid) -> OrderSummaryView {
 ```
 
 *Handwritten Implementation (`internal/adapters/postgres/order_query_service.go`)*:
+
 ```go
 package postgres
 
@@ -154,15 +165,20 @@ func (s *OrderQueryServiceAdapter) GetOrderSummary(ctx context.Context, id strin
 
 ---
 
-## 2. Custom UUIDs & Swapping Repository Adapters
+## 2. Custom UUIDs and Swapping Repository Adapters
 
 ### The Boundary
-Foundation emits `uuid` fields as Go `string`s in `internal/domain` to prevent third-party library lock-in. Default repository adapters use standard library `database/sql`.
+
+Foundation emits `uuid` fields as Go `string` values in `internal/domain`.
+This design prevents third-party library lock-in.
+Default repository adapters use standard library `database/sql`.
 
 ### Extension Patterns
 
 #### Swapping to `pgx` or `gorm`
-Because all use cases depend on the repository interfaces in `internal/domain`, you can replace the generated `internal/adapters/postgres` adapter with a custom implementation without changing generated use cases or domain models:
+
+Generated use cases depend only on repository interfaces in `internal/domain`.
+You can replace the default adapter with a custom implementation without changing use cases:
 
 1. **Write the Custom Adapter**:
    ```go
@@ -183,7 +199,6 @@ Because all use cases depend on the repository interfaces in `internal/domain`, 
    }
 
    func (r *ProductRepository) FindByID(ctx context.Context, id string) (*domain.Product, error) {
-   	// High-performance binary pgx scanning
    	var p domain.Product
    	err := r.pool.QueryRow(ctx, "SELECT id, title, price, version FROM products WHERE id = $1", id).
    		Scan(&p.ID, &p.Title, &p.Price, &p.Version)
@@ -192,41 +207,42 @@ Because all use cases depend on the repository interfaces in `internal/domain`, 
    	}
    	return &p, nil
    }
-   // Implement Save, Delete, FindMany...
    ```
 
-2. **Wire in `cmd/app/main.go`**:
+2. **Wire the Custom Adapter in `cmd/app/main.go`**:
    ```go
-   // Instantiate custom pgx pool
    pool, _ := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
-   
-   // Inject custom adapter into generated use cases
    productRepo := pgxadapter.NewProductRepository(pool)
    listProductsUC := usecases.NewListProductsUseCase(productRepo)
    ```
 
 #### ID Generation Strategies
+
 - **Client-Provided**: The caller passes `id` in the input payload.
 - **Database-Generated**: Configure `DEFAULT gen_random_uuid()` on PostgreSQL primary keys.
-- **Slot Generator**:
-  ```fdn
-  slot IDGenerator {
-    newID() -> uuid
-  }
-  ```
-  Implement the slot with `github.com/google/uuid`, `oklog/ulid`, or Snowflake IDs.
+- **Slot Generator**: Declare a slot and implement it with `google/uuid`, ULID, or Snowflake identifiers.
+
+```fdn
+slot IDGenerator {
+  newID() -> uuid
+}
+```
 
 ---
 
-## 3. Custom HTTP Headers & Context Enrichment
+## 3. Custom HTTP Headers and Context Enrichment
 
 ### The Boundary
-Foundation's HTTP transport maps route paths, query strings, and JSON request/response bodies. It does not provide direct DSL syntax for reading or writing arbitrary HTTP headers inside an action pipeline.
+
+Foundation maps route paths, query parameters, and JSON request or response bodies.
+The DSL does not provide syntax to read or write arbitrary HTTP headers inside action pipelines.
 
 ### Extension Patterns
 
-#### Ingress Request Headers via HTTP Middleware
-The generated `httpAdapter.Server` satisfies standard `net/http.Handler`. Wrap it with custom Go middleware in `cmd/app/main.go`:
+#### Ingress Request Headers through HTTP Middleware
+
+The generated `httpAdapter.Server` implements `net/http.Handler`.
+Wrap the server with custom HTTP middleware in `cmd/app/main.go`:
 
 ```go
 func CorrelationAndHeaderMiddleware(next http.Handler) http.Handler {
@@ -236,7 +252,7 @@ func CorrelationAndHeaderMiddleware(next http.Handler) http.Handler {
 			reqID = uuid.NewString()
 		}
 		w.Header().Set("X-Request-ID", reqID)
-		
+
 		ctx := context.WithValue(r.Context(), "request_id", reqID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -248,10 +264,11 @@ wrappedHandler := CorrelationAndHeaderMiddleware(httpServer)
 http.ListenAndServe(":8080", wrappedHandler)
 ```
 
-#### Passing Headers into Actions via Actor Claims
-If an Action or Policy requires a header value (e.g. `X-Tenant-ID` or `X-Organization-ID`):
+#### Passing Headers into Actions through Actor Claims
 
-1. **Declare the claim on `actor`**:
+When an action or policy requires header values (for example `X-Tenant-ID`):
+
+1. **Declare the claim on the actor**:
    ```fdn
    actor User {
      id: uuid
@@ -263,7 +280,6 @@ If an Action or Policy requires a header value (e.g. `X-Tenant-ID` or `X-Organiz
    ```go
    func (a *CustomActorResolver) ResolveActor(ctx context.Context, r *http.Request) (domain.Actor, error) {
        tenantID := r.Header.Get("X-Tenant-ID")
-       // Validate bearer token and extract claims...
        return domain.Actor{
            ID: claims.Subject,
            Role: claims.Role,
@@ -271,15 +287,16 @@ If an Action or Policy requires a header value (e.g. `X-Tenant-ID` or `X-Organiz
        }, nil
    }
    ```
-3. **Reference in Policies or Pipelines**:
+3. **Reference the claim in Policies or Pipelines**:
    ```fdn
    policy BelongsToTenant(actor: Actor, order: Order) {
      actor.tenant_id == order.tenant_id
    }
    ```
 
-#### Build-Time Tracing & Header Middleware via Generator Plugins
-Rather than manually wrapping HTTP servers in handwritten code, Foundation's pluggable generator pipeline enables build-time middleware injection:
+#### Tracing and Header Middleware with Generator Plugins
+
+Pluggable generator pipelines support middleware injection at build time:
 
 ```yaml
 targets:
@@ -291,22 +308,25 @@ targets:
       - "foundation-gen-otel"
 ```
 
-The plugin automatically:
-- Emits distributed tracing middleware extracting W3C `traceparent` and `X-Trace-ID` headers.
-- Wraps the generated Chi router so every incoming request creates an OpenTelemetry span context with zero manual wiring.
+The plugin completes these tasks:
+- Emits distributed tracing middleware for W3C `traceparent` and `X-Trace-ID` headers.
+- Wraps the generated Chi router so incoming requests create OpenTelemetry spans.
 - Preserves standard route handling and error mapping.
 
 ---
 
-## 4. Rich Domain Models vs. Action Pipelines (DDD Style)
+## 4. Rich Domain Models versus Action Pipelines (DDD Style)
 
 ### The Boundary
-In classic Domain-Driven Design, Aggregates protect their invariants via stateful methods (`order.Cancel()`, `order.AddItem(item)`). Foundation purposefully lowers behavior into **Action Pipelines** (Application Use Cases) and keeps domain entities as pure data structures.
+
+Domain-Driven Design aggregates protect invariants through methods (such as `order.Cancel()`).
+Foundation places business behavior in action pipelines and keeps entities as plain data structures.
 
 ### Extension Patterns
 
 #### Declarative Invariant Guards
-Encode business invariants directly in the Action Pipeline:
+
+Encode business invariants directly in the action pipeline:
 
 ```fdn
 action CancelOrder(id: uuid, reason: string) -> Order {
@@ -321,8 +341,9 @@ action CancelOrder(id: uuid, reason: string) -> Order {
 }
 ```
 
-#### Complex Domain Services via Slots
-For algorithmic validation or business rules that exceed pipeline expressiveness (e.g., scoring algorithms, complex tax calculations):
+#### Complex Domain Services through Slots
+
+Use slots for complex calculations that exceed pipeline expressions (for example risk scoring or tax calculations):
 
 ```fdn
 slot RiskEngine {
@@ -336,7 +357,9 @@ action TransferFunds(from_id: uuid, to_id: uuid, amount: decimal) -> TransferRes
 ```
 
 #### Non-Generated Domain Methods
-In Go, all files in `internal/domain` share the same package. You can add a handwritten file `internal/domain/order_behavior.go`:
+
+In Go, all files in `internal/domain` share one package.
+You can add a handwritten file such as `internal/domain/order_behavior.go`:
 
 ```go
 package domain
@@ -345,10 +368,12 @@ func (o *Order) CanBeRefunded() bool {
 	return o.Status == "delivered" && o.RefundWindowDays <= 30
 }
 ```
-*Note*: The generated use case will not call this method automatically, but custom Slots or background workers can share this logic.
 
-#### Automated Rich Aggregate Roots via Generator Plugins
-If your domain requires true DDD Aggregate Roots with private invariant constructors, domain validation, and encapsulated mutation methods, use the `foundation-gen-rich-ddd` generator plugin in your build profile:
+Custom slots or background workers can share this logic.
+
+#### Rich Aggregate Roots through Generator Plugins
+
+If your domain requires DDD aggregate roots with private invariant constructors and encapsulated mutation methods, use `foundation-gen-rich-ddd`:
 
 ```yaml
 targets:
@@ -360,25 +385,29 @@ targets:
       - "foundation-gen-rich-ddd"
 ```
 
-When compiled, Foundation:
-1. Emits the standard hexagonal scaffolding in memory (`scaffold: builtin`).
-2. Runs `foundation-gen-rich-ddd` to transform data entities into rich DDD aggregates with:
-   - Invariant constructors (`NewOrder(...)`) enforcing required fields and identifiers.
-   - Validation methods (`Validate() error`).
-   - Encapsulated setter methods (`SetStatus(...)`) that guard business rules.
-3. Automatically writes create-if-missing configuration stubs (`config/ddd.starter.json`) to disk without tracking them in the manifest.
+When you build the project, Foundation completes these steps:
+1. Emits standard hexagonal scaffolding in memory (`scaffold: builtin`).
+2. Runs `foundation-gen-rich-ddd` to transform entities into rich aggregates.
+3. Writes starter configuration files (`config/ddd.starter.json`) to disk without tracking them in the manifest.
 
 ---
 
-## 5. JWT Token Generation & Local Authentication
+## 5. JWT Token Generation and Local Authentication
 
 ### The Boundary
-Foundation's `authn: jwt-oidc` provides an **Ingress Token Verifier**. It expects an incoming `Authorization: Bearer <token>` and resolves an `Actor`. The verifier checks the token's signature against the key set named by `AUTH_JWKS_URL` before reading any claim, so an unsigned or tampered token is rejected with HTTP 401; see [ADR 0017](../adr/0017-jwt-verification-contract.md). Foundation does not generate an Identity Provider or Token Issuer, because enterprise backends typically rely on external IdPs (Keycloak, Auth0, Cognito, Supabase).
+
+The `authn: jwt-oidc` configuration provides an ingress token verifier.
+The verifier inspects incoming `Authorization: Bearer <token>` headers and resolves actors.
+The verifier checks token signatures against `AUTH_JWKS_URL` before reading claims.
+Invalid signatures return HTTP 401 (see [ADR 0017](../adr/0017-jwt-verification-contract.md)).
+Foundation does not generate an Identity Provider or token issuer.
+Production backends usually rely on external identity providers.
 
 ### Extension Patterns
 
-#### Building a Local Login Action via a Crypto Slot
-To issue tokens locally within the Foundation application:
+#### Building a Local Login Action through a Crypto Slot
+
+To issue tokens locally, declare and implement a token slot:
 
 ```fdn
 value AuthToken {
@@ -406,6 +435,7 @@ action Login(email: string, password: string) -> AuthToken {
 ```
 
 *Handwritten Implementation (`internal/adapters/crypto/token_service.go`)*:
+
 ```go
 package crypto
 
@@ -438,42 +468,43 @@ func (s *TokenServiceImpl) GenerateToken(ctx context.Context, userID, role strin
 
 ---
 
-## 6. Schema Migrations & Database Evolution
+## 6. Schema Migrations and Database Evolution
 
 ### The Boundary
-Foundation generates deterministic DDL (`schema.sql`) reflecting the exact state of all declared entities, primary keys, foreign keys, unique constraints, and `@table` overrides. It does not track migration history tables (`schema_migrations`) or generate automated `ALTER TABLE` diffs.
+
+Foundation generates deterministic DDL (`schema.sql`) for declared entities, primary keys, foreign keys, constraints, and tables.
+Foundation does not track migration history tables or generate automatic `ALTER TABLE` diffs.
 
 ### Extension Patterns
 
 #### Pairing with External Migration Runners
-Integrate Foundation with production migration tools (`goose`, `atlas`, or `golang-migrate`):
 
-1. **Initial Baseline**:
-   Use Foundation's `schema.sql` as `migrations/00001_initial_schema.sql`.
+Integrate Foundation with migration tools (`goose`, `atlas`, or `golang-migrate`):
+
+1. **Initial Baseline**: Use `schema.sql` as `migrations/00001_initial_schema.sql`.
 2. **Schema Evolution Workflow**:
-   When updating `.fdn` entities:
-   - Run `foundation build` to inspect the updated `schema.sql`.
-   - Author a sequential migration delta with `goose` or `atlas`:
+   - Run `foundation build` to update `schema.sql`.
+   - Create a sequential migration with `goose` or `atlas`:
      ```bash
      atlas migrate diff add_phone_to_users --to file://dist/schema.sql --dev "docker://postgres/16/dev"
      ```
-   - Execute migrations in your CI/CD deployment pipeline prior to starting the binary.
+   - Run migrations in your CI/CD pipeline before starting the binary.
 
 ---
 
-## Quick Reference: Needs vs. Patterns
+## Quick Reference: Needs versus Patterns
 
-| Developer Need | Architectural Seam / Recommendation |
+| Developer Need | Architectural Seam or Recommendation |
 |---|---|
-| **SQL `JOIN`s / Grouping / Aggregations** | CQRS Read-Model **Slot** (`internal/adapters/postgres`) |
-| **Alternative DB Drivers (`pgx`, `gorm`)** | Implement generated `domain.Repository` port in `internal/adapters/` |
-| **High-Performance UUIDs (`google/uuid`, ULID)** | Kept as `string` at domain boundary; convert in custom adapter or Slot |
-| **Request Headers / Correlation IDs** | Standard Go HTTP middleware or generator plugin (`foundation-gen-otel`) |
-| **Distributed Tracing & Context** | Generator plugin (`foundation-gen-otel`) injecting router tracing middleware |
-| **Rich DDD Aggregate Roots** | Generator plugin (`foundation-gen-rich-ddd`) enforcing invariants |
-| **Custom Language Targets (Python, Rust)** | External generator plugin (`foundation-gen-*`) with `scaffold: none` |
-| **Tenant Isolation via Headers** | Extract in `ActorResolver` adapter; bind to `actor` claims |
-| **Custom Response Headers / Cookies** | HTTP response interceptor middleware |
-| **Token Issuance (`/login`, JWT signing)** | Implement a `TokenService` **Slot** using `bcrypt` and `golang-jwt` |
-| **Schema Migration Lifecycle** | Use generated `schema.sql` with `goose`, `golang-migrate`, or `atlas` |
-| **Complex Domain Calculations** | Domain Service **Slot** called from the Action Pipeline |
+| **SQL joins and aggregations** | CQRS Read-Model **Slot** (`internal/adapters/postgres`) |
+| **Alternative DB drivers (`pgx`, `gorm`)** | Implement generated `domain.Repository` port in `internal/adapters/` |
+| **Custom UUID libraries (ULID, Snowflake)** | Kept as `string` at domain boundary; convert in custom adapter or Slot |
+| **Request headers and correlation IDs** | Standard Go HTTP middleware or generator plugin (`foundation-gen-otel`) |
+| **Distributed tracing** | Generator plugin (`foundation-gen-otel`) injecting router tracing middleware |
+| **Rich DDD aggregate roots** | Generator plugin (`foundation-gen-rich-ddd`) enforcing invariants |
+| **Custom language targets (Python, Rust)** | External generator plugin (`foundation-gen-*`) with `scaffold: none` |
+| **Tenant isolation via headers** | Extract in `ActorResolver` adapter; bind to `actor` claims |
+| **Custom response headers or cookies** | HTTP response interceptor middleware |
+| **Token issuance (`/login`, JWT signing)** | Implement a `TokenService` **Slot** using `bcrypt` and `golang-jwt` |
+| **Schema migration lifecycle** | Use generated `schema.sql` with `goose`, `golang-migrate`, or `atlas` |
+| **Complex domain calculations** | Domain Service **Slot** called from the Action Pipeline |

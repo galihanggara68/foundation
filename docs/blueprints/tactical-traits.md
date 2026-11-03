@@ -1,12 +1,14 @@
-# Tactical Traits & Runtime Durability
+# Tactical Traits and Runtime Durability
 
-Tactical traits in Foundation (`.fdn`) annotate actions and entities with enterprise operational patterns—such as ACID transactions, deduplication, transactional outboxes, retries, and caching—without polluting the pure business logic of your pipelines.
+Tactical traits in Foundation (`.fdn`) annotate actions and entities with operational patterns.
+These patterns include ACID transactions, deduplication, transactional outboxes, retries, and caching.
+Traits keep operational concerns separate from pure business logic.
 
 ---
 
 ## 1. `@transactional`
 
-The `@transactional` trait wraps the entire execution of an action within a database transaction boundary.
+The `@transactional` trait wraps action execution within a database transaction boundary.
 
 ```fdn
 action TransferFunds(req: TransferRequest) -> TransferResponse
@@ -29,16 +31,18 @@ action TransferFunds(req: TransferRequest) -> TransferResponse
 ```
 
 ### Runtime Behavior
-1. **Transaction Lifecycle**: The runtime driver calls `BeginTx(ctx)`. All subsequent repository reads, writes, and outbox event insertions run on that active transaction.
-2. **Commit on Success**: If every pipeline step completes without returning an error, `tx.Commit()` is called before returning the HTTP response.
-3. **Rollback on Error**: If any step returns a failure (e.g., `fail InsufficientFunds` or an unexpected runtime error), `tx.Rollback()` is automatically executed, leaving the database state untouched.
-4. **Boundary Checks**: Calling long-running external API slots (marked with `@external`) inside a `@transactional` block triggers a compiler warning or error to prevent database connection pool exhaustion.
+
+1. **Transaction Lifecycle**: The runtime driver calls `BeginTx(ctx)`. All repository reads, writes, and outbox event insertions run on that active transaction.
+2. **Commit on Success**: If every pipeline step completes without errors, the driver calls `tx.Commit()` before returning the response.
+3. **Rollback on Error**: If any step returns a failure, the driver calls `tx.Rollback()` automatically. The database remains unchanged.
+4. **Boundary Checks**: Calling long-running external API slots (marked with `@external`) inside a `@transactional` block triggers a compiler warning or error. This check prevents database connection pool exhaustion.
 
 ---
 
 ## 2. `@idempotent(key: <expression>)`
 
-The `@idempotent` trait guarantees at-most-once execution for mutating actions by caching results and serializing concurrent duplicate requests using a deterministic key.
+The `@idempotent` trait guarantees at-most-once execution for mutating actions.
+The runtime caches responses and serializes concurrent duplicate requests with a deterministic key.
 
 ```fdn
 action ProcessPayment(req: PaymentRequest) -> PaymentReceipt
@@ -53,21 +57,24 @@ action ProcessPayment(req: PaymentRequest) -> PaymentReceipt
 ```
 
 ### Key Expression
-- The `key:` argument takes an identifier or property access path from the action request parameters (e.g., `req.idempotency_key` or `id`).
-- When an incoming HTTP request is received, the runtime extracts the key value before pipeline execution begins.
 
-### State Transitions & Locking
+- The `key:` argument takes an identifier or property path from action parameters (for example `req.idempotency_key`).
+- When receiving an HTTP request, the runtime extracts the key value before running the pipeline.
+
+### State Transitions and Locking
+
 The runtime queries the underlying `IdempotencyStore`:
-1. **New Request**: An in-flight lease is claimed in the database (`status = 'IN_FLIGHT'` with an expiration window).
-2. **Duplicate while In-Flight**: If a concurrent request arrives with the same key before the lease expires, the runtime responds with an HTTP `409 Conflict` (or waits on the lease depending on driver configuration).
-3. **Completed Request**: Upon successful action execution, the serialized response payload and HTTP status are stored (`status = 'COMPLETED'`). Future requests with identical keys bypass the pipeline and immediately return the cached response.
-4. **Lease Expiration / Crash Recovery**: If a node crashes mid-flight, expired leases (`expires_at <= NOW()`) can be safely re-acquired by subsequent retry attempts.
+
+1. **New Request**: The runtime claims an in-flight lease in the database (`status = 'IN_FLIGHT'` with an expiration window).
+2. **Duplicate Request in Flight**: If a duplicate request arrives before the lease expires, the runtime returns HTTP 409 Conflict.
+3. **Completed Request**: Upon successful execution, the runtime stores the response payload and HTTP status (`status = 'COMPLETED'`). Future duplicate requests return the cached response immediately.
+4. **Lease Expiration and Crash Recovery**: If a server node crashes mid-flight, subsequent retry attempts can safely re-acquire expired leases.
 
 ---
 
 ## 3. `@outbox`
 
-The `@outbox` trait implements the Transactional Outbox Pattern to guarantee at-least-once domain event publishing without distributed 2PC transactions.
+The `@outbox` trait implements the Transactional Outbox Pattern to guarantee event delivery without distributed two-phase commit transactions.
 
 ```fdn
 action PlaceOrder(req: CreateOrder) -> OrderSummary
@@ -82,21 +89,23 @@ action PlaceOrder(req: CreateOrder) -> OrderSummary
 ```
 
 ### Pipeline Integration
-When `@outbox` is present on an action:
-- Any `publish EventName(...)` statement inside the action writes a row directly to the `outbox_events` table within the same database transaction.
-- If the transaction rolls back, the event is rolled back. If the transaction commits, the event is guaranteed to be recorded in durable storage.
+
+When an action declares `@outbox`:
+- Any `publish EventName(...)` statement writes a row directly to `outbox_events` within the active transaction.
+- If the transaction rolls back, the database removes the event row. If the transaction commits, the database records the event row permanently.
 
 ### The Outbox Relay Worker
-Foundation generates and deploys a background relay worker (`OutboxRelayWorker`):
-- **Concurrency-Safe Polling**: In PostgreSQL, the worker queries pending events using `SELECT ... FOR UPDATE SKIP LOCKED`, allowing multiple worker replicas to safely pull events in parallel without contention.
-- **Delivery**: Events are forwarded to the configured domain event bus (e.g., NATS, Kafka, or in-memory bus).
-- **Status Update**: Once acknowledged by the broker, the worker updates the event record to `PUBLISHED` with a timestamp.
+
+Foundation generates a background relay worker (`OutboxRelayWorker`):
+- **Safe Polling**: In PostgreSQL, the worker queries pending events using `SELECT ... FOR UPDATE SKIP LOCKED`. Multiple worker replicas pull events in parallel without contention.
+- **Delivery**: The worker forwards events to the configured event bus.
+- **Status Updates**: After the broker acknowledges delivery, the worker updates the record to `PUBLISHED` with a timestamp.
 
 ---
 
 ## 4. PostgreSQL DDL Generation for Tactical Traits
 
-When `@idempotent` or `@outbox` is used in any blueprint, the Foundation compiler automatically adds the required tactical tables to generated schema DDL (`schema.sql`) and sequential migrations (`000001_initial.up.sql`).
+When blueprints use `@idempotent` or `@outbox`, the compiler adds required tables to `schema.sql` and migration scripts:
 
 ```sql
 -- Generated for @idempotent
@@ -129,7 +138,8 @@ WHERE status = 'PENDING';
 ## 5. Additional Tactical Traits
 
 ### `@cache(ttl: "<duration>")`
-Caches idempotent query action responses in an in-memory cache or Redis cluster for the specified duration.
+
+Caches idempotent query responses in an in-memory cache or Redis cluster for the specified duration.
 
 ```fdn
 action GetCatalogItem(id: string) -> ItemDetails
@@ -142,7 +152,8 @@ action GetCatalogItem(id: string) -> ItemDetails
 ```
 
 ### `@retry(attempts: <int>, backoff: "<duration>")`
-Retries failed operations that encounter transient errors (such as slot network timeouts or database deadlocks) using exponential backoff.
+
+Retries failed operations that encounter transient errors with exponential backoff.
 
 ```fdn
 action SyncInventory(warehouse_id: string) -> SyncResult
@@ -153,7 +164,8 @@ action SyncInventory(warehouse_id: string) -> SyncResult
 ```
 
 ### `@event_handler(EventName)`
-Marks an action as an asynchronous domain event consumer rather than an HTTP-triggered endpoint.
+
+Marks an action as an asynchronous domain event consumer rather than an HTTP endpoint.
 
 ```fdn
 action OnOrderPlaced(evt: OrderPlaced)
@@ -171,7 +183,7 @@ action OnOrderPlaced(evt: OrderPlaced)
 |---|---|---|---|
 | `@transactional` | `action` | ACID boundary across reads and writes | `tx.Begin()`, `tx.Commit()`, `tx.Rollback()` |
 | `@idempotent(key)` | `action` | Request deduplication and locking | `idempotency_keys` table, `IdempotencyStore` |
-| `@outbox` | `action` | Reliable at-least-once event publication | `outbox_events` table, `OutboxRelayWorker` |
-| `@cache(ttl)` | `action` | Read-through response caching | In-memory / Redis cache keys |
+| `@outbox` | `action` | Reliable event publication | `outbox_events` table, `OutboxRelayWorker` |
+| `@cache(ttl)` | `action` | Read-through response caching | In-memory or Redis cache keys |
 | `@retry(attempts, backoff)` | `action` | Transient failure fault tolerance | Exponential backoff wrapper |
 | `@event_handler(Event)` | `action` | Event consumer binding | Domain event listener registration |

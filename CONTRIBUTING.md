@@ -1,149 +1,127 @@
 # Contributing to Foundation
 
-Thank you for your interest in contributing to **Foundation**!
-
-Foundation is a deterministic, domain-specific compiler and developer platform designed to eliminate repetitive backend plumbing without runtime magic or non-deterministic code generation.
-
-To maintain architectural integrity, determinism, and extreme performance, we uphold strict engineering standards across our codebase. Please review these guidelines before submitting a contribution.
+This guide explains how to contribute to Foundation.
+Foundation is an application compiler.
+The compiler converts declarative blueprints into production code without large language models.
 
 ---
 
-## 🏛️ Core Architectural Principles
+## Core Architectural Rules
 
-Every contribution must align with Foundation's fundamental architectural pillars:
+Every contribution must follow these rules:
 
 1. **Zero External Dependencies in Core (`pkg/compiler`)**:
-   The Foundation compiler core depends strictly on the Go standard library. We do not accept third-party dependencies in `pkg/compiler`. This protects our users from supply-chain vulnerabilities, build bloat, and version conflicts.
-2. **Deterministic, Offline Compilation**:
-   Given identical inputs, the compiler must emit bit-for-bit identical outputs across any machine or operating system. Avoid un-ordered map iteration in emitters, non-deterministic random IDs, or runtime timestamps in generated code.
-3. **Defense-in-Depth & Filesystem Respect**:
-   File generation must strictly honor directory confinement (`safeDiskPath`). Subprocesses must be isolated with strict timeout and signal handling.
-4. **The 90/10 Seam (Slots)**:
-   Generated code must cleanly separate compiled plumbing from handwritten logic via strongly-typed Slots. Custom code should never be overwritten.
-5. **Strict File Size Discipline ($\le 450$ Lines)**:
-   Every `.go` file in `cmd/`, `pkg/`, `contrib/`, and `test/` must remain strictly $\le 450$ lines. Decompose large files into focused, deep modules with high cohesion and low coupling.
+   The compiler core depends only on the Go standard library.
+   Do not add third-party dependencies to `pkg/compiler`.
+2. **Deterministic Offline Compilation**:
+   The compiler must produce identical outputs for identical inputs on all operating systems.
+   Do not use unsorted map iterations, random identifiers, or timestamps in generated code.
+3. **Defense in Depth**:
+   File generation must stay inside the target output directory.
+   Subprocesses must stop after strict timeouts.
+4. **The Slot Seam**:
+   Generated code separates compiled plumbing from handwritten logic through typed slots.
+   The compiler never overwrites existing slot implementations.
+5. **File Size Limit (450 Lines)**:
+   Every Go source file in `cmd/`, `pkg/`, `contrib/`, and `test/` must have 450 lines or fewer.
+   Split large files into small modules with clear responsibilities.
 
 ---
 
-## 🛠️ Development Setup & Prerequisites
+## Development Prerequisites
 
-* **Go**: `1.23` or newer
-* **Node.js**: `20+` (optional, needed only for TypeScript runtime tests in `contrib/ts/runtime`)
-* **Make**: GNU Make
+Install these tools before you start development:
+
+- **Go**: Version `1.23` or newer
+- **Node.js**: Version `20` or newer (optional, required for TypeScript tests)
+- **Make**: GNU Make
 
 ### Clone and Build
 
-```bash
-# Clone the repository
-git clone https://github.com/galihanggara68/foundation.git
-cd foundation
-
-# Build the Foundation CLI and reference plugins into ./bin/
-make build
-
-# Verify installation
-./bin/foundation --help
-```
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/galihanggara68/foundation.git
+   cd foundation
+   ```
+2. Build the CLI and plugins:
+   ```bash
+   make build
+   ```
+3. Confirm the installation:
+   ```bash
+   ./bin/foundation version
+   ```
 
 ---
 
-## 🧪 Testing Workflow
+## Test Workflow
 
-Foundation categorizes its test suites into distinct layers. Run only what you need during rapid iteration, and run full verification before submitting changes:
+Run tests during local development:
 
 ```bash
-# Rapid Unit Testing (<1s, hermetic)
+# Run unit tests
 make test-unit
 
-# Integration & Protocol Tests
+# Run end-to-end integration tests
 make test-e2e
 
-# Adversarial & Sandboxing Security Suite
+# Run security tests
 make test-security
 
-# Live HTTP & Concurrency Durability Suite
+# Run durability and concurrency tests
 make test-durability
 
-# Heavy Compiler Scaling & Stress Suite
+# Run compiler scale tests
 make test-scale
 
-# Contrib Runtime Tests (Go & TypeScript)
-make test-contrib
-
-# Full Test Sweep
+# Run all test suites
 make test-all
 ```
 
 ---
 
-## 🛡️ Pre-Commit Quality Gate
+## Pre-Commit Verification Gate
 
-Before opening a Pull Request or pushing changes, **always run the local verification gate**:
+Always run the verification gate before you commit changes:
 
 ```bash
 make verify
 ```
 
-`make verify` executes:
-1. `make fmt-check`: Verifies all Go files adhere to standard `gofmt`.
-2. `make line-check`: Asserts that **every** `.go` file across the repository is $\le 450$ lines.
+The verification command runs four checks:
+1. `make fmt-check`: Confirms code formatting with `gofmt`.
+2. `make line-check`: Confirms that every Go file has 450 lines or fewer.
 3. `make vet`: Runs `go vet` across all packages.
-4. `make test-unit`: Runs the fast unit test suite.
+4. `make test-unit`: Runs the unit test suite.
 
-If any check fails, resolve the issue before opening a pull request. (Use `make fmt` to automatically format your code).
-
----
-
-## 🏷️ Versioning & Releases
-
-The version is derived from Git tags. `make build` injects the version, commit, and a build timestamp into the CLI, so `./bin/foundation version` always reports what the tree actually is; `make version` prints the same string without building.
-
-Releases are gated and driven from the `Makefile`. The tag push triggers the cross-platform build in [`.github/workflows/release.yml`](./.github/workflows/release.yml), which publishes the archives and checksums:
-
-```bash
-# 1. Add a "## [x.y.z]" section to CHANGELOG.md and commit it
-# 2. Validate and tag (runs make verify; requires a clean tree, a fresh
-#    semver tag, and a matching CHANGELOG heading)
-make release VERSION=x.y.z
-
-# No CI credentials handy? Build release archives locally without publishing:
-make snapshot
-```
-
-`make release-check` runs the same validations without creating the tag, and `make changelog-draft` lists commit subjects since the last tag to seed the CHANGELOG entry.
-
-Foundation follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/). During 0.x, tracked output may change in any release, while **Slots, Scenarios, and the manifest format stay stable within a minor** (see the [Roadmap](./ROADMAP.md)).
+Fix all errors before you submit a pull request.
+Run `make fmt` to format Go code automatically.
 
 ---
 
-## 📐 Architecture Decision Records (ADRs)
+## Architecture Decision Records (ADRs)
 
-If your contribution introduces:
-* A new syntax construct in `.fdn` blueprints,
-* A change to the generator plugin wire protocol (`foundation-gen-*`),
-* A fundamental change to tactical traits or transaction semantics,
+Write an Architecture Decision Record in `docs/adr/` if your change adds:
+- A new syntax feature in `.fdn` blueprints,
+- A change to the generator plugin protocol, or
+- A change to trait semantics or transaction rules.
 
-Please document the design rationale in an **Architecture Decision Record** in [`docs/adr/`](./docs/adr/). Reference existing ADRs (such as [ADR 0001](./docs/adr/0001-action-pipelines-and-slot-interfaces.md)) for structure.
+Follow the format of existing records, such as [ADR 0001](./docs/adr/0001-action-pipelines-and-slot-interfaces.md).
 
 ---
 
-## 🚀 Submitting a Pull Request
+## Pull Request Submission
 
-1. **Create a Topic Branch**:
+Follow these steps to submit changes:
+
+1. Create a topic branch:
    ```bash
    git checkout -b feat/my-new-feature
-   # or
-   git checkout -b fix/issue-description
    ```
-2. **Keep Commits Atomic & Clear**:
-   We recommend Conventional Commit messages:
-   * `feat: add @ttl modifier to @cache trait`
-   * `fix: prevent path traversal in manifest writer`
-   * `docs: add recipe for custom sql join slot`
-   * `test: add stress fuzzer for action parser`
-3. **Verify Your Branch**:
-   Ensure `make verify` and all relevant test suites pass cleanly. The gate type-checks emitted TypeScript targets and so needs a `tsc` on your `PATH`: if your shell exports `NODE_ENV=production`, npm skips devDependencies, the TypeScript suites fail with `exec: "tsc": executable file not found in $PATH`, and you should run it as `env -u NODE_ENV make verify` instead (see the Development & Testing section of the [README](./README.md)).
-4. **Submit Your PR**:
-   Open your Pull Request against the `main` branch with a clear description of the problem solved and test coverage included.
-
-Thank you for helping make Foundation the gold standard for reliable backend compilers!
+2. Write clear commit messages in the conventional commit format:
+   - `feat: add ttl argument to cache trait`
+   - `fix: prevent path traversal in manifest writer`
+   - `docs: update blueprint declarations guide`
+3. Run `make verify` and make sure that all tests pass.
+4. Open a pull request against the `main` branch.
+   Describe the problem and include test coverage.

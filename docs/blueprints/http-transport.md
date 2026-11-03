@@ -1,6 +1,6 @@
-# HTTP Transport & Parameter Binding Guide
+# HTTP Transport and Parameter Binding Guide
 
-Foundation compilers translate declarative `@http` action traits into idiomatic HTTP routing adapters (Chi in Go, Express in TypeScript).
+Foundation translates declarative `@http` action traits into HTTP routing adapters (Chi in Go, Express in TypeScript).
 
 ---
 
@@ -18,7 +18,8 @@ action GetOrder(id: uuid) -> Order
 ```
 
 ### Supported HTTP Methods
-- `GET`: Idempotent resource retrieval. Returns `200 OK`.
+
+- `GET`: Resource retrieval. Returns `200 OK`.
 - `POST`: Resource creation or command execution. Returns `201 Created`.
 - `PUT`: Resource replacement or state updates. Returns `200 OK`.
 - `DELETE`: Resource removal. Returns `200 OK`.
@@ -27,9 +28,10 @@ action GetOrder(id: uuid) -> Order
 
 ## 2. URL Path Parameter Binding (`{param}`)
 
-Path segments wrapped in curly braces (e.g. `{id}`, `{account_id}`) are parsed as **path parameters**.
+Path segments in curly braces (for example `{id}` or `{account_id}`) define **path parameters**.
 
 ### Syntax
+
 ```fdn
 action UpdateAccount(account_id: uuid, nickname: string) -> Account
   @http(method: PUT, path: "/v1/accounts/{account_id}")
@@ -38,12 +40,13 @@ action UpdateAccount(account_id: uuid, nickname: string) -> Account
 }
 ```
 
-### Binding Mechanics
-1. **Identifier Matching**: The token inside `{account_id}` must match an Action parameter name (`account_id`).
+### Parameter Binding Mechanics
+
+1. **Identifier Matching**: The token inside `{account_id}` must match an action parameter name (`account_id`).
 2. **Adapter Lowering**:
-   - In Go (Chi): Extracted via `chi.URLParam(r, "account_id")`.
-   - In TypeScript (Express): Extracted via `req.params["account_id"]`.
-3. **Multi-Segment Paths**: Blueprints support arbitrary path hierarchies:
+   - In Go (Chi): The router extracts parameters with `chi.URLParam(r, "account_id")`.
+   - In TypeScript (Express): The router extracts parameters with `req.params["account_id"]`.
+3. **Multi-Segment Paths**: Blueprints support multi-segment path hierarchies:
    ```fdn
    @http(method: GET, path: "/v1/tenants/{tenant_id}/users/{user_id}/permissions")
    ```
@@ -52,10 +55,11 @@ action UpdateAccount(account_id: uuid, nickname: string) -> Account
 
 ## 3. Request Body Parameter Binding
 
-Non-path parameters on mutating requests (`POST`, `PUT`, `DELETE`) are bound from the incoming JSON request body.
+Mutating requests (`POST`, `PUT`, `DELETE`) bind non-path parameters from JSON request bodies.
 
 ### Case A: Single Composite Value Object
-When an action defines a single non-path parameter of a `value` type:
+
+When an action defines one non-path parameter of a `value` type:
 
 ```fdn
 value CreateCustomerInput {
@@ -70,7 +74,8 @@ action CreateCustomer(input: CreateCustomerInput) -> Customer
 }
 ```
 
-The entire JSON body maps directly to the `input` struct:
+The router maps the JSON body directly to the `input` struct:
+
 ```json
 {
   "email": "jane@example.com",
@@ -78,8 +83,9 @@ The entire JSON body maps directly to the `input` struct:
 }
 ```
 
-### Case B: Mixed Path & Multiple Body Parameters
-When an action combines path parameters with primitive or multiple parameters:
+### Case B: Mixed Path and Multiple Body Parameters
+
+When an action combines path parameters with multiple input parameters:
 
 ```fdn
 action SetPrice(product_id: uuid, price: decimal, reason: string) -> Product
@@ -89,9 +95,9 @@ action SetPrice(product_id: uuid, price: decimal, reason: string) -> Product
 }
 ```
 
-The compiler:
+The compiler completes these binding steps:
 1. Binds `product_id` from the URL path (`/v1/products/00000000-.../price`).
-2. Synthesizes an unmarshaling target for the remaining non-path parameters (`price`, `reason`):
+2. Synthesizes a JSON target for remaining parameters (`price`, `reason`):
    ```json
    {
      "price": 49.99,
@@ -101,26 +107,29 @@ The compiler:
 
 ---
 
-## 4. Caller Context & Actor Header Binding
+## 4. Caller Context and Actor Header Binding
 
-When actions reference the built-in `actor` keyword, caller identity is extracted from standard transport headers:
+When actions reference the `actor` keyword, the transport extracts caller identity from HTTP headers:
 
 | HTTP Request Header | Actor Property | Description |
 | :--- | :--- | :--- |
-| `X-Actor-ID` | `actor.id` (`uuid`) | Unique identifier of the authenticated caller |
-| `X-Actor-Role` | `actor.role` (`string`) | Caller role (e.g. `"admin"`, `"customer"`) |
+| `X-Actor-ID` | `actor.id` (`uuid`) | Unique identifier of authenticated caller |
+| `X-Actor-Role` | `actor.role` (`string`) | Caller role (for example `"admin"` or `"customer"`) |
 | `X-Actor-Verified` | `actor.is_verified` (`bool`) | Evaluated as `true` when header value is `"true"` |
 
-In Go, actor attributes are injected into `context.Context` via `domain.WithActor(...)`. In TypeScript, actor properties are passed as an argument to use-case controllers.
+In Go, the adapter injects actor attributes into `context.Context` using `domain.WithActor(...)`.
+In TypeScript, the adapter passes actor properties to use case controllers.
 
 ---
 
 ## 5. Optimistic Concurrency Control (OCC) Headers
 
-When updating entities with an `@version` field, the HTTP layer automatically manages HTTP concurrency headers:
+When updating entities with an `@version` field, the HTTP layer manages concurrency headers:
 
 ### `ETag` on `GET` Requests
-Any `GET` endpoint returning a versioned entity emits an `ETag` response header with the quoted version integer:
+
+A `GET` endpoint returning a versioned entity emits an `ETag` response header with the quoted version integer:
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -134,31 +143,32 @@ ETag: "1"
 ```
 
 ### `If-Match` on Mutating Requests
-Mutating endpoints (`POST`, `PUT`, `DELETE`) with an expected version parameter evaluate the incoming `If-Match` request header before executing the action pipeline:
-- `If-Match: "1"`: Verified against expected version. If matching, the action proceeds.
-- `If-Match: *`: Wildcard match; updates regardless of version.
-- Mismatch: If header does not match expected version, returns **HTTP 409 Conflict** immediately without executing business logic or holding locks.
+
+Mutating endpoints (`POST`, `PUT`, `DELETE`) evaluate the incoming `If-Match` header before running the action pipeline:
+- `If-Match: "1"`: Matches the expected version. The action proceeds.
+- `If-Match: *`: Wildcard match. The action updates the entity regardless of version.
+- Mismatch: When the header does not match the expected version, the server returns HTTP 409 Conflict immediately.
 
 ---
 
 ## 6. HTTP Status Code Mapping
 
-When an Action pipeline returns an error, the transport layer inspects the declared `error.kind`:
+When an action pipeline returns an error, the transport layer inspects `error.kind`:
 
 | Error Kind | HTTP Status Code | Description |
 | :--- | :--- | :--- |
 | `validation` | `400 Bad Request` | Failed `guard`, invalid parameter format, or domain invariant violation |
-| `unauthenticated` | `401 Unauthorized` | No valid credentials for the acting principal |
-| `unauthorized` | `401 Unauthorized` | Authentication failure declared by a Blueprint; answers the same 401 as `unauthenticated` |
+| `unauthenticated` | `401 Unauthorized` | Missing or invalid actor credentials |
+| `unauthorized` | `401 Unauthorized` | Authentication failure declared by a Blueprint |
 | `forbidden` | `403 Forbidden` | Failed `require <Policy>` check |
 | `not_found` | `404 Not Found` | Failed `query one ... else <Error>` |
 | `conflict` | `409 Conflict` | OCC version mismatch or unique constraint collision |
-| `internal` | `500 Internal Server Error` | Unhandled runtime failure or hardware fault |
+| `internal` | `500 Internal Server Error` | System error or unhandled runtime failure |
 
 ---
 
-## 7. Internal Actions & Event Handlers
+## 7. Internal Actions and Event Handlers
 
-Actions without public HTTP endpoints are excluded from routing:
+The compiler excludes actions without public HTTP endpoints from router tables:
 - `@internal`: Private backend actions excluded from public routing tables.
-- `@event_handler(EventName)`: In-process event subscribers triggered asynchronously by domain events rather than external HTTP requests.
+- `@event_handler(EventName)`: In-process event subscribers triggered by domain events rather than HTTP requests.

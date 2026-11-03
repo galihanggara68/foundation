@@ -1,6 +1,7 @@
-# Build Profile & Configuration
+# Build Profile and Configuration
 
-Foundation projects are configured through a single root configuration file: `foundation.build.yaml`. This file governs target architecture selection, storage dialects, migration strategies, plugin generators, and test commands.
+A single configuration file configures Foundation projects: `foundation.build.yaml`.
+This file sets target architectures, storage dialects, migration strategies, generator plugins, and test commands.
 
 ---
 
@@ -64,93 +65,104 @@ targets:
 
 ### Authentication (`authn:`)
 
-`authn:` selects the Actor Resolver every generated backend uses. Both accepted values are validated at build time (`FDN0310`):
+The `authn:` setting selects the actor resolver for generated backends.
+The compiler validates both values at build time (`FDN0310`):
 
-- `dev-headers` (the default): trusts `X-Actor-ID`/`X-Actor-*` headers with no cryptographic verification, and prints a boot banner plus a warning log line. It exists for local development and is never blessed for production.
-- `jwt-oidc`: verifies the `Authorization: Bearer <token>` against the identity provider's key set before resolving the `Actor`.
+- `dev-headers` (default): Trusts `X-Actor-ID` and `X-Actor-*` headers without cryptographic checks. The server prints a startup banner and a warning log line. Use this mode only for local development.
+- `jwt-oidc`: Verifies `Authorization: Bearer <token>` against the identity provider key set before resolving the actor.
 
-`jwt-oidc` takes its configuration from the environment, so one build runs against different identity providers:
+The `jwt-oidc` resolver reads configuration from environment variables:
 
 | Variable | Purpose |
 | :--- | :--- |
-| `AUTH_JWKS_URL` | Key set endpoint the token signature is verified against. **Required** — with no key set configured, every request is refused rather than trusted. |
-| `AUTH_ISSUER` | Expected `iss`. Validated when set. |
-| `AUTH_AUDIENCE` | Expected `aud`. Validated when set. |
+| `AUTH_JWKS_URL` | Key set endpoint for signature verification. This variable is required. The server rejects requests when unset. |
+| `AUTH_ISSUER` | Expected `iss` claim. The resolver validates this claim when set. |
+| `AUTH_AUDIENCE` | Expected `aud` claim. The resolver validates this claim when set. |
 
-Only `RS256` and `ES256` are accepted, a token must carry `exp`, and claims are read only once the signature verifies — a forged or post-signing-edited token never reaches a policy. See [ADR 0017](../adr/0017-jwt-verification-contract.md) for the contract behind those choices.
+The resolver accepts only `RS256` and `ES256` algorithms.
+Tokens must include an `exp` claim.
+The resolver reads claims only after confirming the signature.
+Forged tokens never reach authorization policies.
+See [ADR 0017](../adr/0017-jwt-verification-contract.md) for more details.
 
 ## 2. Target Configuration Parameters
 
 | Field | Type | Description |
 |---|---|---|
-| `name` | `string` | Unique identifier for the compilation target. |
+| `name` | `string` | Unique identifier for compilation target. |
 | `kind` | `string` | `"backend"` (server application) or `"sdk"` (client SDK). |
 | `language` | `string` | Target language (`"go"`, `"typescript"`, or external language name). |
 | `architecture` | `string` | Architecture pattern (`"hexagonal"`, `"layered"`, `"clean"`). |
 | `http` | `string` | HTTP framework adapter (`"chi"`, `"express"`). |
 | `out_dir` | `string` | Output directory relative to repository root. |
 | `generator` | `string` | *(Optional)* Name or path of a single external generator binary. |
-| `generators` | `[]string` | *(Optional)* List of generator plugin binaries executed sequentially in a pipeline. |
-| `scaffold` | `string` | *(Optional)* `"builtin"` (pre-populates built-in target scaffolding) or `"none"` (clean slate). |
+| `generators` | `[]string` | *(Optional)* List of generator plugin binaries run in sequence. |
+| `scaffold` | `string` | *(Optional)* `"builtin"` (pre-populates built-in scaffolding) or `"none"` (empty tree). |
 | `options` | `map[string]string` | *(Optional)* Custom key-value options passed to external plugins. |
 | `test_command` | `string` | *(Optional)* Command executed by `foundation test` for this target. |
-| `test_timeout` | `string` | *(Optional)* Test runner timeout duration (e.g., `"60s"`, `"2m"`). |
+| `test_timeout` | `string` | *(Optional)* Test runner timeout duration (for example `"60s"` or `"2m"`). |
 
 ---
 
-## 3. Storage Modes & DDL Generation
+## 3. Storage Modes and DDL Generation
 
 Foundation provides flexible database schema strategies controlled by `storage.mode`:
 
 | Mode | Generated Artifacts | Usage Scenario |
 |---|---|---|
-| `declarative` | `schema.sql` | Idempotent DDL statements (`CREATE TABLE IF NOT EXISTS`). Ideal for rapid prototyping, Docker local dev, and serverless environments. |
-| `migrations` | `migrations/000001_initial.up.sql`<br>`migrations/000001_initial.down.sql` | Versioned sequential migrations for tools like `golang-migrate`, `flyway`, `goose`, or `atlas`. Ideal for enterprise production CI/CD. |
-| `both` | Both declarative DDL and sequential migrations | Provides full DDL for local test containers while maintaining clean migration tracks for production releases. |
+| `declarative` | `schema.sql` | Idempotent DDL statements (`CREATE TABLE IF NOT EXISTS`). Use for rapid prototyping, Docker development, and serverless environments. |
+| `migrations` | `migrations/000001_initial.up.sql`<br>`migrations/000001_initial.down.sql` | Versioned sequential migrations for tools like `golang-migrate`, `flyway`, `goose`, or `atlas`. Use for production CI/CD. |
+| `both` | Declarative DDL and sequential migrations | Provides full DDL for local test containers while maintaining clean migration tracks for production releases. |
 
 ### Tactical Tables in Generated Schemas
-When blueprints use operational traits (`@outbox`, `@idempotent`), the compiler automatically injects table definitions (`outbox_events`, `idempotency_keys`) into both declarative schemas and migration scripts.
+
+When blueprints use operational traits (`@outbox`, `@idempotent`), the compiler injects table definitions (`outbox_events`, `idempotency_keys`) into declarative schemas and migration scripts.
 
 ---
 
 ## 4. CLI Command Reference
 
-The Foundation CLI (`foundation`) provides a developer workflow for validating, compiling, and testing blueprints:
+The Foundation CLI (`foundation`) provides commands for validating, compiling, and testing blueprints:
 
 ### `foundation check`
-Performs static analysis on all `.fdn` files in the current workspace.
-- Validates syntax and AST integrity.
-- Resolves all type references (`entity`, `value`, `enum`, `error`).
+
+The `foundation check` command analyzes all `.fdn` files in the workspace:
+- Validates syntax and AST structure.
+- Resolves type references (`entity`, `value`, `enum`, `error`).
 - Verifies authorization policies and actor references.
-- Flags transaction safety violations (e.g. `@external` slot called inside `@transactional`).
+- Flags transaction safety violations (for example calling an `@external` slot inside `@transactional`).
 
 ```bash
 foundation check
 ```
 
 ### `foundation build`
-Compiles `.fdn` blueprints and configuration into executable production code.
+
+The `foundation build` command compiles `.fdn` blueprints and configuration into production code:
 - Generates domain models, repositories, routers, and dependency containers.
 - Generates tactical table DDL and sequential migrations.
-- Executes external generator pipelines (`generators: [...]`) if configured.
-- Reconciles `.foundation-manifest.json`, pruning obsolete files while protecting developer stubs.
+- Runs external generator pipelines (`generators: [...]`) if configured.
+- Reconciles `.foundation-manifest.json`. The compiler removes obsolete files and protects developer stubs.
 
 ```bash
 foundation build
 ```
 
 ### `foundation test`
-Executes test suites across all configured targets:
-- Built-in Go targets: runs scenario tests with `go test ./...` 100% offline.
-- Built-in TypeScript targets: runs scenario tests with `npm test` 100% offline.
-- External generator targets: delegates execution to `test_command` (e.g., `pytest`, `cargo test`) with process group isolation and timeout enforcement.
+
+The `foundation test` command runs test suites across all configured targets:
+- Built-in Go targets: Runs scenario tests with `go test ./...` offline.
+- Built-in TypeScript targets: Runs scenario tests with `npm test` offline.
+- External generator targets: Runs `test_command` (for example `pytest` or `cargo test`) with process group isolation and timeout limits.
 
 ```bash
 foundation test
 ```
 
 ### `foundation ir`
-Dumps the Compiler Intermediate Representation (IR) to stdout. Useful for inspection, tooling, and third-party linters.
+
+The `foundation ir` command prints compiler Semantic IR JSON to standard output.
+Use this command for inspection, tooling, and third-party linters.
 
 ```bash
 foundation ir
@@ -160,7 +172,8 @@ foundation ir
 
 ## 5. The Build Manifest (`.foundation-manifest.json`)
 
-To prevent accidental overwrites and cleanly clean up deleted routes, Foundation generates a manifest tracking all compiler-managed files:
+Foundation generates a manifest to track compiler-managed files.
+This manifest prevents overwrites and deletes obsolete files:
 
 ```json
 {
@@ -180,6 +193,6 @@ To prevent accidental overwrites and cleanly clean up deleted routes, Foundation
 }
 ```
 
-- **Safety**: Handwritten slot files and plugin stubs (`config/*.starter.json`) are intentionally omitted from `generated_files` and are never overwritten or deleted by subsequent builds.
-- **Cleanup**: If an entity or action is deleted from a `.fdn` blueprint, the compiler uses the manifest to delete only the corresponding generated files, keeping the repository clean.
-- **Cross-Plugin Provenance**: Detects and warns (`FDN0702`) if downstream plugins mutate files authored by upstream generators.
+- **Safety**: The manifest omits handwritten slot files and plugin stubs (`config/*.starter.json`). Builds never overwrite or delete these files.
+- **Cleanup**: When you delete an entity or action from a blueprint, the compiler removes only the corresponding generated files.
+- **Plugin Provenance**: The compiler warns (`FDN0702`) if downstream plugins mutate files from upstream generators.

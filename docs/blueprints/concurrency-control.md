@@ -1,6 +1,7 @@
 # Optimistic Concurrency Control (OCC)
 
-In distributed and high-throughput systems, pessimistic database locks (`SELECT FOR UPDATE`) can create bottlenecks and deadlocks. Foundation provides first-class support for **Optimistic Concurrency Control (OCC)** using the `@version` field trait, conditional SQL updates, and HTTP `ETag` / `If-Match` headers.
+Pessimistic database locks (`SELECT FOR UPDATE`) can cause bottlenecks and deadlocks in distributed systems.
+Foundation provides **Optimistic Concurrency Control (OCC)** through the `@version` field trait, conditional SQL updates, and HTTP `ETag` headers.
 
 ---
 
@@ -33,25 +34,29 @@ action DepositMoney(account_id: string, amount: int, expected_version: int) -> A
 ```
 
 ### Compiler Rules for `@version`
-- Exactly **one** field per entity may be annotated with `@version`.
-- The field must be of type `int`.
-- When an entity is saved, the Foundation compiler automatically synthesizes version increment logic.
+
+- You can annotate only **one** field per entity with `@version`.
+- The field must have type `int`.
+- When the runtime saves an entity, the runtime increments the version counter automatically.
 
 ---
 
 ## 2. Storage Engine Execution
 
-When persisting an entity annotated with `@version`, the generated repository does not execute an unconditional update. Instead, it generates a conditional update:
+When saving a versioned entity, the repository runs a conditional update rather than an unconditional update:
 
-### SQL Dialect (PostgreSQL & SQLite)
+### SQL Dialect (PostgreSQL and SQLite)
+
 ```sql
 UPDATE accounts
 SET balance = $1, version = version + 1
 WHERE id = $2 AND version = $3;
 ```
 
-### Affected Rows Verification
-In the generated Go and TypeScript runtimes:
+### Check Affected Rows
+
+The generated Go and TypeScript runtimes check modified row counts:
+
 ```go
 result, err := tx.ExecContext(ctx, query, account.Balance, account.ID, account.Version)
 if err != nil {
@@ -63,7 +68,9 @@ if rowsAffected == 0 {
     return ErrConcurrencyConflict
 }
 ```
-If `rowsAffected == 0`, the runtime returns a domain error with kind `conflict`. If a custom error with `kind: conflict` is declared (like `AccountConflict`), it is returned directly.
+
+If `rowsAffected == 0`, the runtime returns a domain error with kind `conflict`.
+If you declare a custom conflict error (such as `AccountConflict`), the runtime returns that error directly.
 
 ---
 
@@ -72,8 +79,10 @@ If `rowsAffected == 0`, the runtime returns a domain error with kind `conflict`.
 Foundation connects OCC directly to HTTP transport standards:
 
 ### Reading an Entity (`GET`)
-When returning a versioned entity via an HTTP `GET` endpoint:
-- The HTTP adapter extracts the `@version` field and emits it as an `ETag` header:
+
+When an HTTP `GET` endpoint returns a versioned entity:
+- The HTTP adapter reads the `@version` field and returns it in an `ETag` header:
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -88,7 +97,9 @@ ETag: "5"
 ```
 
 ### Mutating an Entity (`PUT` / `POST` / `PATCH`)
-Clients can supply the expected version either in the JSON payload or via the standard HTTP `If-Match` header:
+
+Clients supply the expected version in the JSON payload or through the HTTP `If-Match` header:
+
 ```http
 POST /accounts/acc_123/deposit HTTP/1.1
 Host: api.example.com
@@ -99,7 +110,9 @@ If-Match: "5"
   "amount": 200
 }
 ```
-If another transaction updated the account to version 6 in the meantime, the server rejects the request with HTTP `409 Conflict`:
+
+If a concurrent transaction updated the account version, the server rejects the request with HTTP `409 Conflict`:
+
 ```http
 HTTP/1.1 409 Conflict
 Content-Type: application/json
@@ -114,7 +127,7 @@ Content-Type: application/json
 
 ## 4. Client Reconciliation Workflow
 
-The standard client workflow for handling OCC conflicts:
+This diagram shows the standard client workflow for handling OCC conflicts:
 
 ```mermaid
 sequenceDiagram
@@ -151,6 +164,6 @@ sequenceDiagram
 
 ## 5. Combining OCC with Tactical Traits
 
-- **OCC + `@transactional`**: The version check occurs within the active transaction. If `rowsAffected == 0`, the transaction rolls back immediately.
-- **OCC + `@idempotent`**: If a client retries with the same idempotency key after receiving a 409, the idempotency layer correctly distinguishes between duplicate requests and concurrent mutation conflicts.
-- **OCC + `@outbox`**: If an update fails due to a version conflict, no outbox events are written because the transaction rolls back.
+- **OCC with `@transactional`**: The version check occurs inside the active database transaction. If `rowsAffected == 0`, the runtime rolls back the transaction immediately.
+- **OCC with `@idempotent`**: When a client retries after receiving HTTP 409, the idempotency layer distinguishes duplicate requests from concurrent mutation conflicts.
+- **OCC with `@outbox`**: When an update fails because of a version conflict, the runtime writes no outbox events because the transaction rolls back.

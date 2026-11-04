@@ -1,8 +1,7 @@
 package validate
 
 import (
-	"fmt"
-
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -16,23 +15,17 @@ func (TerminationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		ir.WalkStepsAndExprs(a.Steps,
 			func(s ir.StepDecl) {
 				if s.Kind == ir.StepWhile {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0210",
-						Severity: ir.SeverityError,
-						Message:  "unbounded 'while' iteration is forbidden in Action Pipelines; use bounded 'for item in collection'",
-						Span:     s.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0210",
+						s.Span,
+						"unbounded 'while' iteration is forbidden in Action Pipelines; use bounded 'for item in collection'",
+					))
 				}
 			},
 			func(e ir.Expr) {
 				if e.Kind == ir.ExprCall {
 					if _, isAction := sym.actions[e.Value]; isAction {
-						diags = append(diags, ir.Diagnostic{
-							Code:     "FDN0211",
-							Severity: ir.SeverityError,
-							Message:  fmt.Sprintf("recursive or direct action invocation %q is forbidden in Action Pipelines", e.Value),
-							Span:     e.Span,
-						})
+						diags = append(diags, diagnostics.New("FDN0211", e.Span, e.Value))
 					}
 				}
 			},

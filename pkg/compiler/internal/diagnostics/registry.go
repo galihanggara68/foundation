@@ -1,10 +1,6 @@
 package diagnostics
 
-import (
-	"fmt"
-
-	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
-)
+import "github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 
 // Definition holds metadata for a compiler diagnostic code.
 type Definition struct {
@@ -390,39 +386,4 @@ var Registry = map[string]Definition{
 		Description:     "A generator plugin overwrote a file emitted by an earlier generator plugin.",
 		DocAnchor:       "fdn0702",
 	},
-}
-
-// Lookup returns the diagnostic definition for the given code.
-func Lookup(code string) (Definition, bool) {
-	def, ok := Registry[code]
-	return def, ok
-}
-
-// New creates an ir.Diagnostic for the code, span, and optional message arguments.
-// When the code exists in the registry, New formats MessageTemplate with args.
-// When the code is not registered, New creates an error diagnostic with a fallback message.
-func New(code string, span ir.Span, args ...any) ir.Diagnostic {
-	def, ok := Registry[code]
-	if !ok {
-		msg := code
-		if len(args) > 0 {
-			msg = fmt.Sprint(args...)
-		}
-		return ir.Diagnostic{
-			Code:     code,
-			Severity: ir.SeverityError,
-			Message:  msg,
-			Span:     span,
-		}
-	}
-	msg := def.MessageTemplate
-	if len(args) > 0 {
-		msg = fmt.Sprintf(def.MessageTemplate, args...)
-	}
-	return ir.Diagnostic{
-		Code:     def.Code,
-		Severity: def.Severity,
-		Message:  msg,
-		Span:     span,
-	}
 }

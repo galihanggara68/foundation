@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -13,23 +14,17 @@ func validateFieldInitializers(kindLabel, typeName string, inits []ir.FieldInitD
 		fi := &inits[i]
 		f, fOk := fields[fi.Name]
 		if !fOk {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0204",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("%s %q has no field %q", kindLabel, typeName, fi.Name),
-				Span:     fi.Span,
-			})
+			*diags = append(*diags, diagnostics.New("FDN0204", fi.Span, kindLabel, typeName, fi.Name))
 			continue
 		}
 		sym.resolveEnumLiteral(&fi.Value, f.Type)
 		valType, ok := inferExprType(&fi.Value, scope, sym, diags)
 		if ok && !isAssignableType(f.Type, valType) {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("type mismatch for field %q: expected %s, got %s", fi.Name, f.Type, valType),
-				Span:     fi.Value.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				fi.Value.Span,
+				fmt.Sprintf("type mismatch for field %q: expected %s, got %s", fi.Name, f.Type, valType),
+			))
 		} else if ok && fi.Value.Kind == ir.ExprList && fi.Value.InferredType == "[]" {
 			fi.Value.InferredType = f.Type
 		} else if ok && f.Type == "timestamp" && fi.Value.Kind == ir.ExprString {
@@ -58,12 +53,11 @@ func inferExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, diags 
 		}
 		enName, ok := sym.findEnumByVariant(e.Value)
 		if !ok {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0208",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown enum variant .%s", e.Value),
-				Span:     e.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0208",
+				e.Span,
+				fmt.Sprintf("unknown enum variant .%s", e.Value),
+			))
 			return "", false
 		}
 		e.InferredType = enName
@@ -81,12 +75,11 @@ func inferExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, diags 
 			sym.resolveEnumLiteral(&e.Items[i], firstType)
 			itType, iOk := inferExprType(&e.Items[i], scope, sym, diags)
 			if iOk && !isAssignableType(firstType, itType) {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0205",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("list item %d has type %s, expected %s", i+1, itType, firstType),
-					Span:     e.Items[i].Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0205",
+					e.Items[i].Span,
+					fmt.Sprintf("list item %d has type %s, expected %s", i+1, itType, firstType),
+				))
 			}
 		}
 		e.InferredType = "[]" + firstType
@@ -94,12 +87,7 @@ func inferExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, diags 
 	case ir.ExprIdent:
 		t, ok := scope[e.Value]
 		if !ok {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0208",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("undeclared identifier %q", e.Value),
-				Span:     e.Span,
-			})
+			*diags = append(*diags, diagnostics.New("FDN0208", e.Span, e.Value))
 			return "", false
 		}
 		e.InferredType = t
@@ -116,24 +104,14 @@ func inferExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, diags 
 			var ok bool
 			targetType, ok = scope[e.Target]
 			if !ok {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0208",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("undeclared identifier %q", e.Target),
-					Span:     e.Span,
-				})
+				*diags = append(*diags, diagnostics.New("FDN0208", e.Span, e.Target))
 				return "", false
 			}
 		}
 		fields := sym.fieldsOf(targetType)
 		f, fOk := fields[e.Field]
 		if !fOk {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0204",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("type %q has no field %q", targetType, e.Field),
-				Span:     e.Span,
-			})
+			*diags = append(*diags, diagnostics.New("FDN0204", e.Span, "type", targetType, e.Field))
 			return "", false
 		}
 		e.InferredType = f.Type
@@ -145,12 +123,11 @@ func inferExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, diags 
 	case ir.ExprConstruct:
 		fields := sym.fieldsOf(e.TypeName)
 		if len(fields) == 0 {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0202",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown type %q in struct construction", e.TypeName),
-				Span:     e.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0202",
+				e.Span,
+				fmt.Sprintf("unknown type %q in struct construction", e.TypeName),
+			))
 			return "", false
 		}
 		validateFieldInitializers("type", e.TypeName, e.Fields, scope, sym, diags)
@@ -164,12 +141,11 @@ func inferExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, diags 
 			e.InferredType = act.ReturnType
 			return act.ReturnType, true
 		}
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0208",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("undeclared function %q", e.Value),
-			Span:     e.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0208",
+			e.Span,
+			fmt.Sprintf("undeclared function %q", e.Value),
+		))
 		return "", false
 	default:
 		return "", false
@@ -185,12 +161,11 @@ func inferCombinatorType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 		return "", false
 	}
 	if !strings.HasPrefix(recvType, "[]") {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0205",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("combinator %q requires a collection receiver, got %s", e.Op, recvType),
-			Span:     e.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0205",
+			e.Span,
+			fmt.Sprintf("combinator %q requires a collection receiver, got %s", e.Op, recvType),
+		))
 		return "", false
 	}
 	elemType := strings.TrimPrefix(recvType, "[]")
@@ -219,12 +194,11 @@ func inferCombinatorType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 	case "sum":
 		if e.Right == nil {
 			if !isNumericType(elemType) {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0205",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("sum() without selector requires []int or []decimal, got %s", recvType),
-					Span:     e.Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0205",
+					e.Span,
+					fmt.Sprintf("sum() without selector requires []int or []decimal, got %s", recvType),
+				))
 				return "", false
 			}
 			e.InferredType = elemType
@@ -235,12 +209,11 @@ func inferCombinatorType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 			return "", false
 		}
 		if !isNumericType(bodyType) {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("sum selector must return int or decimal, got %s", bodyType),
-				Span:     e.Right.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				e.Right.Span,
+				fmt.Sprintf("sum selector must return int or decimal, got %s", bodyType),
+			))
 			return "", false
 		}
 		e.InferredType = bodyType
@@ -259,12 +232,11 @@ func inferCombinatorType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 		e.InferredType = "bool"
 		return "bool", true
 	default:
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0204",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("unknown collection combinator %q", e.Op),
-			Span:     e.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0204",
+			e.Span,
+			fmt.Sprintf("unknown collection combinator %q", e.Op),
+		))
 		return "", false
 	}
 }
@@ -272,12 +244,11 @@ func inferCombinatorType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 func validateBoolLambda(opName string, body *ir.Expr, lambdaScope map[string]string, sym *SymbolTable, diags *[]ir.Diagnostic) {
 	bodyType, bOk := inferExprType(body, lambdaScope, sym, diags)
 	if bOk && bodyType != "bool" {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0205",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("%s predicate must return bool, got %s", opName, bodyType),
-			Span:     body.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0205",
+			body.Span,
+			fmt.Sprintf("%s predicate must return bool, got %s", opName, bodyType),
+		))
 	}
 }
 
@@ -303,12 +274,11 @@ func inferBinaryExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 	switch e.Op {
 	case "&&", "||", "and", "or":
 		if lt != "bool" || rt != "bool" {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("logical operator %s requires bool operands, got %s and %s", e.Op, lt, rt),
-				Span:     e.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				e.Span,
+				fmt.Sprintf("logical operator %s requires bool operands, got %s and %s", e.Op, lt, rt),
+			))
 			return "", false
 		}
 		e.InferredType = "bool"
@@ -316,12 +286,11 @@ func inferBinaryExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 
 	case "==", "!=":
 		if !isAssignableType(lt, rt) && !isAssignableType(rt, lt) && !(isNumericType(lt) && isNumericType(rt)) {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("incompatible operand types %s and %s for %s", lt, rt, e.Op),
-				Span:     e.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				e.Span,
+				fmt.Sprintf("incompatible operand types %s and %s for %s", lt, rt, e.Op),
+			))
 			return "", false
 		}
 		e.InferredType = "bool"
@@ -331,12 +300,11 @@ func inferBinaryExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 		bothNumeric := isNumericType(lt) && isNumericType(rt)
 		bothOrderedStrings := (lt == "string" && rt == "string") || (lt == "timestamp" && rt == "timestamp")
 		if !bothNumeric && !bothOrderedStrings {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("comparison operator %s requires numeric, string, or timestamp operands, got %s and %s", e.Op, lt, rt),
-				Span:     e.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				e.Span,
+				fmt.Sprintf("comparison operator %s requires numeric, string, or timestamp operands, got %s and %s", e.Op, lt, rt),
+			))
 			return "", false
 		}
 		e.InferredType = "bool"
@@ -355,12 +323,11 @@ func inferBinaryExprType(e *ir.Expr, scope map[string]string, sym *SymbolTable, 
 			e.InferredType = "int"
 			return "int", true
 		}
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0205",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("arithmetic operator %s requires numeric operands, got %s and %s", e.Op, lt, rt),
-			Span:     e.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0205",
+			e.Span,
+			fmt.Sprintf("arithmetic operator %s requires numeric operands, got %s and %s", e.Op, lt, rt),
+		))
 		return "", false
 	}
 

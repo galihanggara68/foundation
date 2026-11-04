@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -23,12 +24,11 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 			}
 			ent, ok := sym.entities[g.EntityName]
 			if !ok {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0203",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("unknown entity %q in scenario given", g.EntityName),
-					Span:     g.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0203",
+					g.Span,
+					fmt.Sprintf("unknown entity %q in scenario given", g.EntityName),
+				))
 				continue
 			}
 			validateFieldInitializers("entity", ent.Name, g.Fields, nil, sym, &diags)
@@ -38,12 +38,11 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 			gs := &sc.GivenSlots[j]
 			sl, m, ok := sym.findSlotMethod(gs.SlotName, gs.MethodName)
 			if !ok {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0203",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("unknown slot method %s.%s in scenario given slot", gs.SlotName, gs.MethodName),
-					Span:     gs.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0203",
+					gs.Span,
+					fmt.Sprintf("unknown slot method %s.%s in scenario given slot", gs.SlotName, gs.MethodName),
+				))
 				continue
 			}
 			if len(gs.Args) > 0 {
@@ -53,12 +52,11 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 				sym.resolveEnumLiteral(gs.ReturnExpr, m.ReturnType)
 				retType, ok := inferExprType(gs.ReturnExpr, nil, sym, &diags)
 				if ok && m.ReturnType != "" && !isAssignableType(m.ReturnType, retType) {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0205",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("slot %s.%s returns %s, got %s", sl.Name, m.Name, m.ReturnType, retType),
-						Span:     gs.ReturnExpr.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0205",
+						gs.ReturnExpr.Span,
+						fmt.Sprintf("slot %s.%s returns %s, got %s", sl.Name, m.Name, m.ReturnType, retType),
+					))
 				}
 			}
 			if gs.ThrowsError != "" {
@@ -71,46 +69,38 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 					}
 				}
 				if !inContract {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0206",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("error %q is not declared in slot %s.%s throws contract", gs.ThrowsError, sl.Name, m.Name),
-						Span:     gs.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0206",
+						gs.Span,
+						fmt.Sprintf("error %q is not declared in slot %s.%s throws contract", gs.ThrowsError, sl.Name, m.Name),
+					))
 				}
 			}
 		}
 
 		act, ok := sym.actions[sc.WhenAction]
 		if !ok {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0207",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown action %q in scenario when", sc.WhenAction),
-				Span:     sc.Span,
-			})
+			diags = append(diags, diagnostics.New("FDN0207", sc.Span, sc.WhenAction))
 			continue
 		}
 
 		if len(sc.WhenArgs) != len(act.Params) {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("action %q expects %d arguments, got %d", act.Name, len(act.Params), len(sc.WhenArgs)),
-				Span:     sc.Span,
-			})
+			diags = append(diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				sc.Span,
+				fmt.Sprintf("action %q expects %d arguments, got %d", act.Name, len(act.Params), len(sc.WhenArgs)),
+			))
 		} else {
 			for k := range sc.WhenArgs {
 				paramType := act.Params[k].Type
 				sym.resolveEnumLiteral(&sc.WhenArgs[k], paramType)
 				argType, ok := inferExprType(&sc.WhenArgs[k], nil, sym, &diags)
 				if ok && !isAssignableType(paramType, argType) {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0205",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("argument %d to %q has type %s, expected %s", k+1, act.Name, argType, paramType),
-						Span:     sc.WhenArgs[k].Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0205",
+						sc.WhenArgs[k].Span,
+						fmt.Sprintf("argument %d to %q has type %s, expected %s", k+1, act.Name, argType, paramType),
+					))
 				} else if ok && paramType == "timestamp" && sc.WhenArgs[k].Kind == ir.ExprString {
 					sc.WhenArgs[k].InferredType = "timestamp"
 				}
@@ -132,12 +122,11 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 			if ex.EmittedEvent != "" {
 				ev, evOk := sym.events[ex.EmittedEvent]
 				if !evOk {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0231",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("undeclared event %q in scenario expect emitted", ex.EmittedEvent),
-						Span:     ex.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0231",
+						ex.Span,
+						fmt.Sprintf("undeclared event %q in scenario expect emitted", ex.EmittedEvent),
+					))
 					continue
 				}
 				validateFieldInitializers("event", ev.Name, ex.EmittedFields, expectScope, sym, &diags)
@@ -156,12 +145,11 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 			}
 			rt, rok := inferExprType(&ex.Right, expectScope, sym, &diags)
 			if lok && rok && !isAssignableType(lt, rt) {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0205",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("scenario expect type mismatch: %s vs %s", lt, rt),
-					Span:     ex.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0205",
+					ex.Span,
+					fmt.Sprintf("scenario expect type mismatch: %s vs %s", lt, rt),
+				))
 			}
 		}
 	}

@@ -3,6 +3,7 @@ package frontend
 import (
 	"fmt"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -22,12 +23,7 @@ func (p *parser) parseScenario() (ir.ScenarioDecl, bool) {
 	for p.cur().kind != tokRBrace && p.cur().kind != tokEOF {
 		clause := p.cur()
 		if clause.kind != tokIdent {
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0107",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("expected scenario clause (given, when, expect), got %q", clause.text),
-				Span:     clause.span,
-			})
+			p.diags = append(p.diags, diagnostics.New("FDN0107", clause.span, clause.text))
 			p.advance()
 			return ir.ScenarioDecl{}, false
 		}
@@ -163,12 +159,11 @@ func (p *parser) parseScenario() (ir.ScenarioDecl, bool) {
 				Span:  clause.span,
 			})
 		default:
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0107",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown scenario clause %q", clause.text),
-				Span:     clause.span,
-			})
+			p.diags = append(p.diags, diagnostics.NewWithDetail(
+				"FDN0107",
+				clause.span,
+				fmt.Sprintf("unknown scenario clause %q", clause.text),
+			))
 			p.advance()
 			return ir.ScenarioDecl{}, false
 		}
@@ -231,12 +226,11 @@ func (p *parser) parseGivenSlot(span ir.Span) (ir.GivenSlotDecl, bool) {
 		}
 		gs.ThrowsError = errTok.text
 	} else {
-		p.diags = append(p.diags, ir.Diagnostic{
-			Code:     "FDN0107",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("expected 'returns' or 'throws' in slot stubbing, got %q", outTok.text),
-			Span:     outTok.span,
-		})
+		p.diags = append(p.diags, diagnostics.NewWithDetail(
+			"FDN0107",
+			outTok.span,
+			fmt.Sprintf("expected 'returns' or 'throws' in slot stubbing, got %q", outTok.text),
+		))
 		return ir.GivenSlotDecl{}, false
 	}
 	return gs, true

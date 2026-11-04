@@ -139,3 +139,18 @@ func TestNew(t *testing.T) {
 	}
 }
 
+// TestNewWithDetail confirms that NewWithDetail preserves custom messages and assigns registry severity.
+func TestNewWithDetail(t *testing.T) {
+	span := ir.Span{File: "test.fdn", Line: 10, Column: 5}
+	diag := diagnostics.NewWithDetail("FDN0227", span, "custom warning detail")
+	if diag.Code != "FDN0227" {
+		t.Fatalf("expected code FDN0227, got: %s", diag.Code)
+	}
+	if diag.Severity != ir.SeverityWarning {
+		t.Fatalf("expected severity warning, got: %s", diag.Severity)
+	}
+	if diag.Message != "custom warning detail" {
+		t.Fatalf("expected custom warning detail, got: %s", diag.Message)
+	}
+}
+

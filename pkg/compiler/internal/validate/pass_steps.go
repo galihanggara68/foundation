@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -22,24 +23,22 @@ func (ActionTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 			p := &a.Params[pi]
 			kind, ok := sym.classifyType(p.Type)
 			if !ok {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0202",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("unknown parameter type %q", p.Type),
-					Span:     p.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0202",
+					p.Span,
+					fmt.Sprintf("unknown parameter type %q", p.Type),
+				))
 			} else {
 				p.Kind = kind
 			}
 			scope[p.Name] = p.Type
 		}
 		if a.ReturnType != "" && !sym.isKnownType(a.ReturnType) {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0202",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown return type %q", a.ReturnType),
-				Span:     a.Span,
-			})
+			diags = append(diags, diagnostics.NewWithDetail(
+				"FDN0202",
+				a.Span,
+				fmt.Sprintf("unknown return type %q", a.ReturnType),
+			))
 		}
 
 		for j := range a.Steps {
@@ -60,12 +59,11 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 		if s.Expr != nil {
 			condType, ok := inferExprType(s.Expr, scope, sym, diags)
 			if ok && condType != "bool" {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0205",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("guard condition must be bool, got %s", condType),
-					Span:     s.Expr.Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0205",
+					s.Expr.Span,
+					fmt.Sprintf("guard condition must be bool, got %s", condType),
+				))
 			}
 		}
 		validateErrorRef(s.ElseError, "guard else", s.Span, sym, diags)
@@ -73,12 +71,11 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 	case ir.StepEmit:
 		ev, ok := sym.events[s.EventName]
 		if !ok {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0203",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("undeclared event %q in emit", s.EventName),
-				Span:     s.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0203",
+				s.Span,
+				fmt.Sprintf("undeclared event %q in emit", s.EventName),
+			))
 			return
 		}
 		validateFieldInitializers("event", ev.Name, s.Fields, scope, sym, diags)
@@ -89,12 +86,11 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 			return
 		}
 		if s.ElseError == "" {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0206",
-				Severity: ir.SeverityError,
-				Message:  "query one requires an 'else <Error>' clause",
-				Span:     s.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0206",
+				s.Span,
+				"query one requires an 'else <Error>' clause",
+			))
 		} else {
 			validateErrorRef(s.ElseError, "query else", s.Span, sym, diags)
 		}
@@ -103,12 +99,11 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 	case ir.StepQueryMany:
 		ent, ok := sym.entities[s.EntityName]
 		if !ok {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0203",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown entity %q in query many", s.EntityName),
-				Span:     s.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0203",
+				s.Span,
+				fmt.Sprintf("unknown entity %q in query many", s.EntityName),
+			))
 			return
 		}
 		if s.WhereExpr != nil || len(s.WherePredicates) > 0 {
@@ -125,12 +120,11 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 	case ir.StepCreate:
 		ent, ok := sym.entities[s.EntityName]
 		if !ok {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0203",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown entity %q in create", s.EntityName),
-				Span:     s.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0203",
+				s.Span,
+				fmt.Sprintf("unknown entity %q in create", s.EntityName),
+			))
 			return
 		}
 		validateFieldInitializers("entity", ent.Name, s.Fields, scope, sym, diags)
@@ -150,12 +144,11 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 		if s.Expr != nil {
 			condType, ok := inferExprType(s.Expr, scope, sym, diags)
 			if ok && condType != "bool" {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0205",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("if condition must be bool, got %s", condType),
-					Span:     s.Expr.Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0205",
+					s.Expr.Span,
+					fmt.Sprintf("if condition must be bool, got %s", condType),
+				))
 			}
 		}
 		thenScope := cloneScope(scope)
@@ -176,12 +169,11 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 			collType, ok := inferExprType(s.Expr, scope, sym, diags)
 			if ok {
 				if !strings.HasPrefix(collType, "[]") {
-					*diags = append(*diags, ir.Diagnostic{
-						Code:     "FDN0205",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("for loop collection must be a list type, got %s", collType),
-						Span:     s.Expr.Span,
-					})
+					*diags = append(*diags, diagnostics.NewWithDetail(
+						"FDN0205",
+						s.Expr.Span,
+						fmt.Sprintf("for loop collection must be a list type, got %s", collType),
+					))
 				} else {
 					elemType = strings.TrimPrefix(collType, "[]")
 				}
@@ -210,12 +202,11 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 			sym.resolveEnumLiteral(s.Expr, a.ReturnType)
 			t, ok := inferExprType(s.Expr, scope, sym, diags)
 			if ok && a.ReturnType != "" && !isAssignableType(a.ReturnType, t) {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0205",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("return type mismatch: action %q returns %s, got %s", a.Name, a.ReturnType, t),
-					Span:     s.Expr.Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0205",
+					s.Expr.Span,
+					fmt.Sprintf("return type mismatch: action %q returns %s, got %s", a.Name, a.ReturnType, t),
+				))
 			}
 		}
 	}
@@ -223,45 +214,37 @@ func validateActionStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string
 
 func validateErrorRef(errName, contextLabel string, span ir.Span, sym *SymbolTable, diags *[]ir.Diagnostic) {
 	if _, ok := sym.errors[errName]; !ok {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0206",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("undeclared error %q in %s", errName, contextLabel),
-			Span:     span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0206",
+			span,
+			fmt.Sprintf("undeclared error %q in %s", errName, contextLabel),
+		))
 	}
 }
 
 func validateEntityWhereClause(opName, entityName, whereField string, whereVal *ir.Expr, span ir.Span, scope map[string]string, sym *SymbolTable, diags *[]ir.Diagnostic) (ir.EntityDecl, bool) {
 	ent, ok := sym.entities[entityName]
 	if !ok {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0203",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("unknown entity %q in %s", entityName, opName),
-			Span:     span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0203",
+			span,
+			fmt.Sprintf("unknown entity %q in %s", entityName, opName),
+		))
 		return ir.EntityDecl{}, false
 	}
 	fields := sym.fieldsOf(ent.Name)
 	wf, fOk := fields[whereField]
 	if !fOk {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0204",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("entity %q has no field %q", ent.Name, whereField),
-			Span:     span,
-		})
+		*diags = append(*diags, diagnostics.New("FDN0204", span, "entity", ent.Name, whereField))
 	} else if whereVal != nil {
 		sym.resolveEnumLiteral(whereVal, wf.Type)
 		valType, ok := inferExprType(whereVal, scope, sym, diags)
 		if ok && !isAssignableType(wf.Type, valType) {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("type mismatch in %s where clause: field %q is %s, got %s", opName, whereField, wf.Type, valType),
-				Span:     whereVal.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				whereVal.Span,
+				fmt.Sprintf("type mismatch in %s where clause: field %q is %s, got %s", opName, whereField, wf.Type, valType),
+			))
 		}
 	}
 	return ent, true
@@ -271,19 +254,17 @@ func validateSlotStep(s *ir.StepDecl, scope map[string]string, sym *SymbolTable,
 	sl, m, ok := sym.findSlotMethod(s.SlotName, s.SlotMethod)
 	if !ok {
 		if _, slotExists := sym.slots[s.SlotName]; !slotExists {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0203",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("undeclared slot %q", s.SlotName),
-				Span:     s.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0203",
+				s.Span,
+				fmt.Sprintf("undeclared slot %q", s.SlotName),
+			))
 		} else {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0204",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("slot %q has no method %q", sl.Name, s.SlotMethod),
-				Span:     s.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0204",
+				s.Span,
+				fmt.Sprintf("slot %q has no method %q", sl.Name, s.SlotMethod),
+			))
 		}
 		return
 	}
@@ -298,12 +279,11 @@ func validateSlotStep(s *ir.StepDecl, scope map[string]string, sym *SymbolTable,
 
 func validateSlotCallArgs(sl ir.SlotDecl, m ir.SlotMethodDecl, args []ir.Expr, span ir.Span, scope map[string]string, sym *SymbolTable, diags *[]ir.Diagnostic) {
 	if len(args) != len(m.Params) {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0205",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("slot %s.%s expects %d arguments, got %d", sl.Name, m.Name, len(m.Params), len(args)),
-			Span:     span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0205",
+			span,
+			fmt.Sprintf("slot %s.%s expects %d arguments, got %d", sl.Name, m.Name, len(m.Params), len(args)),
+		))
 		return
 	}
 	for idx := range args {
@@ -311,12 +291,11 @@ func validateSlotCallArgs(sl ir.SlotDecl, m ir.SlotMethodDecl, args []ir.Expr, s
 		sym.resolveEnumLiteral(&args[idx], expectedType)
 		argType, ok := inferExprType(&args[idx], scope, sym, diags)
 		if ok && !isAssignableType(expectedType, argType) {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("argument %d to slot %s.%s has type %s, expected %s", idx+1, sl.Name, m.Name, argType, expectedType),
-				Span:     args[idx].Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				args[idx].Span,
+				fmt.Sprintf("argument %d to slot %s.%s has type %s, expected %s", idx+1, sl.Name, m.Name, argType, expectedType),
+			))
 		}
 	}
 }
@@ -324,31 +303,24 @@ func validateSlotCallArgs(sl ir.SlotDecl, m ir.SlotMethodDecl, args []ir.Expr, s
 func validateRequireStep(s *ir.StepDecl, scope map[string]string, sym *SymbolTable, diags *[]ir.Diagnostic) {
 	pol, ok := sym.policies[s.PolicyName]
 	if !ok {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0209",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("undeclared policy %q in require", s.PolicyName),
-			Span:     s.Span,
-		})
+		*diags = append(*diags, diagnostics.New("FDN0209", s.Span, s.PolicyName))
 	} else if len(s.PolicyArgs) != len(pol.Params) {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0205",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("policy %q expects %d arguments, got %d", pol.Name, len(pol.Params), len(s.PolicyArgs)),
-			Span:     s.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0205",
+			s.Span,
+			fmt.Sprintf("policy %q expects %d arguments, got %d", pol.Name, len(pol.Params), len(s.PolicyArgs)),
+		))
 	} else {
 		for idx := range s.PolicyArgs {
 			expectedType := pol.Params[idx].Type
 			sym.resolveEnumLiteral(&s.PolicyArgs[idx], expectedType)
 			argType, ok := inferExprType(&s.PolicyArgs[idx], scope, sym, diags)
 			if ok && !isAssignableType(expectedType, argType) {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0205",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("argument %d to policy %q has type %s, expected %s", idx+1, pol.Name, argType, expectedType),
-					Span:     s.PolicyArgs[idx].Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0205",
+					s.PolicyArgs[idx].Span,
+					fmt.Sprintf("argument %d to policy %q has type %s, expected %s", idx+1, pol.Name, argType, expectedType),
+				))
 			}
 		}
 	}
@@ -365,12 +337,11 @@ func validateMatchStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string,
 	}
 	en, isEnum := sym.enums[targetType]
 	if !isEnum {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0205",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("match target must be an enum type, got %s", targetType),
-			Span:     s.Expr.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0205",
+			s.Expr.Span,
+			fmt.Sprintf("match target must be an enum type, got %s", targetType),
+		))
 		return
 	}
 	validVariants := make(map[string]bool, len(en.Variants))
@@ -381,12 +352,11 @@ func validateMatchStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string,
 	for i := range s.MatchArms {
 		arm := &s.MatchArms[i]
 		if !validVariants[arm.Variant] {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0208",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("enum %q has no variant .%s", en.Name, arm.Variant),
-				Span:     arm.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0208",
+				arm.Span,
+				fmt.Sprintf("enum %q has no variant .%s", en.Name, arm.Variant),
+			))
 		}
 		covered[arm.Variant] = true
 		armScope := cloneScope(scope)
@@ -401,11 +371,6 @@ func validateMatchStep(a ir.ActionDecl, s *ir.StepDecl, scope map[string]string,
 		}
 	}
 	if len(missing) > 0 {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0212",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("non-exhaustive match over enum %q: missing variants %s", en.Name, strings.Join(missing, ", ")),
-			Span:     s.Span,
-		})
+		*diags = append(*diags, diagnostics.New("FDN0212", s.Span, en.Name, strings.Join(missing, ", ")))
 	}
 }

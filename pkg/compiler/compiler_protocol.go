@@ -157,3 +157,8 @@ func LookupDiagnostic(code string) (DiagnosticDefinition, bool) {
 func NewDiagnostic(code string, span Span, args ...any) Diagnostic {
 	return diagnostics.New(code, span, args...)
 }
+
+// NewDiagnosticWithDetail creates a Diagnostic for the code, span, and custom message.
+func NewDiagnosticWithDetail(code string, span Span, msg string) Diagnostic {
+	return diagnostics.NewWithDetail(code, span, msg)
+}

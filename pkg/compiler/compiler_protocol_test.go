@@ -234,4 +234,9 @@ func TestExportedDiagnosticRegistry(t *testing.T) {
 	if diag.Code != "FDN0001" || diag.Severity != compiler.SeverityError {
 		t.Fatalf("unexpected diagnostic: %+v", diag)
 	}
+
+	detailDiag := compiler.NewDiagnosticWithDetail("FDN0227", compiler.Span{File: "test.fdn", Line: 1, Column: 1}, "custom warning")
+	if detailDiag.Code != "FDN0227" || detailDiag.Severity != compiler.SeverityWarning || detailDiag.Message != "custom warning" {
+		t.Fatalf("unexpected detail diagnostic: %+v", detailDiag)
+	}
 }

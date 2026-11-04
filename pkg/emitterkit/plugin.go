@@ -90,6 +90,9 @@ var LookupDiagnostic = compiler.LookupDiagnostic
 // NewDiagnostic creates a Diagnostic for the code, span, and optional message arguments.
 var NewDiagnostic = compiler.NewDiagnostic
 
+// NewDiagnosticWithDetail creates a Diagnostic for the code, span, and custom message.
+var NewDiagnosticWithDetail = compiler.NewDiagnosticWithDetail
+
 // RunPlugin executes the plugin using standard input (request) and standard output (response).
 // If unhandled errors occur during execution, it logs to stderr and terminates with exit code 1.
 func RunPlugin(handler HandlerFunc) {

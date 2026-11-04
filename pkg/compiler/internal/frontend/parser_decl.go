@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -279,12 +280,11 @@ func (p *parser) parseError() (ir.ErrorDecl, bool) {
 			}
 			status, atoiErr := strconv.Atoi(sTok.text)
 			if atoiErr != nil {
-				p.diags = append(p.diags, ir.Diagnostic{
-					Code:     "FDN0220",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("error status %q must be an integer", sTok.text),
-					Span:     sTok.span,
-				})
+				p.diags = append(p.diags, diagnostics.NewWithDetail(
+					"FDN0220",
+					sTok.span,
+					fmt.Sprintf("error status %q must be an integer", sTok.text),
+				))
 			} else {
 				errDecl.Status = sign * status
 			}
@@ -301,12 +301,7 @@ func (p *parser) parseError() (ir.ErrorDecl, bool) {
 			}
 			errDecl.Posture = ir.ErrorPosture(pTok.text)
 		default:
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0104",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown error property %q", propTok.text),
-				Span:     propTok.span,
-			})
+			p.diags = append(p.diags, diagnostics.New("FDN0104", propTok.span, propTok.text))
 			p.advance()
 		}
 	}
@@ -328,12 +323,7 @@ func (p *parser) parseErrorMessages() (map[string]string, bool) {
 	for p.cur().kind != tokRBrace && p.cur().kind != tokEOF {
 		localeTok := p.cur()
 		if localeTok.kind != tokIdent && localeTok.kind != tokString {
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0102",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("expected LOCALE, got %q", localeTok.text),
-				Span:     localeTok.span,
-			})
+			p.diags = append(p.diags, diagnostics.New("FDN0102", localeTok.span, "LOCALE", localeTok.text))
 			return nil, false
 		}
 		p.advance()
@@ -345,12 +335,7 @@ func (p *parser) parseErrorMessages() (map[string]string, bool) {
 			return nil, false
 		}
 		if _, duplicate := messages[localeTok.text]; duplicate {
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0108",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("duplicate locale %q in error messages", localeTok.text),
-				Span:     localeTok.span,
-			})
+			p.diags = append(p.diags, diagnostics.New("FDN0108", localeTok.span, localeTok.text))
 		}
 		messages[localeTok.text] = textTok.text
 	}

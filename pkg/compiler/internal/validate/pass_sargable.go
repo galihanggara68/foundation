@@ -3,6 +3,7 @@ package validate
 import (
 	"fmt"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -41,12 +42,11 @@ func isComparisonOp(op string) bool {
 // ValidateSargableWhereStructure verifies that whereExpr is strictly a conjunction of comparisons.
 func ValidateSargableWhereStructure(e ir.Expr, diags *[]ir.Diagnostic) bool {
 	if e.Kind == ir.ExprBinary && (e.Op == "or" || e.Op == "||") {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0217",
-			Severity: ir.SeverityError,
-			Message:  "disjunction ('or') is not supported in where predicates; only conjunctions ('and') are allowed to enforce sargable query plans",
-			Span:     e.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0217",
+			e.Span,
+			"disjunction ('or') is not supported in where predicates; only conjunctions ('and') are allowed to enforce sargable query plans",
+		))
 		return false
 	}
 	if e.Kind == ir.ExprBinary && (e.Op == "and" || e.Op == "&&") {
@@ -57,12 +57,11 @@ func ValidateSargableWhereStructure(e ir.Expr, diags *[]ir.Diagnostic) bool {
 	if e.Kind == ir.ExprBinary && isComparisonOp(e.Op) {
 		return true
 	}
-	*diags = append(*diags, ir.Diagnostic{
-		Code:     "FDN0205",
-		Severity: ir.SeverityError,
-		Message:  "invalid where predicate: only conjunctions of single-field comparisons are supported",
-		Span:     e.Span,
-	})
+	*diags = append(*diags, diagnostics.NewWithDetail(
+		"FDN0205",
+		e.Span,
+		"invalid where predicate: only conjunctions of single-field comparisons are supported",
+	))
 	return false
 }
 
@@ -103,12 +102,11 @@ func validateExpectWhere(opName string, ex *ir.ExpectDecl, scope map[string]stri
 func validateCompoundWhere(opName, entityName string, preds []ir.WherePredicate, span ir.Span, scope map[string]string, sym *SymbolTable, diags *[]ir.Diagnostic) (ir.EntityDecl, bool) {
 	ent, ok := sym.entities[entityName]
 	if !ok {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0203",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("unknown entity %q in %s", entityName, opName),
-			Span:     span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0203",
+			span,
+			fmt.Sprintf("unknown entity %q in %s", entityName, opName),
+		))
 		return ir.EntityDecl{}, false
 	}
 	fields := sym.fieldsOf(ent.Name)
@@ -116,23 +114,17 @@ func validateCompoundWhere(opName, entityName string, preds []ir.WherePredicate,
 	for i := range preds {
 		p := &preds[i]
 		if p.Field == "" {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("invalid where predicate in %s: must compare an entity field", opName),
-				Span:     p.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				p.Span,
+				fmt.Sprintf("invalid where predicate in %s: must compare an entity field", opName),
+			))
 			allOk = false
 			continue
 		}
 		wf, fOk := fields[p.Field]
 		if !fOk {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0204",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("entity %q has no field %q", ent.Name, p.Field),
-				Span:     p.Span,
-			})
+			*diags = append(*diags, diagnostics.New("FDN0204", p.Span, "entity", ent.Name, p.Field))
 			allOk = false
 			continue
 		}
@@ -145,24 +137,22 @@ func validateCompoundWhere(opName, entityName string, preds []ir.WherePredicate,
 
 		if p.Op == "==" || p.Op == "!=" {
 			if !isAssignableType(wf.Type, valType) && !isAssignableType(valType, wf.Type) && !(isNumericType(wf.Type) && isNumericType(valType)) {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0205",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("type mismatch in %s where clause: field %q is %s, got %s", opName, p.Field, wf.Type, valType),
-					Span:     p.Value.Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0205",
+					p.Value.Span,
+					fmt.Sprintf("type mismatch in %s where clause: field %q is %s, got %s", opName, p.Field, wf.Type, valType),
+				))
 				allOk = false
 			}
 		} else {
 			bothNumeric := isNumericType(wf.Type) && isNumericType(valType)
 			bothTimestamps := wf.Type == "timestamp" && valType == "timestamp"
 			if !bothNumeric && !bothTimestamps {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0205",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("type mismatch in %s where clause: comparison operator %s requires numeric or timestamp operands, got %s and %s", opName, p.Op, wf.Type, valType),
-					Span:     p.Value.Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0205",
+					p.Value.Span,
+					fmt.Sprintf("type mismatch in %s where clause: comparison operator %s requires numeric or timestamp operands, got %s and %s", opName, p.Op, wf.Type, valType),
+				))
 				allOk = false
 			}
 		}

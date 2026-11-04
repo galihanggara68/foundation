@@ -3,6 +3,7 @@ package validate
 import (
 	"fmt"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
@@ -34,12 +35,11 @@ func ValidateQueryManyUniqueOrder(doc *ir.SemanticIR, sym *SymbolTable) []ir.Dia
 				return
 			}
 			if s.OrderByField == "" {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0215",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("query many on entity %q requires an 'order_by' clause on a unique field (@pk or @unique)", s.EntityName),
-					Span:     s.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0215",
+					s.Span,
+					fmt.Sprintf("query many on entity %q requires an 'order_by' clause on a unique field (@pk or @unique)", s.EntityName),
+				))
 				return
 			}
 
@@ -57,22 +57,20 @@ func ValidateQueryManyUniqueOrder(doc *ir.SemanticIR, sym *SymbolTable) []ir.Dia
 			}
 
 			if matchedField == nil {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0215",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("order_by field %q does not exist on entity %q", s.OrderByField, s.EntityName),
-					Span:     s.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0215",
+					s.Span,
+					fmt.Sprintf("order_by field %q does not exist on entity %q", s.OrderByField, s.EntityName),
+				))
 				return
 			}
 
 			if !matchedField.HasTrait("pk") && !matchedField.HasTrait("unique") {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0215",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("order_by field %q on entity %q must have @pk or @unique trait to ensure deterministic keyset ordering", s.OrderByField, s.EntityName),
-					Span:     s.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0215",
+					s.Span,
+					fmt.Sprintf("order_by field %q on entity %q must have @pk or @unique trait to ensure deterministic keyset ordering", s.OrderByField, s.EntityName),
+				))
 			}
 		}, nil)
 	}
@@ -99,39 +97,31 @@ func ValidateQueryManyLimitCap(doc *ir.SemanticIR) []ir.Diagnostic {
 			}
 
 			if s.Limit == 0 && s.LimitExpr == nil {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0216",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("query many on entity %q requires a 'limit' clause", s.EntityName),
-					Span:     s.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0216",
+					s.Span,
+					fmt.Sprintf("query many on entity %q requires a 'limit' clause", s.EntityName),
+				))
 				return
 			}
 
 			if s.LimitExpr != nil && s.LimitExpr.Kind != ir.ExprInt {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0216",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("query many limit on entity %q must be a static integer literal <= %d", s.EntityName, platform.DefaultMaxPageLimit),
-					Span:     s.LimitExpr.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0216",
+					s.LimitExpr.Span,
+					fmt.Sprintf("query many limit on entity %q must be a static integer literal <= %d", s.EntityName, platform.DefaultMaxPageLimit),
+				))
 				return
 			}
 
 			if s.Limit > platform.DefaultMaxPageLimit {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0216",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("query many limit %d exceeds maximum allowed cap of %d", s.Limit, platform.DefaultMaxPageLimit),
-					Span:     s.Span,
-				})
+				diags = append(diags, diagnostics.New("FDN0216", s.Span, s.Limit, platform.DefaultMaxPageLimit))
 			} else if s.Limit <= 0 {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0216",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("query many limit must be greater than 0, got %d", s.Limit),
-					Span:     s.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0216",
+					s.Span,
+					fmt.Sprintf("query many limit must be greater than 0, got %d", s.Limit),
+				))
 			}
 		}, nil)
 	}

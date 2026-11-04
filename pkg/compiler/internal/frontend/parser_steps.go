@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -28,12 +29,7 @@ func (p *parser) parseStepBlock() ([]ir.StepDecl, bool) {
 func (p *parser) parseStep() (ir.StepDecl, bool) {
 	t := p.cur()
 	if t.kind != tokIdent {
-		p.diags = append(p.diags, ir.Diagnostic{
-			Code:     "FDN0105",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("expected action statement, got %q", t.text),
-			Span:     t.span,
-		})
+		p.diags = append(p.diags, diagnostics.New("FDN0105", t.span, t.text))
 		p.advance()
 		return ir.StepDecl{}, false
 	}
@@ -272,12 +268,11 @@ func (p *parser) parseStep() (ir.StepDecl, bool) {
 		}, true
 
 	default:
-		p.diags = append(p.diags, ir.Diagnostic{
-			Code:     "FDN0105",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("unknown action step keyword %q", t.text),
-			Span:     t.span,
-		})
+		p.diags = append(p.diags, diagnostics.NewWithDetail(
+			"FDN0105",
+			t.span,
+			fmt.Sprintf("unknown action step keyword %q", t.text),
+		))
 		p.advance()
 		return ir.StepDecl{}, false
 	}

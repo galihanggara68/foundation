@@ -1,10 +1,10 @@
 package validate
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
@@ -258,12 +258,7 @@ func cloneScope(in map[string]string) map[string]string {
 
 func registerUniqueDecl[T any](m map[string]T, kindLabel, name string, item T, span ir.Span, diags *[]ir.Diagnostic) {
 	if _, exists := m[name]; exists {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0200",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("duplicate %s declaration %q", kindLabel, name),
-			Span:     span,
-		})
+		*diags = append(*diags, diagnostics.New("FDN0200", span, kindLabel, name))
 	}
 	m[name] = item
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -176,12 +177,7 @@ func (l *lexer) tokenize() ([]token, []ir.Diagnostic) {
 				l.next()
 				tokens = append(tokens, token{kind: tokNeq, text: "!=", span: span})
 			} else {
-				l.diags = append(l.diags, ir.Diagnostic{
-					Code:     "FDN0100",
-					Severity: ir.SeverityError,
-					Message:  "unexpected character '!'",
-					Span:     span,
-				})
+				l.diags = append(l.diags, diagnostics.New("FDN0100", span, "'!'"))
 			}
 		case '>':
 			l.next()
@@ -205,12 +201,7 @@ func (l *lexer) tokenize() ([]token, []ir.Diagnostic) {
 				l.next()
 				tokens = append(tokens, token{kind: tokAnd, text: "&&", span: span})
 			} else {
-				l.diags = append(l.diags, ir.Diagnostic{
-					Code:     "FDN0100",
-					Severity: ir.SeverityError,
-					Message:  "unexpected character '&'",
-					Span:     span,
-				})
+				l.diags = append(l.diags, diagnostics.New("FDN0100", span, "'&'"))
 			}
 		case '|':
 			l.next()
@@ -218,12 +209,7 @@ func (l *lexer) tokenize() ([]token, []ir.Diagnostic) {
 				l.next()
 				tokens = append(tokens, token{kind: tokOr, text: "||", span: span})
 			} else {
-				l.diags = append(l.diags, ir.Diagnostic{
-					Code:     "FDN0100",
-					Severity: ir.SeverityError,
-					Message:  "unexpected character '|'",
-					Span:     span,
-				})
+				l.diags = append(l.diags, diagnostics.New("FDN0100", span, "'|'"))
 			}
 		case '"':
 			l.next()
@@ -241,12 +227,7 @@ func (l *lexer) tokenize() ([]token, []ir.Diagnostic) {
 				sb.WriteRune(c)
 			}
 			if !closed {
-				l.diags = append(l.diags, ir.Diagnostic{
-					Code:     "FDN0101",
-					Severity: ir.SeverityError,
-					Message:  "unterminated string literal",
-					Span:     span,
-				})
+				l.diags = append(l.diags, diagnostics.New("FDN0101", span))
 			}
 			tokens = append(tokens, token{kind: tokString, text: sb.String(), span: span})
 		default:
@@ -271,12 +252,7 @@ func (l *lexer) tokenize() ([]token, []ir.Diagnostic) {
 				}
 			} else {
 				l.next()
-				l.diags = append(l.diags, ir.Diagnostic{
-					Code:     "FDN0100",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("unexpected character %q", r),
-					Span:     span,
-				})
+				l.diags = append(l.diags, diagnostics.New("FDN0100", span, fmt.Sprintf("%q", r)))
 			}
 		}
 	}

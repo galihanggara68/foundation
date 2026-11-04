@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
@@ -43,20 +44,18 @@ func (p *parser) parseTrait() (ir.TraitDecl, bool) {
 		}
 		traitName = nameTok.text + ":" + localTok.text
 		if nameTok.text == platform.ReservedTraitNamespace {
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0225",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("trait namespace %q is reserved for standard traits; standard traits are written without a namespace", platform.ReservedTraitNamespace),
-				Span:     nameTok.span,
-			})
+			p.diags = append(p.diags, diagnostics.NewWithDetail(
+				"FDN0225",
+				nameTok.span,
+				fmt.Sprintf("trait namespace %q is reserved for standard traits; standard traits are written without a namespace", platform.ReservedTraitNamespace),
+			))
 		}
 	} else if nameTok.text == "cron" {
-		p.diags = append(p.diags, ir.Diagnostic{
-			Code:     "FDN0115",
-			Severity: ir.SeverityError,
-			Message:  "@cron trait is reserved until distributed leader election is implemented; un-coordinated tickers double-fire under multiple replicas",
-			Span:     nameTok.span,
-		})
+		p.diags = append(p.diags, diagnostics.NewWithDetail(
+			"FDN0115",
+			nameTok.span,
+			"@cron trait is reserved until distributed leader election is implemented; un-coordinated tickers double-fire under multiple replicas",
+		))
 	}
 	args := make(map[string]string)
 	listArgs := make(map[string][]string)
@@ -131,23 +130,13 @@ func (p *parser) parseTraitListArg() ([]string, bool) {
 			items = append(items, unquoteTraitArg(p.cur().text))
 			p.advance()
 		} else {
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0102",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("expected string literal in list, got %q", p.cur().text),
-				Span:     p.cur().span,
-			})
+			p.diags = append(p.diags, diagnostics.New("FDN0102", p.cur().span, "string literal in list", p.cur().text))
 			return nil, false
 		}
 		if p.cur().kind == tokComma {
 			p.advance()
 		} else if p.cur().kind != tokRBracket {
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0102",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("expected ',' or ']', got %q", p.cur().text),
-				Span:     p.cur().span,
-			})
+			p.diags = append(p.diags, diagnostics.New("FDN0102", p.cur().span, "',' or ']'", p.cur().text))
 			return nil, false
 		}
 	}

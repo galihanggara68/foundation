@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
@@ -31,22 +32,21 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 	for i := range sem.Errors {
 		errDecl := &sem.Errors[i]
 		if kind, reserved := platform.ReservedErrorName(errDecl.Name); reserved {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0219",
-				Severity: ir.SeverityWarning,
-				Message: fmt.Sprintf("error %q collides with the platform's standard %q error; its text can be shadowed by the standard error downstream",
-					errDecl.Name, kind),
-				Span: errDecl.Span,
-			})
+			diags = append(diags, diagnostics.New(
+				"FDN0219",
+				errDecl.Span,
+				errDecl.Name,
+				kind,
+			))
 		}
 		policy, standard := platform.ErrorPolicyFor(errDecl.Kind)
 		if !standard {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0201",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("invalid error kind %q in error %q", errDecl.Kind, errDecl.Name),
-				Span:     errDecl.Span,
-			})
+			diags = append(diags, diagnostics.New(
+				"FDN0201",
+				errDecl.Span,
+				errDecl.Kind,
+				errDecl.Name,
+			))
 		}
 		if errDecl.Status == 0 {
 			errDecl.Status = policy.Status
@@ -55,21 +55,22 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 			errDecl.Posture = policy.Posture
 		}
 		if standard && !errDecl.Posture.IsStandard() {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0221",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("invalid error posture %q in error %q", errDecl.Posture, errDecl.Name),
-				Span:     errDecl.Span,
-			})
+			diags = append(diags, diagnostics.New(
+				"FDN0221",
+				errDecl.Span,
+				errDecl.Posture,
+				errDecl.Name,
+			))
 		}
 		if errDecl.Status != 0 && (errDecl.Status < platform.MinHTTPStatus || errDecl.Status > platform.MaxHTTPStatus) {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0220",
-				Severity: ir.SeverityError,
-				Message: fmt.Sprintf("error status %d must be between %d and %d in error %q",
-					errDecl.Status, platform.MinHTTPStatus, platform.MaxHTTPStatus, errDecl.Name),
-				Span: errDecl.Span,
-			})
+			diags = append(diags, diagnostics.New(
+				"FDN0220",
+				errDecl.Span,
+				errDecl.Status,
+				platform.MinHTTPStatus,
+				platform.MaxHTTPStatus,
+				errDecl.Name,
+			))
 		}
 		// The platform already ships this error: keep the seeded entry, so the standard
 		// error shadows the declaration exactly as FDN0219 warns. Registering it would
@@ -97,24 +98,18 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 			f := &fields[i]
 			kind, ok := sym.classifyType(f.Type)
 			if !ok {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0218",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("cannot classify type %q for field %q", f.Type, f.Name),
-					Span:     f.Span,
-				})
+				diags = append(diags, diagnostics.New("FDN0218", f.Span, f.Type, f.Name))
 				continue
 			}
 			f.Kind = kind
 			if strings.HasPrefix(f.DefaultVal, ".") {
 				variant := strings.TrimPrefix(f.DefaultVal, ".")
 				if !sym.enumHasVariant(f.Type, variant) {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0205",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("invalid default enum variant %s for field %q of type %s", f.DefaultVal, f.Name, f.Type),
-						Span:     f.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0205",
+						f.Span,
+						fmt.Sprintf("invalid default enum variant %s for field %q of type %s", f.DefaultVal, f.Name, f.Type),
+					))
 				}
 			}
 		}
@@ -124,12 +119,11 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		for _, f := range fields {
 			for _, tr := range f.Traits {
 				if tr.Name == "version" {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0215",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("@version trait is only valid on entity fields, found on %s %q field %q", constructKind, constructName, f.Name),
-						Span:     tr.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0215",
+						tr.Span,
+						fmt.Sprintf("@version trait is only valid on entity fields, found on %s %q field %q", constructKind, constructName, f.Name),
+					))
 				}
 			}
 		}
@@ -137,12 +131,11 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 
 	if len(sem.Actors) > 1 {
 		for i := 1; i < len(sem.Actors); i++ {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0104",
-				Severity: ir.SeverityError,
-				Message:  "duplicate actor declaration across blueprint files; only one actor is permitted",
-				Span:     sem.Actors[i].Span,
-			})
+			diags = append(diags, diagnostics.NewWithDetail(
+				"FDN0104",
+				sem.Actors[i].Span,
+				"duplicate actor declaration across blueprint files; only one actor is permitted",
+			))
 		}
 	}
 
@@ -168,12 +161,11 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 					tblName = strings.Trim(tr.Args["_0"], `"'`)
 				}
 				if tblName == "" {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0216",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("entity %q has @table trait with empty table name", e.Name),
-						Span:     tr.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0216",
+						tr.Span,
+						fmt.Sprintf("entity %q has @table trait with empty table name", e.Name),
+					))
 				}
 			}
 		}
@@ -181,12 +173,11 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		e.TableName = physTable
 		sym.entities[e.Name] = *e
 		if prevEnt, exists := tablesSeen[physTable]; exists {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0216",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("duplicate physical table name %q declared on entity %q (conflicts with entity %q)", physTable, e.Name, prevEnt),
-				Span:     e.Span,
-			})
+			diags = append(diags, diagnostics.NewWithDetail(
+				"FDN0216",
+				e.Span,
+				fmt.Sprintf("duplicate physical table name %q declared on entity %q (conflicts with entity %q)", physTable, e.Name, prevEnt),
+			))
 		} else {
 			tablesSeen[physTable] = e.Name
 		}
@@ -196,20 +187,18 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 				if tr.Name == "version" {
 					versionCount++
 					if f.Type != "int" {
-						diags = append(diags, ir.Diagnostic{
-							Code:     "FDN0205",
-							Severity: ir.SeverityError,
-							Message:  fmt.Sprintf("field %q with @version trait must be of type int, got %s", f.Name, f.Type),
-							Span:     f.Span,
-						})
+						diags = append(diags, diagnostics.NewWithDetail(
+							"FDN0205",
+							f.Span,
+							fmt.Sprintf("field %q with @version trait must be of type int, got %s", f.Name, f.Type),
+						))
 					}
 					if versionCount > 1 {
-						diags = append(diags, ir.Diagnostic{
-							Code:     "FDN0215",
-							Severity: ir.SeverityError,
-							Message:  fmt.Sprintf("entity %q declares multiple @version fields; at most one is allowed", e.Name),
-							Span:     tr.Span,
-						})
+						diags = append(diags, diagnostics.NewWithDetail(
+							"FDN0215",
+							tr.Span,
+							fmt.Sprintf("entity %q declares multiple @version fields; at most one is allowed", e.Name),
+						))
 					}
 				}
 			}
@@ -227,12 +216,11 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 				p := &m.Params[pi]
 				kind, ok := sym.classifyType(p.Type)
 				if !ok {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0202",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("unknown parameter type %q in slot %s.%s", p.Type, sl.Name, m.Name),
-						Span:     p.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0202",
+						p.Span,
+						fmt.Sprintf("unknown parameter type %q in slot %s.%s", p.Type, sl.Name, m.Name),
+					))
 					continue
 				}
 				p.Kind = kind
@@ -240,12 +228,11 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 			if m.ReturnType != "" {
 				kind, ok := sym.classifyType(m.ReturnType)
 				if !ok {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0202",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("unknown return type %q in slot %s.%s", m.ReturnType, sl.Name, m.Name),
-						Span:     m.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0202",
+						m.Span,
+						fmt.Sprintf("unknown return type %q in slot %s.%s", m.ReturnType, sl.Name, m.Name),
+					))
 				} else {
 					m.ReturnKind = kind
 				}
@@ -263,12 +250,11 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 			param := &pol.Params[pi]
 			kind, ok := sym.classifyType(param.Type)
 			if !ok {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0202",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("unknown parameter type %q in policy %q", param.Type, pol.Name),
-					Span:     param.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0202",
+					param.Span,
+					fmt.Sprintf("unknown parameter type %q in policy %q", param.Type, pol.Name),
+				))
 			} else {
 				param.Kind = kind
 			}
@@ -276,12 +262,11 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		}
 		bt, ok := inferExprType(&pol.Body, pScope, sym, &diags)
 		if ok && bt != "bool" {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0205",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("policy %q body must evaluate to bool, got %s", pol.Name, bt),
-				Span:     pol.Body.Span,
-			})
+			diags = append(diags, diagnostics.NewWithDetail(
+				"FDN0205",
+				pol.Body.Span,
+				fmt.Sprintf("policy %q body must evaluate to bool, got %s", pol.Name, bt),
+			))
 		}
 		sym.policies[pol.Name] = *pol
 	}
@@ -294,21 +279,20 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 					evName = tr.Args["event"]
 				}
 				if evName == "" {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0231",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("@event_handler on action %q requires an event name", a.Name),
-						Span:     tr.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0231",
+						tr.Span,
+						fmt.Sprintf("@event_handler on action %q requires an event name", a.Name),
+					))
 					continue
 				}
 				if _, ok := sym.events[evName]; !ok {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0231",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("@event_handler on action %q subscribes to undeclared event %q", a.Name, evName),
-						Span:     tr.Span,
-					})
+					diags = append(diags, diagnostics.New(
+						"FDN0231",
+						tr.Span,
+						a.Name,
+						evName,
+					))
 					continue
 				}
 				hasParam := false
@@ -319,12 +303,11 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 					}
 				}
 				if !hasParam {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0204",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("@event_handler action %q must accept a parameter of event type %q", a.Name, evName),
-						Span:     a.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0204",
+						a.Span,
+						fmt.Sprintf("@event_handler action %q must accept a parameter of event type %q", a.Name, evName),
+					))
 				}
 			}
 		}

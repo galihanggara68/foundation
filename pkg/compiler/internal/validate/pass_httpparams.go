@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -37,12 +38,11 @@ func (HTTPPathParamsPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Di
 					continue
 				}
 				reported[base] = true
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0222",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("@http route path %q on action %q routes path segment {%s} but no parameter of that name supplies it", path, a.Name, name),
-					Span:     a.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0222",
+					a.Span,
+					fmt.Sprintf("@http route path %q on action %q routes path segment {%s} but no parameter of that name supplies it", path, a.Name, name),
+				))
 			}
 		}
 	}

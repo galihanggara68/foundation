@@ -216,4 +216,9 @@ func TestExportedDiagnosticRegistryInEmitterkit(t *testing.T) {
 	if diag.Code != "FDN0001" || diag.Severity != emitterkit.SeverityError {
 		t.Fatalf("unexpected diagnostic: %+v", diag)
 	}
+
+	detailDiag := emitterkit.NewDiagnosticWithDetail("FDN0227", emitterkit.Span{File: "test.fdn", Line: 1, Column: 1}, "custom warning")
+	if detailDiag.Code != "FDN0227" || detailDiag.Severity != emitterkit.SeverityWarning || detailDiag.Message != "custom warning" {
+		t.Fatalf("unexpected detail diagnostic: %+v", detailDiag)
+	}
 }

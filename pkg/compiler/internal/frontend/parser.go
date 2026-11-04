@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -51,12 +52,7 @@ func (p *parser) advance() token {
 func (p *parser) expect(kind tokenKind) (token, bool) {
 	t := p.cur()
 	if t.kind != kind {
-		p.diags = append(p.diags, ir.Diagnostic{
-			Code:     "FDN0102",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("expected %s, got %q", kind, t.text),
-			Span:     t.span,
-		})
+		p.diags = append(p.diags, diagnostics.New("FDN0102", t.span, kind, t.text))
 		return t, false
 	}
 	p.advance()
@@ -66,12 +62,7 @@ func (p *parser) expect(kind tokenKind) (token, bool) {
 func (p *parser) expectIdentText(text string) (token, bool) {
 	t := p.cur()
 	if t.kind != tokIdent || t.text != text {
-		p.diags = append(p.diags, ir.Diagnostic{
-			Code:     "FDN0102",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("expected keyword %q, got %q", text, t.text),
-			Span:     t.span,
-		})
+		p.diags = append(p.diags, diagnostics.New("FDN0102", t.span, fmt.Sprintf("keyword %q", text), t.text))
 		return t, false
 	}
 	p.advance()
@@ -91,12 +82,7 @@ func (p *parser) parseBlueprint() *ir.SemanticIR {
 		}
 		t := p.cur()
 		if t.kind != tokIdent {
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0103",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unexpected token %q at top level", t.text),
-				Span:     t.span,
-			})
+			p.diags = append(p.diags, diagnostics.New("FDN0103", t.span, t.text))
 			p.advance()
 			continue
 		}
@@ -136,12 +122,7 @@ func (p *parser) parseBlueprint() *ir.SemanticIR {
 			}
 		case "slot":
 			if len(preTraits) > 0 {
-				p.diags = append(p.diags, ir.Diagnostic{
-					Code:     "FDN0223",
-					Severity: ir.SeverityError,
-					Message:  "traits cannot be attached to a slot declaration; attach the trait to each method instead",
-					Span:     preTraits[0].Span,
-				})
+				p.diags = append(p.diags, diagnostics.New("FDN0223", preTraits[0].Span))
 			}
 			if sl, ok := p.parseSlot(); ok {
 				sem.Slots = append(sem.Slots, sl)
@@ -157,12 +138,11 @@ func (p *parser) parseBlueprint() *ir.SemanticIR {
 				sem.Scenarios = append(sem.Scenarios, s)
 			}
 		default:
-			p.diags = append(p.diags, ir.Diagnostic{
-				Code:     "FDN0103",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown top-level declaration %q", t.text),
-				Span:     t.span,
-			})
+			p.diags = append(p.diags, diagnostics.NewWithDetail(
+				"FDN0103",
+				t.span,
+				fmt.Sprintf("unknown top-level declaration %q", t.text),
+			))
 			p.advance()
 		}
 	}

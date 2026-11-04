@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -199,12 +200,7 @@ func (p *parser) parsePrimaryExpr() (ir.Expr, bool) {
 		}
 		return ir.Expr{Kind: ir.ExprIdent, Value: t.text, Span: t.span}, true
 	default:
-		p.diags = append(p.diags, ir.Diagnostic{
-			Code:     "FDN0106",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("expected expression, got %q", t.text),
-			Span:     t.span,
-		})
+		p.diags = append(p.diags, diagnostics.New("FDN0106", t.span, fmt.Sprintf("%q", t.text)))
 		p.advance()
 		return ir.Expr{}, false
 	}

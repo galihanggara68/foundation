@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -43,24 +44,22 @@ func validateStepsInvariants(actionName string, steps []ir.StepDecl, inTx bool, 
 		if inTx && s.Kind == ir.StepSlot {
 			_, m, ok := sym.findSlotMethod(s.SlotName, s.SlotMethod)
 			if ok && hasTrait(m.Traits, "external") {
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0213",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("calling @external slot method %s.%s inside @transactional action %q is forbidden (holds DB transaction locks across network I/O)", s.SlotName, s.SlotMethod, actionName),
-					Span:     s.Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0213",
+					s.Span,
+					fmt.Sprintf("calling @external slot method %s.%s inside @transactional action %q is forbidden (holds DB transaction locks across network I/O)", s.SlotName, s.SlotMethod, actionName),
+				))
 			}
 		}
 
 		if inLoop {
 			switch s.Kind {
 			case ir.StepQuery, ir.StepCreate, ir.StepUpdate, ir.StepDelete:
-				*diags = append(*diags, ir.Diagnostic{
-					Code:     "FDN0214",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("N+1 query hazard: %q on entity %q inside bounded 'for' loop in action %q is forbidden; use bulk set operations outside the loop", s.Kind, s.EntityName, actionName),
-					Span:     s.Span,
-				})
+				*diags = append(*diags, diagnostics.NewWithDetail(
+					"FDN0214",
+					s.Span,
+					fmt.Sprintf("N+1 query hazard: %q on entity %q inside bounded 'for' loop in action %q is forbidden; use bulk set operations outside the loop", s.Kind, s.EntityName, actionName),
+				))
 			}
 		}
 
@@ -85,12 +84,12 @@ func checkMultiWrite(a ir.ActionDecl) *ir.Diagnostic {
 	allPaths := evaluateStepPaths(a.Steps, pathState{})
 	for _, st := range allPaths {
 		if len(st.writes) >= 2 || (st.inLoop && len(st.writes) >= 1) {
-			return &ir.Diagnostic{
-				Code:     "FDN0227",
-				Severity: ir.SeverityWarning,
-				Message:  fmt.Sprintf("action %q performs multiple write operations (%s) along an execution path without @transactional; wrap the action in @transactional to guarantee atomicity", a.Name, strings.Join(st.writes, ", ")),
-				Span:     a.Span,
-			}
+			diag := diagnostics.NewWithDetail(
+				"FDN0227",
+				a.Span,
+				fmt.Sprintf("action %q performs multiple write operations (%s) along an execution path without @transactional; wrap the action in @transactional to guarantee atomicity", a.Name, strings.Join(st.writes, ", ")),
+			)
+			return &diag
 		}
 	}
 	return nil

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -155,26 +156,23 @@ func validateActionUnused(a ir.ActionDecl) []ir.Diagnostic {
 		}
 
 		if b.isParam {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0228",
-				Severity: ir.SeverityWarning,
-				Message:  fmt.Sprintf("action parameter %q in action %q is never read; prefix with '_' if intentionally unused", b.name, a.Name),
-				Span:     b.span,
-			})
+			diags = append(diags, diagnostics.NewWithDetail(
+				"FDN0228",
+				b.span,
+				fmt.Sprintf("action parameter %q in action %q is never read; prefix with '_' if intentionally unused", b.name, a.Name),
+			))
 		} else if b.isSideEffect {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0228",
-				Severity: ir.SeverityWarning,
-				Message:  fmt.Sprintf("variable %q declared in action %q is never read, but its initializer performs a side effect (%s); discard the binding with '_' or remove the let prefix", b.name, a.Name, b.stepKind),
-				Span:     b.span,
-			})
+			diags = append(diags, diagnostics.NewWithDetail(
+				"FDN0228",
+				b.span,
+				fmt.Sprintf("variable %q declared in action %q is never read, but its initializer performs a side effect (%s); discard the binding with '_' or remove the let prefix", b.name, a.Name, b.stepKind),
+			))
 		} else {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0228",
-				Severity: ir.SeverityWarning,
-				Message:  fmt.Sprintf("variable %q declared in action %q is never read; remove the declaration or prefix with '_' to ignore", b.name, a.Name),
-				Span:     b.span,
-			})
+			diags = append(diags, diagnostics.NewWithDetail(
+				"FDN0228",
+				b.span,
+				fmt.Sprintf("variable %q declared in action %q is never read; remove the declaration or prefix with '_' to ignore", b.name, a.Name),
+			))
 		}
 	}
 

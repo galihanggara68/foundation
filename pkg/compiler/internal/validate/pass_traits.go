@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
@@ -35,12 +36,7 @@ func (TraitValidationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 
 		stdTrait, ok := platform.StandardTrait(tr.Name)
 		if !ok {
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0224",
-				Severity: ir.SeverityWarning,
-				Message:  fmt.Sprintf("unknown trait @%s; un-namespaced traits outside the standard vocabulary are ignored", tr.Name),
-				Span:     tr.Span,
-			})
+			diags = append(diags, diagnostics.New("FDN0224", tr.Span, tr.Name))
 			continue
 		}
 
@@ -51,12 +47,11 @@ func (TraitValidationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 		// Field-level @index and @unique traits accept no arguments
 		if loc.host == platform.TraitOnField && (tr.Name == "index" || tr.Name == "unique") {
 			if len(tr.Args) > 0 || len(tr.ListArgs) > 0 {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0226",
-					Severity: ir.SeverityWarning,
-					Message:  fmt.Sprintf("field-level trait @%s accepts no arguments", tr.Name),
-					Span:     tr.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0226",
+					tr.Span,
+					fmt.Sprintf("field-level trait @%s accepts no arguments", tr.Name),
+				))
 			}
 			continue
 		}
@@ -77,12 +72,11 @@ func (TraitValidationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 			}
 			val, found := resolveTraitArg(tr.Args, arg)
 			if !found || strings.TrimSpace(val) == "" {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0226",
-					Severity: ir.SeverityWarning,
-					Message:  fmt.Sprintf("standard trait @%s requires argument %q", tr.Name, arg.Name),
-					Span:     tr.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0226",
+					tr.Span,
+					fmt.Sprintf("standard trait @%s requires argument %q", tr.Name, arg.Name),
+				))
 			}
 		}
 
@@ -95,12 +89,11 @@ func (TraitValidationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.D
 			if found && val != "" {
 				unquoted := strings.Trim(val, `"'`)
 				if _, err := strconv.Atoi(unquoted); err != nil {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0226",
-						Severity: ir.SeverityWarning,
-						Message:  fmt.Sprintf("argument %q on standard trait @%s must be numeric, got %q", arg.Name, tr.Name, val),
-						Span:     tr.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0226",
+						tr.Span,
+						fmt.Sprintf("argument %q on standard trait @%s must be numeric, got %q", arg.Name, tr.Name, val),
+					))
 				}
 			}
 		}
@@ -131,40 +124,36 @@ func checkCompositeEntityTrait(diags *[]ir.Diagnostic, tr ir.TraitDecl, entity *
 			_, hasScalar = tr.GetStringArg("_")
 		}
 		if hasScalar {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0226",
-				Severity: ir.SeverityWarning,
-				Message:  fmt.Sprintf("composite @%s trait on entity %q requires at least two fields; use field-level @%s for single-field constraints", tr.Name, entName, tr.Name),
-				Span:     tr.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0226",
+				tr.Span,
+				fmt.Sprintf("composite @%s trait on entity %q requires at least two fields; use field-level @%s for single-field constraints", tr.Name, entName, tr.Name),
+			))
 		} else {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0226",
-				Severity: ir.SeverityWarning,
-				Message:  fmt.Sprintf("composite @%s trait on entity %q requires argument %q", tr.Name, entName, "fields"),
-				Span:     tr.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0226",
+				tr.Span,
+				fmt.Sprintf("composite @%s trait on entity %q requires argument %q", tr.Name, entName, "fields"),
+			))
 		}
 		return
 	}
 
 	// 3. Check minimum field count
 	if len(fields) == 0 {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0226",
-			Severity: ir.SeverityWarning,
-			Message:  fmt.Sprintf("composite @%s trait on entity %q requires at least two fields", tr.Name, entName),
-			Span:     tr.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0226",
+			tr.Span,
+			fmt.Sprintf("composite @%s trait on entity %q requires at least two fields", tr.Name, entName),
+		))
 		return
 	}
 	if len(fields) == 1 {
-		*diags = append(*diags, ir.Diagnostic{
-			Code:     "FDN0226",
-			Severity: ir.SeverityWarning,
-			Message:  fmt.Sprintf("composite @%s trait on entity %q requires at least two fields; use field-level @%s for single-field constraints", tr.Name, entName, tr.Name),
-			Span:     tr.Span,
-		})
+		*diags = append(*diags, diagnostics.NewWithDetail(
+			"FDN0226",
+			tr.Span,
+			fmt.Sprintf("composite @%s trait on entity %q requires at least two fields; use field-level @%s for single-field constraints", tr.Name, entName, tr.Name),
+		))
 	}
 
 	// 4. Confirm that every field exists on target entity
@@ -180,12 +169,13 @@ func checkCompositeEntityTrait(diags *[]ir.Diagnostic, tr ir.TraitDecl, entity *
 	}
 	for _, f := range fields {
 		if _, exists := entFields[f]; !exists {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0230",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("unknown field %q on entity %q in @%s trait", f, entName, tr.Name),
-				Span:     tr.Span,
-			})
+			*diags = append(*diags, diagnostics.New(
+				"FDN0230",
+				tr.Span,
+				f,
+				entName,
+				tr.Name,
+			))
 		}
 	}
 }
@@ -209,12 +199,11 @@ func validateTraitArgNames(diags *[]ir.Diagnostic, tr ir.TraitDecl, stdTrait pla
 	sort.Strings(argNames)
 	for _, argName := range argNames {
 		if _, found := stdTrait.Arg(argName); !found {
-			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0226",
-				Severity: ir.SeverityWarning,
-				Message:  fmt.Sprintf("unknown argument %q for standard trait @%s", argName, tr.Name),
-				Span:     tr.Span,
-			})
+			*diags = append(*diags, diagnostics.NewWithDetail(
+				"FDN0226",
+				tr.Span,
+				fmt.Sprintf("unknown argument %q for standard trait @%s", argName, tr.Name),
+			))
 		}
 	}
 }

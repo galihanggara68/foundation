@@ -197,9 +197,17 @@ var standardTraitDocs = map[string]string{
 	"@idempotent":   "### `@idempotent` Trait\n\nEnforces client idempotency keys to guarantee at-most-once mutation semantics across network retries.",
 	"@index":        "### `@index` Trait\n\nCreates a database index on the field for optimized queries.",
 	"@internal":     "### `@internal` Trait\n\nMarks an action as internal to the domain service, inaccessible via public APIs.",
+	"@len": "### `@len` Trait\n\nConstrains the minimum and maximum length of a string or collection field.\n\n" +
+		"**Arguments:**\n" +
+		"- `min`: Minimum length (numeric).\n" +
+		"- `max`: Maximum length (numeric).",
 	"@outbox":       "### `@outbox` Trait\n\nGuarantees transactional event publishing via the transactional outbox pattern.",
 	"@pk":           "### `@pk` Trait\n\nMarks a field as the primary key of the entity.",
 	"@pure":         "### `@pure` Trait\n\nMarks a slot method as pure and free of side effects.",
+	"@range": "### `@range` Trait\n\nConstrains the minimum and maximum numeric value of a field.\n\n" +
+		"**Arguments:**\n" +
+		"- `min`: Minimum value (numeric).\n" +
+		"- `max`: Maximum value (numeric).",
 	"@renamed_from": "### `@renamed_from` Trait\n\nRecords the previous name of a field for database schema migrations.",
 	"@retry": "### `@retry` Trait\n\nConfigures automatic retry policies for transient failures.\n\n" +
 		"**Arguments:**\n" +
@@ -304,4 +312,6 @@ var traitCompletions = []CompletionItem{
 	{Label: "@fk", Kind: CompletionKindProperty, Detail: "Foreign key field trait", InsertText: "@fk(${1:Target.id})"},
 	{Label: "@cache", Kind: CompletionKindProperty, Detail: "Cache output trait", InsertText: "@cache(ttl: ${1:60})"},
 	{Label: "@retry", Kind: CompletionKindProperty, Detail: "Retry transient failures trait", InsertText: "@retry(attempts: ${1:3}, backoff: ${2:100})"},
+	{Label: "@len", Kind: CompletionKindProperty, Detail: "Length constraint field trait", InsertText: "@len(${1:min}, ${2:max})"},
+	{Label: "@range", Kind: CompletionKindProperty, Detail: "Range constraint field trait", InsertText: "@range(${1:min}, ${2:max})"},
 }

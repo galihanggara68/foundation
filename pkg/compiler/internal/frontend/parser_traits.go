@@ -2,10 +2,28 @@ package frontend
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
+
+// unquoteTraitArg removes surrounding quotes from a string literal.
+// If strconv.Unquote fails, the function removes outer quote characters directly.
+func unquoteTraitArg(s string) string {
+	if len(s) >= 2 {
+		if s[0] == '"' && s[len(s)-1] == '"' {
+			if unquoted, err := strconv.Unquote(s); err == nil {
+				return unquoted
+			}
+			return s[1 : len(s)-1]
+		}
+		if s[0] == '\'' && s[len(s)-1] == '\'' {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
+}
 
 func (p *parser) parseTrait() (ir.TraitDecl, bool) {
 	atTok, ok := p.expect(tokAt)
@@ -44,15 +62,27 @@ func (p *parser) parseTrait() (ir.TraitDecl, bool) {
 	listArgs := make(map[string][]string)
 	if p.cur().kind == tokLParen {
 		p.advance()
+		posIndex := 0
+		traitDef, hasDef := platform.StandardTrait(traitName)
+		if !hasDef {
+			traitDef, hasDef = platform.StandardTrait(nameTok.text)
+		}
 		for p.cur().kind != tokRParen && p.cur().kind != tokEOF {
-			key := "_"
-			if p.cur().kind == tokIdent && p.peekOffset(1).kind == tokColon {
+			key := ""
+			if p.cur().kind == tokIdent && (p.peekOffset(1).kind == tokColon || p.peekOffset(1).kind == tokAssign) {
 				kTok, ok := p.expect(tokIdent)
 				if !ok {
 					return ir.TraitDecl{}, false
 				}
-				p.expect(tokColon)
+				p.advance() // consume ':' or '='
 				key = kTok.text
+			} else {
+				if hasDef && posIndex < len(traitDef.Args) {
+					key = traitDef.Args[posIndex].Name
+				} else {
+					key = fmt.Sprintf("_%d", posIndex)
+				}
+				posIndex++
 			}
 
 			if p.cur().kind == tokLBracket {
@@ -69,7 +99,7 @@ func (p *parser) parseTrait() (ir.TraitDecl, bool) {
 					nextTok := p.advance()
 					val += "." + nextTok.text
 				}
-				args[key] = val
+				args[key] = unquoteTraitArg(val)
 			}
 
 			if p.cur().kind == tokComma {
@@ -98,7 +128,7 @@ func (p *parser) parseTraitListArg() ([]string, bool) {
 	items := make([]string, 0)
 	for p.cur().kind != tokRBracket && p.cur().kind != tokEOF {
 		if p.cur().kind == tokString {
-			items = append(items, p.cur().text)
+			items = append(items, unquoteTraitArg(p.cur().text))
 			p.advance()
 		} else {
 			p.diags = append(p.diags, ir.Diagnostic{

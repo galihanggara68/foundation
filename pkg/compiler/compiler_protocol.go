@@ -11,7 +11,7 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/protocol"
 )
 
-// Generation wire protocol public types exported for SDK and plugin authors.
+// Wire protocol, semantic IR, and storage plan types exported for SDK and plugin authors.
 type (
 	Emission           = emit.Emission
 	GenerationRequest  = protocol.GenerationRequest
@@ -20,9 +20,59 @@ type (
 	TargetConfig       = arch.TargetConfig
 	PlatformInfo       = platform.Info
 	PaginationDefaults = platform.PaginationDefaults
-	EntityDecl         = ir.EntityDecl
-	FieldDecl          = ir.FieldDecl
-	ActionDecl         = ir.ActionDecl
+
+	// Root IR declarations.
+	SemanticIR     = ir.SemanticIR
+	ActorDecl      = ir.ActorDecl
+	SlotDecl       = ir.SlotDecl
+	SlotMethodDecl = ir.SlotMethodDecl
+	GivenSlotDecl  = ir.GivenSlotDecl
+	EnumDecl       = ir.EnumDecl
+	EventDecl      = ir.EventDecl
+	PolicyDecl     = ir.PolicyDecl
+
+	// Field, value, error, action, and scenario declarations.
+	FieldKind     = ir.FieldKind
+	FieldDecl     = ir.FieldDecl
+	TraitDecl     = ir.TraitDecl
+	ValueDecl     = ir.ValueDecl
+	EntityDecl    = ir.EntityDecl
+	ErrorKind     = ir.ErrorKind
+	ErrorPosture  = ir.ErrorPosture
+	ErrorDecl     = ir.ErrorDecl
+	ParamDecl     = ir.ParamDecl
+	ActionDecl    = ir.ActionDecl
+	GivenSeedDecl = ir.GivenSeedDecl
+	ExpectDecl    = ir.ExpectDecl
+	ScenarioDecl  = ir.ScenarioDecl
+
+	// Step, expression, and diagnostic declarations.
+	StepKind       = ir.StepKind
+	ExprKind       = ir.ExprKind
+	Expr           = ir.Expr
+	FieldInitDecl  = ir.FieldInitDecl
+	MatchArmDecl   = ir.MatchArmDecl
+	WherePredicate = ir.WherePredicate
+	StepDecl       = ir.StepDecl
+	Span           = ir.Span
+	Severity       = ir.Severity
+	Diagnostic     = ir.Diagnostic
+
+	// Relational storage plan declarations.
+	StoragePlanIR    = arch.StoragePlanIR
+	TableSchema      = arch.TableSchema
+	ColumnSchema     = arch.ColumnSchema
+	ForeignKey       = arch.ForeignKey
+	IndexSchema      = arch.IndexSchema
+	UniqueConstraint = arch.UniqueConstraint
+	MigrationPlan    = arch.MigrationPlan
+)
+
+// Severity constants indicate diagnostic classification levels.
+const (
+	SeverityError   = ir.SeverityError
+	SeverityWarning = ir.SeverityWarning
+	SeverityInfo    = ir.SeverityInfo
 )
 
 // ProtocolVersion is the canonical integer version of the Foundation plugin generation wire protocol.
@@ -56,7 +106,7 @@ func DecodeGenerationResponse(r io.Reader) (GenerationResponse, error) {
 	return protocol.DecodeResponse(data)
 }
 
-// EmitBuiltin lowers and emits the built-in target for archIR using the compiler's emitter registry.
+// EmitBuiltin lowers and emits the built-in target for archIR with the compiler emitter registry.
 func EmitBuiltin(archIR *ArchitectureIR) (Emission, []Diagnostic) {
 	if archIR == nil {
 		return Emission{}, []Diagnostic{{
@@ -84,7 +134,7 @@ func EmitBuiltin(archIR *ArchitectureIR) (Emission, []Diagnostic) {
 	return emitter.Emit(archIR)
 }
 
-// ExportIdent converts a field or entity name into an exported Go identifier honoring Go initialisms (ID, SKU, URL).
+// ExportIdent converts a field or entity name into an exported Go identifier with Go initialisms (ID, SKU, URL).
 func ExportIdent(s string) string {
 	return arch.ExportIdent(s)
 }

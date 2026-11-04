@@ -8,7 +8,7 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler"
 )
 
-// Generation wire protocol types re-exported for SDK and plugin authors.
+// Wire protocol, semantic IR, and storage plan types re-exported for SDK and plugin authors.
 type (
 	GenerationRequest  = compiler.GenerationRequest
 	GenerationResponse = compiler.GenerationResponse
@@ -23,6 +23,54 @@ type (
 	EntityDecl         = compiler.EntityDecl
 	FieldDecl          = compiler.FieldDecl
 	ActionDecl         = compiler.ActionDecl
+
+	// Root IR declarations.
+	ActorDecl      = compiler.ActorDecl
+	SlotDecl       = compiler.SlotDecl
+	SlotMethodDecl = compiler.SlotMethodDecl
+	GivenSlotDecl  = compiler.GivenSlotDecl
+	EnumDecl       = compiler.EnumDecl
+	EventDecl      = compiler.EventDecl
+	PolicyDecl     = compiler.PolicyDecl
+
+	// Field, value, error, action, and scenario declarations.
+	FieldKind     = compiler.FieldKind
+	TraitDecl     = compiler.TraitDecl
+	ValueDecl     = compiler.ValueDecl
+	ErrorKind     = compiler.ErrorKind
+	ErrorPosture  = compiler.ErrorPosture
+	ErrorDecl     = compiler.ErrorDecl
+	ParamDecl     = compiler.ParamDecl
+	GivenSeedDecl = compiler.GivenSeedDecl
+	ExpectDecl    = compiler.ExpectDecl
+	ScenarioDecl  = compiler.ScenarioDecl
+
+	// Step, expression, and diagnostic declarations.
+	StepKind       = compiler.StepKind
+	ExprKind       = compiler.ExprKind
+	Expr           = compiler.Expr
+	FieldInitDecl  = compiler.FieldInitDecl
+	MatchArmDecl   = compiler.MatchArmDecl
+	WherePredicate = compiler.WherePredicate
+	StepDecl       = compiler.StepDecl
+	Span           = compiler.Span
+	Severity       = compiler.Severity
+
+	// Relational storage plan declarations.
+	StoragePlanIR    = compiler.StoragePlanIR
+	TableSchema      = compiler.TableSchema
+	ColumnSchema     = compiler.ColumnSchema
+	ForeignKey       = compiler.ForeignKey
+	IndexSchema      = compiler.IndexSchema
+	UniqueConstraint = compiler.UniqueConstraint
+	MigrationPlan    = compiler.MigrationPlan
+)
+
+// Severity constants indicate diagnostic classification levels.
+const (
+	SeverityError   = compiler.SeverityError
+	SeverityWarning = compiler.SeverityWarning
+	SeverityInfo    = compiler.SeverityInfo
 )
 
 // ProtocolVersion is the canonical integer version of the Foundation plugin wire protocol.

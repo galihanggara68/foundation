@@ -250,7 +250,7 @@ entity Order @index(fields: ["customer_id", "status"]) @index(fields: ["customer
 	}
 }
 
-func TestValidate_CompositeUnique_UnexpectedNameArg_ReturnsFDN0226Warning(t *testing.T) {
+func TestValidate_CompositeUnique_ValidNameArg_Succeeds(t *testing.T) {
 	src := `
 entity Order @unique(fields: ["customer_id", "status"], name: "custom_name") {
   id: uuid @pk
@@ -265,10 +265,30 @@ entity Order @unique(fields: ["customer_id", "status"], name: "custom_name") {
 
 	diags := validate.Validate(sem)
 	matches := findDiags(diags, "FDN0226")
-	if len(matches) == 0 {
-		t.Fatalf("expected FDN0226 warning for unexpected name arg on @unique, got none: %+v", diags)
+	if len(matches) != 0 {
+		t.Fatalf("expected 0 FDN0226 warnings for valid name arg on @unique, got: %+v", matches)
 	}
-	expectedMsg := `unknown argument "name" for standard trait @unique`
+}
+
+func TestValidate_CompositeUnique_UnknownArg_ReturnsFDN0226Warning(t *testing.T) {
+	src := `
+entity Order @unique(fields: ["customer_id", "status"], unknown_arg: "val") {
+  id: uuid @pk
+  customer_id: uuid
+  status: string
+}
+`
+	sem, parseDiags := frontend.ParseFile("test.fdn", src)
+	if len(parseDiags) > 0 {
+		t.Fatalf("unexpected parse diagnostics: %+v", parseDiags)
+	}
+
+	diags := validate.Validate(sem)
+	matches := findDiags(diags, "FDN0226")
+	if len(matches) == 0 {
+		t.Fatalf("expected FDN0226 warning for unknown arg on @unique, got none: %+v", diags)
+	}
+	expectedMsg := `unknown argument "unknown_arg" for standard trait @unique`
 	if !strings.Contains(matches[0].Message, expectedMsg) {
 		t.Errorf("expected message %q, got %q", expectedMsg, matches[0].Message)
 	}

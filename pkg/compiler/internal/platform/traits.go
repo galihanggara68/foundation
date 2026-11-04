@@ -53,14 +53,16 @@ var standardTraits = []Trait{
 	{Name: "idempotent", Hosts: []TraitHost{TraitOnAction}, Args: []TraitArg{{Name: "key"}}},
 	{Name: "index", Hosts: []TraitHost{TraitOnField, TraitOnEntity}, Args: []TraitArg{{Name: "fields", Aliases: []string{"_"}}, {Name: "name"}}},
 	{Name: "internal", Hosts: []TraitHost{TraitOnAction}},
+	{Name: "len", Hosts: []TraitHost{TraitOnField}, Args: []TraitArg{{Name: "min", Numeric: true}, {Name: "max", Numeric: true}}},
 	{Name: "outbox", Hosts: []TraitHost{TraitOnAction}},
 	{Name: "pk", Hosts: []TraitHost{TraitOnField}},
 	{Name: "pure", Hosts: []TraitHost{TraitOnSlotMethod}},
+	{Name: "range", Hosts: []TraitHost{TraitOnField}, Args: []TraitArg{{Name: "min", Numeric: true}, {Name: "max", Numeric: true}}},
 	{Name: "renamed_from", Hosts: []TraitHost{TraitOnField}, Args: []TraitArg{{Name: "name", Aliases: []string{"_"}, Required: true}}},
 	{Name: "retry", Hosts: []TraitHost{TraitOnAction}, Args: []TraitArg{{Name: "attempts", Numeric: true}, {Name: "backoff", Numeric: true}}},
 	{Name: "table", Hosts: []TraitHost{TraitOnEntity}, Args: []TraitArg{{Name: "name", Aliases: []string{"_"}}}},
 	{Name: "transactional", Hosts: []TraitHost{TraitOnAction}},
-	{Name: "unique", Hosts: []TraitHost{TraitOnField, TraitOnEntity}, Args: []TraitArg{{Name: "fields", Aliases: []string{"_"}}}},
+	{Name: "unique", Hosts: []TraitHost{TraitOnField, TraitOnEntity}, Args: []TraitArg{{Name: "fields", Aliases: []string{"_"}}, {Name: "name"}}},
 	{Name: "version", Hosts: []TraitHost{TraitOnField}},
 }
 

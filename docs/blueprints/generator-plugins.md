@@ -53,7 +53,6 @@ targets:
     scaffold: none # Virtual file tree starts empty
     generator: "foundation-gen-python-fastapi"
     test_command: "pytest" # Overrides test runner used by `foundation test`
-    timeout_seconds: 45
     options:
       async_driver: true
     out_dir: ./dist/python-api
@@ -68,9 +67,11 @@ targets:
 | `generator` | `string` | `""` | Name or path of a single external generator executable (for example `foundation-gen-python-fastapi`). |
 | `generators` | `[]string` | `[]` | Sequential list of generator executables to run in order as a filter pipeline. |
 | `scaffold` | `string` | `"builtin"` | `"builtin"` pre-populates target files in memory before plugins run; `"none"` starts with an empty file tree. |
-| `options` | `map[string]any` | `{}` | Key-value options passed to the plugin through `GenerationRequest.target.config` and CLI flags (`--key=value`). |
+| `options` | `map[string]string` | `{}` | Key-value options passed to the plugin through `GenerationRequest.target.options` and CLI flags (`--key=value`). |
 | `test_command` | `string` | `""` | Command executed by `foundation test` (for example `pytest` or `cargo test`). |
-| `timeout_seconds` | `int` | `60` | Maximum execution time in seconds for plugin execution and test commands. |
+
+> [!NOTE]
+> The compiler enforces a 30-second default timeout for each generator plugin process.
 
 ---
 
@@ -118,13 +119,13 @@ Foundation delivers `GenerationRequest` to plugin standard input (`stdin`):
 
 ```json
 {
-  "protocol_version": "1.0",
+  "protocol_version": 1,
   "target": {
     "name": "backend",
     "language": "go",
     "architecture": "hexagonal",
     "out_dir": "./dist/backend",
-    "config": {
+    "options": {
       "service_name": "order-service"
     }
   },
@@ -141,7 +142,7 @@ Foundation delivers `GenerationRequest` to plugin standard input (`stdin`):
 }
 ```
 
-- `protocol_version`: Current protocol version (`"1.0"`).
+- `protocol_version`: Current protocol version (`1`).
 - `target`: Target parameters and custom options declared in `foundation.build.yaml`.
 - `semantic_ir`: Validated domain IR (entities, actions, values, errors, policies, scenarios). Declared errors carry closed kinds, resolved HTTP statuses, postures, and per-locale messages ([ADR 0016](../adr/0016-error-vocabulary-ownership.md)).
 - `architecture_ir`: Optional pre-lowered middle-end IR (use cases, ports, routes, adapters).
@@ -153,19 +154,12 @@ The plugin returns `GenerationResponse` on standard output (`stdout`):
 
 ```json
 {
-  "protocol_version": "1.0",
-  "files": [
-    {
-      "path": "internal/domain/order_entity.go",
-      "content": "package domain\n\n// Rich Aggregate Root with invariants\ntype Order struct { ... }"
-    }
-  ],
-  "stubs": [
-    {
-      "path": "config/service.starter.json",
-      "content": "{\n  \"sample_rate\": 1.0\n}\n"
-    }
-  ],
+  "files": {
+    "internal/domain/order_entity.go": "package domain\n\n// Rich Aggregate Root with invariants\ntype Order struct { ... }"
+  },
+  "stubs": {
+    "config/service.starter.json": "{\n  \"sample_rate\": 1.0\n}\n"
+  },
   "diagnostics": [],
   "test_command": "go test ./..."
 }
@@ -173,7 +167,7 @@ The plugin returns `GenerationResponse` on standard output (`stdout`):
 
 - `files`: Fully tracked files managed by `.foundation-manifest.json`. Builds overwrite these files and prune obsolete files.
 - `stubs`: Create-if-missing starter files (for example slot implementations or config starters). The compiler writes them once and never overwrites them.
-- `diagnostics`: Warnings or compile errors displayed in compiler output.
+- `diagnostics`: Warnings or compile errors shown in compiler output.
 - `test_command`: Optional default test command executed during `foundation test`.
 
 ---
@@ -185,7 +179,7 @@ The compiler manifest engine manages the filesystem:
 - **Checksums**: The manifest (`.foundation-manifest.json`) records checksums for all tracked files.
 - **Stub Protection**: The manifest omits stub files. Builds preserve developer edits permanently.
 - **Cross-Plugin Warnings (`FDN0702`)**: Foundation emits a warning if a plugin modifies a file from an earlier plugin.
-- **Process Isolation and Timeouts (`FDN0700`)**: Plugins run in isolated process groups. If a plugin exceeds `timeout_seconds`, Foundation stops the process group with `SIGKILL`.
+- **Process Isolation and Timeouts (`FDN0700`)**: Plugins run in isolated process groups. If a plugin process exceeds the 30-second default timeout, Foundation stops the process group with `SIGKILL`.
 
 ---
 
@@ -206,9 +200,19 @@ import (
 )
 
 func main() {
-	emitterkit.RunPlugin(func(req *emitterkit.GenerationRequest) (*emitterkit.GenerationResponse, error) {
-		// Extract existing files from the request (pre-populated by builtin scaffold)
-		files := emitterkit.ExtractFiles(req)
+	emitterkit.RunPlugin(func(req emitterkit.GenerationRequest) (emitterkit.GenerationResponse, error) {
+		resp := emitterkit.GenerationResponse{
+			Files: make(map[string]string),
+			Stubs: map[string]string{
+				"config/ddd.starter.json": "{\n  \"strict_invariants\": true\n}\n",
+			},
+			TestCommand: "go test ./...",
+		}
+
+		// Copy existing files from the request (pre-populated by builtin scaffold)
+		for path, content := range req.Files {
+			resp.Files[path] = content
+		}
 
 		// Transform entities into rich Aggregate Roots
 		for _, entity := range req.SemanticIR.Entities {
@@ -228,20 +232,11 @@ func main() {
 			sb.WriteString("}\n")
 
 			// Overwrite the entity file in the virtual file map
-			files[fileName] = sb.String()
+			resp.Files[fileName] = sb.String()
 		}
 
-		// Return updated files and optional create-if-missing starter stubs
-		return &emitterkit.GenerationResponse{
-			ProtocolVersion: "1.0",
-			Files:           emitterkit.EmitFiles(files),
-			Stubs: []emitterkit.OutputFile{
-				{
-					Path:    "config/ddd.starter.json",
-					Content: "{\n  \"strict_invariants\": true\n}\n",
-				},
-			},
-		}, nil
+		// Return updated files and starter stubs
+		return resp, nil
 	})
 }
 ```

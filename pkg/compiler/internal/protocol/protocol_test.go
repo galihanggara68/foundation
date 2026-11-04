@@ -2,6 +2,7 @@ package protocol_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
@@ -257,39 +258,21 @@ func TestGenerationRequest_DefaultsAndValidation(t *testing.T) {
 		t.Fatalf("expected valid request, got: %v", err)
 	}
 
-	// Missing workspace_root fails validation
-	invalidReq := req
-	invalidReq.WorkspaceRoot = ""
-	if err := invalidReq.Validate(); err == nil {
-		t.Error("expected error for empty WorkspaceRoot")
+	mutations := []func(*protocol.GenerationRequest){
+		func(r *protocol.GenerationRequest) { r.WorkspaceRoot = "" },
+		func(r *protocol.GenerationRequest) { r.Target.Name = "" },
+		func(r *protocol.GenerationRequest) { r.Target.Kind = "" },
+		func(r *protocol.GenerationRequest) { r.Target.Language = "" },
+		func(r *protocol.GenerationRequest) { r.Target.OutDir = "" },
+		func(r *protocol.GenerationRequest) { r.SemanticIR = nil },
+		func(r *protocol.GenerationRequest) { r.ProtocolVersion = 0 },
 	}
-
-	// Missing target.name fails validation
-	invalidReq = req
-	invalidReq.Target.Name = ""
-	if err := invalidReq.Validate(); err == nil {
-		t.Error("expected error for empty Target.Name")
-	}
-
-	// Missing target.kind fails validation
-	invalidReq = req
-	invalidReq.Target.Kind = ""
-	if err := invalidReq.Validate(); err == nil {
-		t.Error("expected error for empty Target.Kind")
-	}
-
-	// Missing target.language fails validation
-	invalidReq = req
-	invalidReq.Target.Language = ""
-	if err := invalidReq.Validate(); err == nil {
-		t.Error("expected error for empty Target.Language")
-	}
-
-	// Missing target.out_dir fails validation
-	invalidReq = req
-	invalidReq.Target.OutDir = ""
-	if err := invalidReq.Validate(); err == nil {
-		t.Error("expected error for empty Target.OutDir")
+	for _, mutate := range mutations {
+		invalidReq := req
+		mutate(&invalidReq)
+		if err := invalidReq.Validate(); err == nil {
+			t.Error("expected error for invalid request")
+		}
 	}
 
 	// Negative protocol version fails DecodeRequest
@@ -301,18 +284,6 @@ func TestGenerationRequest_DefaultsAndValidation(t *testing.T) {
 	}`)
 	if _, err := protocol.DecodeRequest(negativeData); err == nil {
 		t.Error("expected error for negative protocol_version -1, got nil")
-	}
-	invalidReq = req
-	invalidReq.SemanticIR = nil
-	if err := invalidReq.Validate(); err == nil {
-		t.Error("expected error for nil SemanticIR")
-	}
-
-	// Invalid negative or zero protocol version
-	invalidReq = req
-	invalidReq.ProtocolVersion = 0
-	if err := invalidReq.Validate(); err == nil {
-		t.Error("expected error for zero ProtocolVersion")
 	}
 
 	// Future protocol version fails validation and DecodeRequest
@@ -423,5 +394,45 @@ func TestGenerationResponse_RoundTripAndDefaults(t *testing.T) {
 	}
 	if emptyDecoded.Diagnostics == nil {
 		t.Error("expected non-nil Diagnostics slice on empty decoded response")
+	}
+}
+
+// TestDecodeRequest_Validation confirms that DecodeRequest validates payloads.
+// It verifies that invalid payloads fail and valid payloads succeed.
+func TestDecodeRequest_Validation(t *testing.T) {
+	valid := `{"protocol_version":1,"workspace_root":"/workspace","target":{"name":"app","kind":"backend","language":"go","out_dir":"gen"},"semantic_ir":{}}`
+	if req, err := protocol.DecodeRequest([]byte(valid)); err != nil {
+		t.Fatalf("valid request failed to decode: %v", err)
+	} else if req.WorkspaceRoot != "/workspace" {
+		t.Fatalf("unexpected workspace root: %s", req.WorkspaceRoot)
+	}
+
+	tests := []struct {
+		name    string
+		payload string
+		wantErr string
+	}{
+		{"missing semantic_ir", `{"protocol_version":1,"workspace_root":"/workspace","target":{"name":"app","kind":"backend","language":"go","out_dir":"gen"}}`, "semantic_ir must not be nil"},
+		{"null semantic_ir", `{"protocol_version":1,"workspace_root":"/workspace","target":{"name":"app","kind":"backend","language":"go","out_dir":"gen"},"semantic_ir":null}`, "semantic_ir must not be nil"},
+		{"empty workspace_root", `{"protocol_version":1,"workspace_root":"","target":{"name":"app","kind":"backend","language":"go","out_dir":"gen"},"semantic_ir":{}}`, "workspace_root must not be empty"},
+		{"missing target name", `{"protocol_version":1,"workspace_root":"/workspace","target":{"kind":"backend","language":"go","out_dir":"gen"},"semantic_ir":{}}`, "target.name must not be empty"},
+		{"missing target kind", `{"protocol_version":1,"workspace_root":"/workspace","target":{"name":"app","language":"go","out_dir":"gen"},"semantic_ir":{}}`, "target.kind must not be empty"},
+		{"missing target language", `{"protocol_version":1,"workspace_root":"/workspace","target":{"name":"app","kind":"backend","out_dir":"gen"},"semantic_ir":{}}`, "target.language must not be empty"},
+		{"missing target out_dir", `{"protocol_version":1,"workspace_root":"/workspace","target":{"name":"app","kind":"backend","language":"go"},"semantic_ir":{}}`, "target.out_dir must not be empty"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := protocol.DecodeRequest([]byte(tt.payload))
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), "invalid generation request") {
+				t.Errorf("expected error wrapping 'invalid generation request', got: %v", err)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("expected error containing %q, got: %v", tt.wantErr, err)
+			}
+		})
 	}
 }

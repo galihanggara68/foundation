@@ -65,6 +65,13 @@ Entities support these field annotations:
 - `@version`: Declares an integer column for Optimistic Concurrency Control (OCC).
 - `@renamed_from("old_name")`: Records column renames for safe schema migrations.
 
+Entities also support composite annotations at the entity level:
+
+- `@unique(fields: ["col_a", "col_b"], name: "custom_name")`: Enforces a composite unique constraint.
+- `@index(fields: ["col_a", "col_b"], name: "custom_name")`: Generates a composite database index.
+
+The compiler generates canonical names when you omit the `name` argument.
+
 ```fdn
 entity Product {
   id: uuid @pk
@@ -254,11 +261,11 @@ The compiler provides built-in standard traits without a namespace prefix:
 | Trait | Host | Arguments | Purpose |
 |---|---|---|---|
 | `@table` | Entity | `name` (or positional `_`) | Maps entity to physical database table |
+| `@unique` | Entity, Field | `fields`, `name` (optional) on Entity; none on Field | Enforces unique constraint |
+| `@index` | Entity, Field | `fields`, `name` (optional) on Entity; none on Field | Generates database index |
 | `@version` | Field | — | Marks field as OCC version column |
 | `@pk` | Field | — | Marks field as primary key |
 | `@fk` | Field | `target` (or positional `_`) | Marks field as foreign key to another entity |
-| `@unique` | Field | — | Enforces unique constraint |
-| `@index` | Field | — | Generates database index |
 | `@auto_now_add` | Field | — | Initializes timestamp upon creation |
 | `@renamed_from` | Field | `name` (or positional `_`) | Tracks original column name for migrations |
 | `@http` | Action | `method`, `path` | Exposes action as an HTTP endpoint |
@@ -271,6 +278,23 @@ The compiler provides built-in standard traits without a namespace prefix:
 | `@outbox` | Action | — | Emits events through transactional outbox |
 | `@external` | Slot Method | — | Marks slot method as external I/O |
 | `@pure` | Slot Method | — | Marks slot method as side-effect free |
+
+#### Composite Entity Traits
+
+Entities support composite `@unique` and `@index` traits.
+Supply a list of field names in the `fields` argument.
+You can supply an optional constraint or index name in the `name` argument.
+When you omit the `name` argument, the compiler generates a default name.
+The default unique constraint name uses the format `uq_<table_name>_<col1>_<col2>`.
+The default index name uses the format `idx_<table_name>_<col1>_<col2>`.
+
+```fdn
+entity Member @unique(fields: ["organization_id", "email"]) {
+  id: uuid @pk
+  organization_id: uuid
+  email: string
+}
+```
 
 #### Trait Diagnostics
 

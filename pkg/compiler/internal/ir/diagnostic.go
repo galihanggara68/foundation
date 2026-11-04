@@ -13,12 +13,13 @@ func (s Span) String() string {
 	return fmt.Sprintf("%s:%d:%d", s.File, s.Line, s.Column)
 }
 
-// Severity indicates whether a diagnostic is an error or warning.
+// Severity indicates whether a diagnostic is an error, warning, or informational message.
 type Severity string
 
 const (
 	SeverityError   Severity = "error"
 	SeverityWarning Severity = "warning"
+	SeverityInfo    Severity = "info"
 )
 
 // Diagnostic reports a syntax, type, or architectural invariant violation.

@@ -42,6 +42,9 @@ func BuildStoragePlan(workspaceDir string, sem *ir.SemanticIR, bp *BuildProfile,
 	hasIdem := HasIdempotentAction(sem.Actions)
 	hasOutbox := HasOutboxAction(sem.Actions)
 
+	tableMap := buildTableMap(sem.Entities)
+	plan.Tables = BuildTableSchemas(sem.Entities, enumSet, tableMap)
+
 	schemaSQL := generateDeclarativeSchemaSQL(sem.Entities, enumSet, hasIdem, hasOutbox)
 	if plan.Mode == "declarative" || plan.Mode == "both" {
 		plan.SchemaSQL = schemaSQL
@@ -161,17 +164,13 @@ func generateCreateTableSQL(ent ir.EntityDecl, enumSet map[string]bool, tableMap
 	tableName := EntityTableName(ent)
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("CREATE TABLE %s (\n", tableName))
-	var indexes []string
-	for i, f := range ent.Fields {
-		colDef := columnDefinitionSQL(f, enumSet, tableMap)
+	lines, indexes := buildTableLinesAndIndexes(ent, tableName, enumSet, tableMap)
+	for i, line := range lines {
 		comma := ","
-		if i == len(ent.Fields)-1 {
+		if i == len(lines)-1 {
 			comma = ""
 		}
-		sb.WriteString(fmt.Sprintf("  %s %s%s\n", f.Name, colDef, comma))
-		if f.HasTrait("index") {
-			indexes = append(indexes, fmt.Sprintf("CREATE INDEX idx_%s_%s ON %s (%s);\n", tableName, f.Name, tableName, f.Name))
-		}
+		sb.WriteString(fmt.Sprintf("  %s%s\n", line, comma))
 	}
 	sb.WriteString(");\n")
 	for _, idxSQL := range indexes {

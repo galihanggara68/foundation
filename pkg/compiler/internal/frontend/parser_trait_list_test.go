@@ -116,9 +116,9 @@ entity Order {
 		t.Fatalf("expected 1 entity with 1 trait")
 	}
 	tr := sem.Entities[0].Traits[0]
-	fields, ok := tr.GetListArg("_")
+	fields, ok := tr.GetListArg("fields")
 	if !ok || !reflect.DeepEqual(fields, []string{"customer_id", "status"}) {
-		t.Errorf("expected positional list ['customer_id', 'status'], got %v (ok=%v)", fields, ok)
+		t.Errorf("expected positional list ['customer_id', 'status'] under 'fields', got %v (ok=%v)", fields, ok)
 	}
 }
 

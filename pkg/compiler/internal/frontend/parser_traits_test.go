@@ -103,3 +103,122 @@ slot Inventory {
 		t.Errorf("expected slot method trait acme:method")
 	}
 }
+
+func TestParseTrait_PositionalArgs_NormalizeToParamNames(t *testing.T) {
+	src := `
+entity Product {
+  id: uuid @pk
+  name: string @len(3, 30)
+  quantity: int @range(1, 100)
+  short_code: string @len(5)
+  custom: string @len(min: 2, max: 20)
+  extra: string @len(1, 10, 20)
+}
+`
+	sem, diags := frontend.ParseFile("test.fdn", src)
+	for _, d := range diags {
+		t.Errorf("unexpected diagnostic: %s: %s", d.Code, d.Message)
+	}
+	if len(sem.Entities) != 1 {
+		t.Fatalf("expected 1 entity, got %d", len(sem.Entities))
+	}
+	fields := sem.Entities[0].Fields
+
+	// name: string @len(3, 30) -> min: "3", max: "30"
+	nameField := fields[1]
+	if len(nameField.Traits) != 1 || nameField.Traits[0].Name != "len" {
+		t.Fatalf("expected @len trait on name field")
+	}
+	lenTr := nameField.Traits[0]
+	if lenTr.Args["min"] != "3" || lenTr.Args["max"] != "30" {
+		t.Errorf("expected @len min='3' max='30', got %+v", lenTr.Args)
+	}
+	if _, ok := lenTr.Args["_"]; ok {
+		t.Errorf("expected positional args not to populate '_', got %+v", lenTr.Args)
+	}
+
+	// quantity: int @range(1, 100) -> min: "1", max: "100"
+	qtyField := fields[2]
+	if len(qtyField.Traits) != 1 || qtyField.Traits[0].Name != "range" {
+		t.Fatalf("expected @range trait on quantity field")
+	}
+	rangeTr := qtyField.Traits[0]
+	if rangeTr.Args["min"] != "1" || rangeTr.Args["max"] != "100" {
+		t.Errorf("expected @range min='1' max='100', got %+v", rangeTr.Args)
+	}
+
+	// short_code: string @len(5) -> min: "5"
+	codeField := fields[3]
+	singleTr := codeField.Traits[0]
+	if singleTr.Args["min"] != "5" {
+		t.Errorf("expected @len min='5', got %+v", singleTr.Args)
+	}
+
+	// custom: string @len(min: 2, max: 20) -> min: "2", max: "20"
+	customField := fields[4]
+	namedTr := customField.Traits[0]
+	if namedTr.Args["min"] != "2" || namedTr.Args["max"] != "20" {
+		t.Errorf("expected named @len min='2' max='20', got %+v", namedTr.Args)
+	}
+
+	// extra: string @len(1, 10, 20) -> min: "1", max: "10", _2: "20"
+	extraField := fields[5]
+	overflowTr := extraField.Traits[0]
+	if overflowTr.Args["min"] != "1" || overflowTr.Args["max"] != "10" || overflowTr.Args["_2"] != "20" {
+		t.Errorf("expected overflow @len min='1' max='10' _2='20', got %+v", overflowTr.Args)
+	}
+}
+
+func TestParseTrait_UnregisteredTrait_PreservesDistinctKeys(t *testing.T) {
+	src := `
+@custom("alpha", "beta", "gamma")
+@vendor:plugin("x", "y")
+entity Product {
+  id: uuid @pk
+}
+`
+	sem, _ := frontend.ParseFile("test.fdn", src)
+	if len(sem.Entities) != 1 || len(sem.Entities[0].Traits) != 2 {
+		t.Fatalf("expected 1 entity with 2 traits")
+	}
+
+	customTr := sem.Entities[0].Traits[0]
+	if customTr.Args["_0"] != "alpha" || customTr.Args["_1"] != "beta" || customTr.Args["_2"] != "gamma" {
+		t.Errorf("expected distinct positional keys _0, _1, _2 on unregistered trait, got %+v", customTr.Args)
+	}
+
+	pluginTr := sem.Entities[0].Traits[1]
+	if pluginTr.Args["_0"] != "x" || pluginTr.Args["_1"] != "y" {
+		t.Errorf("expected distinct positional keys _0, _1 on namespaced trait, got %+v", pluginTr.Args)
+	}
+}
+
+func TestParseTrait_StringUnquoting(t *testing.T) {
+	src := `
+@table("app_orders")
+entity Order {
+  id: uuid @pk
+  status: string @renamed_from("order_state")
+}
+`
+	sem, diags := frontend.ParseFile("test.fdn", src)
+	for _, d := range diags {
+		t.Errorf("unexpected diagnostic: %s: %s", d.Code, d.Message)
+	}
+	if len(sem.Entities) != 1 {
+		t.Fatalf("expected 1 entity")
+	}
+
+	// @table("app_orders") -> name: "app_orders" (unquoted)
+	tableTr := sem.Entities[0].Traits[0]
+	if tableTr.Args["name"] != "app_orders" {
+		t.Errorf("expected table name 'app_orders', got %q", tableTr.Args["name"])
+	}
+
+	// @renamed_from("order_state") -> name: "order_state" (unquoted)
+	statusField := sem.Entities[0].Fields[1]
+	rfTr := statusField.Traits[0]
+	if rfTr.Args["name"] != "order_state" {
+		t.Errorf("expected renamed_from name 'order_state', got %q", rfTr.Args["name"])
+	}
+}

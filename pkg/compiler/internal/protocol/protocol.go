@@ -135,8 +135,8 @@ func EncodeRequest(req GenerationRequest) ([]byte, error) {
 	return json.MarshalIndent(req, "", "  ")
 }
 
-// DecodeRequest deserializes JSON bytes into a GenerationRequest, validating the protocol version
-// and ensuring map fields are non-nil.
+// DecodeRequest decodes JSON bytes into a GenerationRequest.
+// The function validates the request and sets default values for missing maps.
 func DecodeRequest(data []byte) (GenerationRequest, error) {
 	var req GenerationRequest
 	if err := json.Unmarshal(data, &req); err != nil {
@@ -148,14 +148,14 @@ func DecodeRequest(data []byte) (GenerationRequest, error) {
 	if req.ProtocolVersion == 0 {
 		req.ProtocolVersion = ProtocolVersion
 	}
-	if req.ProtocolVersion > ProtocolVersion {
-		return GenerationRequest{}, fmt.Errorf("unsupported protocol version %d (supported up to %d)", req.ProtocolVersion, ProtocolVersion)
-	}
 	if req.Files == nil {
 		req.Files = make(map[string]string)
 	}
 	if req.Target.Options == nil {
 		req.Target.Options = make(map[string]string)
+	}
+	if err := req.Validate(); err != nil {
+		return GenerationRequest{}, fmt.Errorf("invalid generation request: %w", err)
 	}
 	return req, nil
 }

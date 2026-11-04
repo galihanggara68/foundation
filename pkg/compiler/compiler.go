@@ -17,17 +17,8 @@ import (
 
 // Public type aliases preserving the Single Public Compiler Driver Seam (pkg/compiler).
 type (
-	Span           = ir.Span
-	Severity       = ir.Severity
-	Diagnostic     = ir.Diagnostic
-	SemanticIR     = ir.SemanticIR
 	BuildProfile   = arch.BuildProfile
 	ArchitectureIR = arch.ArchitectureIR
-)
-
-const (
-	SeverityError   = ir.SeverityError
-	SeverityWarning = ir.SeverityWarning
 )
 
 // SourceFile represents an in-memory or loaded Blueprint source document.
@@ -258,11 +249,11 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 					if len(lowDiags) > 0 {
 						return nil, lowDiags
 					}
-					if target.Kind == "backend" {
-						archIR.Storage = storagePlan
-					}
 				} else {
 					archIR = arch.NewCustomArchitectureIR(target, bp.Project.Module)
+				}
+				if target.Kind == "backend" && archIR != nil {
+					archIR.Storage = storagePlan
 				}
 			}
 

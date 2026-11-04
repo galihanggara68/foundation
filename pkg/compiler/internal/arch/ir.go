@@ -92,11 +92,58 @@ type MigrationFileIR struct {
 	DownSQL string `json:"down_sql"`
 }
 
+// MigrationPlan describes a sequential schema migration script.
+type MigrationPlan = MigrationFileIR
+
+// ColumnSchema describes a column in a relational table schema.
+type ColumnSchema struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	IsPK       bool   `json:"is_pk"`
+	IsNullable bool   `json:"is_nullable"`
+	DefaultVal string `json:"default_val,omitempty"`
+}
+
+// ForeignKey describes a relational foreign key constraint.
+type ForeignKey struct {
+	Column        string `json:"column"`
+	ForeignTable  string `json:"foreign_table"`
+	ForeignColumn string `json:"foreign_column"`
+	OnDelete      string `json:"on_delete,omitempty"`
+	OnUpdate      string `json:"on_update,omitempty"`
+}
+
+// IndexSchema describes a relational table index.
+type IndexSchema struct {
+	Name     string   `json:"name"`
+	Table    string   `json:"table"`
+	Columns  []string `json:"columns"`
+	IsUnique bool     `json:"is_unique"`
+}
+
+// UniqueConstraint describes a unique constraint across table columns.
+type UniqueConstraint struct {
+	Name    string   `json:"name"`
+	Table   string   `json:"table"`
+	Columns []string `json:"columns"`
+}
+
+// TableSchema describes a relational table schema.
+type TableSchema struct {
+	Name        string             `json:"name"`
+	Columns     []ColumnSchema     `json:"columns"`
+	PrimaryKeys []string           `json:"primary_keys,omitempty"`
+	ForeignKeys []ForeignKey       `json:"foreign_keys,omitempty"`
+	Indexes     []IndexSchema      `json:"indexes,omitempty"`
+	Uniques     []UniqueConstraint `json:"uniques,omitempty"`
+}
+
 type StoragePlanIR struct {
 	Dialect    string            `json:"dialect"`
 	Mode       string            `json:"mode"`
 	SchemaSQL  string            `json:"schema_sql,omitempty"`
 	Migrations []MigrationFileIR `json:"migrations,omitempty"`
+	Tables     []TableSchema     `json:"tables,omitempty"`
 }
 
 // ArchitectureIR represents the lowered structural topology for a single target.

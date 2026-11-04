@@ -130,7 +130,24 @@ func TestTrait_Arg(t *testing.T) {
 	} else if len(fieldsArg.Aliases) == 0 || fieldsArg.Aliases[0] != "_" {
 		t.Errorf("expected positional '_' alias on @unique 'fields' arg, got %+v", fieldsArg.Aliases)
 	}
-	if _, ok := uniqTrait.Arg("name"); ok {
-		t.Errorf("expected @unique not to accept 'name' argument")
+	if _, ok := uniqTrait.Arg("name"); !ok {
+		t.Errorf("expected @unique to accept optional 'name' argument")
+	}
+
+	// Standard traits @len and @range
+	lenTrait, ok := platform.StandardTrait("len")
+	if !ok {
+		t.Fatalf("expected StandardTrait('len') to succeed")
+	}
+	if len(lenTrait.Args) != 2 || lenTrait.Args[0].Name != "min" || lenTrait.Args[1].Name != "max" {
+		t.Errorf("expected @len args min, max, got %+v", lenTrait.Args)
+	}
+
+	rangeTrait, ok := platform.StandardTrait("range")
+	if !ok {
+		t.Fatalf("expected StandardTrait('range') to succeed")
+	}
+	if len(rangeTrait.Args) != 2 || rangeTrait.Args[0].Name != "min" || rangeTrait.Args[1].Name != "max" {
+		t.Errorf("expected @range args min, max, got %+v", rangeTrait.Args)
 	}
 }

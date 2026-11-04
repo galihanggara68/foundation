@@ -99,4 +99,38 @@ func TestTrait_Arg(t *testing.T) {
 	if _, ok := rfTrait.Arg("_"); !ok {
 		t.Errorf("expected positional '_' alias on @renamed_from")
 	}
+
+	// Index trait hosts and argument contract
+	idxTrait, ok := platform.StandardTrait("index")
+	if !ok {
+		t.Fatalf("expected 'index' trait")
+	}
+	if len(idxTrait.Hosts) != 2 || idxTrait.Hosts[0] != platform.TraitOnField || idxTrait.Hosts[1] != platform.TraitOnEntity {
+		t.Errorf("expected @index to support field and entity hosts, got %+v", idxTrait.Hosts)
+	}
+	if fieldsArg, ok := idxTrait.Arg("fields"); !ok {
+		t.Errorf("expected 'fields' arg on @index, got none")
+	} else if len(fieldsArg.Aliases) == 0 || fieldsArg.Aliases[0] != "_" {
+		t.Errorf("expected positional '_' alias on @index 'fields' arg, got %+v", fieldsArg.Aliases)
+	}
+	if _, ok := idxTrait.Arg("name"); !ok {
+		t.Errorf("expected optional 'name' arg on @index")
+	}
+
+	// Unique trait hosts and argument contract
+	uniqTrait, ok := platform.StandardTrait("unique")
+	if !ok {
+		t.Fatalf("expected 'unique' trait")
+	}
+	if len(uniqTrait.Hosts) != 2 || uniqTrait.Hosts[0] != platform.TraitOnField || uniqTrait.Hosts[1] != platform.TraitOnEntity {
+		t.Errorf("expected @unique to support field and entity hosts, got %+v", uniqTrait.Hosts)
+	}
+	if fieldsArg, ok := uniqTrait.Arg("fields"); !ok {
+		t.Errorf("expected 'fields' arg on @unique, got none")
+	} else if len(fieldsArg.Aliases) == 0 || fieldsArg.Aliases[0] != "_" {
+		t.Errorf("expected positional '_' alias on @unique 'fields' arg, got %+v", fieldsArg.Aliases)
+	}
+	if _, ok := uniqTrait.Arg("name"); ok {
+		t.Errorf("expected @unique not to accept 'name' argument")
+	}
 }

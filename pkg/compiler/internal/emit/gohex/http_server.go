@@ -73,11 +73,11 @@ type Server struct {
 	for _, uc := range archIR.UseCases {
 		sb.WriteString(fmt.Sprintf("\t\t%s: %s,\n", uc.ActionName, strings.ToLower(uc.ActionName)))
 	}
-	sb.WriteString("\t}\n\ts.routes()\n\treturn s\n}\n\n")
+	sb.WriteString("\t}\n\t// foundation:anchor:http-router-middleware\n\ts.routes()\n\treturn s\n}\n\n")
 
-	sb.WriteString("func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {\n\ts.router.ServeHTTP(w, r)\n}\n\n")
+	sb.WriteString("func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {\n\t// foundation:anchor:http-router-serve\n\ts.router.ServeHTTP(w, r)\n}\n\n")
 
-	sb.WriteString("func (s *Server) routes() {\n")
+	sb.WriteString("func (s *Server) routes() {\n\t// foundation:anchor:http-router-routes\n")
 	for _, h := range archIR.HTTPHandlers {
 		methodFunc := "Post"
 		switch h.Method {

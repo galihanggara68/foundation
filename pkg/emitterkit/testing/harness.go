@@ -49,6 +49,21 @@ func (h *Harness) LoadFixture(path string) (*emitterkit.SemanticIR, error) {
 	return sem, nil
 }
 
+// LoadWireFixture reads and decodes a GenerationRequest JSON fixture from path.
+func (h *Harness) LoadWireFixture(path string) (emitterkit.GenerationRequest, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return emitterkit.GenerationRequest{}, fmt.Errorf("open wire fixture file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	req, err := compiler.DecodeGenerationRequest(f)
+	if err != nil {
+		return emitterkit.GenerationRequest{}, fmt.Errorf("decode wire fixture %s: %w", path, err)
+	}
+	return req, nil
+}
+
 // AssertDeterministic runs genFunc twice.
 // The helper confirms that both runs produce identical responses.
 func (h *Harness) AssertDeterministic(genFunc func() (emitterkit.GenerationResponse, error)) {

@@ -207,7 +207,7 @@ targets:
 	if err != nil {
 		t.Fatalf("failed to read router.go: %v", err)
 	}
-	if !strings.Contains(string(routerBytes), "OpenTelemetryMiddleware(s.router).ServeHTTP(w, r)") {
+	if !strings.Contains(string(routerBytes), "OpenTelemetryMiddleware") {
 		t.Errorf("expected router.go to be wrapped with OpenTelemetryMiddleware, got: %s", string(routerBytes))
 	}
 

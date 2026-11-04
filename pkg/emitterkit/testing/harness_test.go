@@ -2,6 +2,8 @@ package testing_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	stdtesting "testing"
 
 	"github.com/galihanggara68/foundation/pkg/compiler"
@@ -139,5 +141,69 @@ func TestLoadFixture_MinimalFixture_Succeeds(t *stdtesting.T) {
 	}
 	if len(sem.Entities) != 1 || sem.Entities[0].Name != "Item" {
 		t.Fatalf("expected Item entity, got %+v", sem.Entities)
+	}
+}
+
+func TestLoadWireFixture_ValidFixture_Succeeds(t *stdtesting.T) {
+	h := emittertesting.NewHarness(t)
+
+	req := compiler.GenerationRequest{
+		ProtocolVersion: 1,
+		WorkspaceRoot:   "/tmp/test",
+		SemanticIR:      &compiler.SemanticIR{},
+		Target: compiler.TargetInfo{
+			TargetConfig: compiler.TargetConfig{
+				Name:     "domain-service",
+				Kind:     "backend",
+				Language: "go",
+				OutDir:   "gen",
+			},
+		},
+		Files: map[string]string{
+			"schema.sql": "-- table definition",
+		},
+	}
+
+	data, err := compiler.EncodeGenerationRequest(req)
+	if err != nil {
+		t.Fatalf("encode generation request: %v", err)
+	}
+
+	fixturePath := filepath.Join(t.TempDir(), "request.json")
+	if err := os.WriteFile(fixturePath, data, 0644); err != nil {
+		t.Fatalf("write fixture file: %v", err)
+	}
+
+	loadedReq, err := h.LoadWireFixture(fixturePath)
+	if err != nil {
+		t.Fatalf("expected LoadWireFixture to succeed, got error: %v", err)
+	}
+	if loadedReq.ProtocolVersion != 1 {
+		t.Fatalf("expected ProtocolVersion 1, got %d", loadedReq.ProtocolVersion)
+	}
+	if loadedReq.Target.Name != "domain-service" {
+		t.Fatalf("expected target name 'domain-service', got %s", loadedReq.Target.Name)
+	}
+	if loadedReq.Files["schema.sql"] != "-- table definition" {
+		t.Fatalf("expected virtual file content preserved")
+	}
+}
+
+func TestLoadWireFixture_MissingAndInvalidFile_Fails(t *stdtesting.T) {
+	h := emittertesting.NewHarness(t)
+
+	_, err := h.LoadWireFixture(filepath.Join(t.TempDir(), "missing.json"))
+	if err == nil {
+		t.Fatalf("expected error for missing wire fixture file")
+	}
+
+	badPath := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(badPath, []byte("{broken json syntax"), 0644); err != nil {
+		t.Fatalf("write bad fixture file: %v", err)
+	}
+
+	_, err = h.LoadWireFixture(badPath)
+	if err == nil {
+		t.Fatalf("expected error for malformed wire fixture JSON")
 	}
 }

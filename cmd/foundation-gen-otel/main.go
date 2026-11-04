@@ -1,9 +1,8 @@
 package main
 
 import (
-	"strings"
-
 	"github.com/galihanggara68/foundation/pkg/emitterkit"
+	"github.com/galihanggara68/foundation/pkg/emitterkit/chain"
 )
 
 func main() {
@@ -25,12 +24,16 @@ func generateOpenTelemetry(req emitterkit.GenerationRequest) (emitterkit.Generat
 	resp.Files["internal/adapters/http/otel_middleware.go"] = emitOtelMiddleware()
 	resp.Files["internal/adapters/http/otel_middleware_test.go"] = emitOtelMiddlewareTest()
 
-	// Wrap the HTTP router with OpenTelemetry tracing headers
+	// Inject OpenTelemetry HTTP tracing middleware with pipeline anchors
 	if routerContent, ok := resp.Files["internal/adapters/http/router.go"]; ok {
-		target := "s.router.ServeHTTP(w, r)"
-		replacement := "OpenTelemetryMiddleware(s.router).ServeHTTP(w, r)"
-		if strings.Contains(routerContent, target) {
-			resp.Files["internal/adapters/http/router.go"] = strings.Replace(routerContent, target, replacement, 1)
+		wrapped, err := chain.InsertBefore(routerContent, "http-router-middleware", "s.router.Use(OpenTelemetryMiddleware)")
+		if err == nil {
+			resp.Files["internal/adapters/http/router.go"] = wrapped
+		} else {
+			wrapped, err := chain.ReplaceAnchor(routerContent, "http-router-serve", "OpenTelemetryMiddleware(s.router).ServeHTTP(w, r)")
+			if err == nil {
+				resp.Files["internal/adapters/http/router.go"] = wrapped
+			}
 		}
 	}
 

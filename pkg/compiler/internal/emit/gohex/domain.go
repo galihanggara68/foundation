@@ -26,6 +26,7 @@ func (lay goLayout) emitGoDomainEnums(archIR *arch.ArchitectureIR) string {
 func (lay goLayout) emitGoEntityFile(e ir.EntityDecl) string {
 	var sb strings.Builder
 	sb.WriteString("package " + lay.DomainPkg + "\n\n")
+	sb.WriteString("// foundation:anchor:domain-imports\n")
 	if fileNeedsTime(declaredFieldTypes(e.Fields)) {
 		sb.WriteString("import \"time\"\n\n")
 	}

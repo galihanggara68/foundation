@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-04
+
+### Added
+- **Composite entity constraints and trait list arguments** ([ADR 0020](./docs/adr/0020-composite-entity-traits-and-list-arguments.md)):
+  - Grammar: Bracketed string list syntax `["col1", "col2"]` allows multi-value arguments in trait declarations.
+  - Platform registry permits `TraitOnEntity` for `@index` and `@unique`.
+  - The `@index` trait on entities accepts a `fields` list and an optional `name` argument for custom database index names.
+  - Entities permit multiple composite `@index` and `@unique` annotations with distinct column sets.
+  - `FDN0203`: The compiler returns an error when a composite trait references a field that does not exist on the target entity.
+  - `FDN0226`: The compiler warns when a composite entity trait supplies fewer than two fields. The compiler also warns when field-level `@index` or `@unique` traits declare arguments.
+- **Multi-write transaction invariant analysis** ([ADR 0021](./docs/adr/0021-path-sensitive-mutation-invariants-and-dead-code-detection.md)):
+  - `FDN0227`: Path-sensitive static analysis warns when an action performs multiple mutation steps (`create`, `update`, `delete`) without the `@transactional` trait.
+- **Dead code and unused variable detection** ([ADR 0021](./docs/adr/0021-path-sensitive-mutation-invariants-and-dead-code-detection.md)):
+  - `FDN0228`: An AST analysis pass warns when an action declares a `let` variable or parameter that is never referenced in subsequent expressions. Authors prefix unused identifiers with an underscore (`_`) to suppress the warning.
+
+---
+
 ## [0.7.0] - 2026-11-02
 
 ### Added

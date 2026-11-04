@@ -1,0 +1,428 @@
+package diagnostics
+
+import (
+	"fmt"
+
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
+)
+
+// Definition holds metadata for a compiler diagnostic code.
+type Definition struct {
+	Code            string
+	Severity        ir.Severity
+	Category        string
+	MessageTemplate string
+	Description     string
+	DocAnchor       string
+}
+
+// Registry stores all registered compiler diagnostic definitions.
+var Registry = map[string]Definition{
+	"FDN0001": {
+		Code: "FDN0001", Severity: ir.SeverityError, Category: "Workspace",
+		MessageTemplate: "failed to scan workspace: %v",
+		Description:     "The compiler cannot read or traverse the workspace directory.",
+		DocAnchor:       "fdn0001",
+	},
+	"FDN0002": {
+		Code: "FDN0002", Severity: ir.SeverityError, Category: "Workspace",
+		MessageTemplate: "no .fdn Blueprint files found in workspace",
+		Description:     "The workspace contains no blueprint source files.",
+		DocAnchor:       "fdn0002",
+	},
+	"FDN0003": {
+		Code: "FDN0003", Severity: ir.SeverityError, Category: "Configuration",
+		MessageTemplate: "failed to read foundation.build.yaml: %v",
+		Description:     "The build configuration file cannot be read.",
+		DocAnchor:       "fdn0003",
+	},
+	"FDN0004": {
+		Code: "FDN0004", Severity: ir.SeverityError, Category: "Configuration",
+		MessageTemplate: "invalid configuration in target %q: %v",
+		Description:     "A target configuration option contains an invalid value.",
+		DocAnchor:       "fdn0004",
+	},
+	"FDN0005": {
+		Code: "FDN0005", Severity: ir.SeverityError, Category: "Workspace",
+		MessageTemplate: "failed to marshal SemanticIR: %v",
+		Description:     "The compiler failed to serialize semantic intermediate representation.",
+		DocAnchor:       "fdn0005",
+	},
+	"FDN0006": {
+		Code: "FDN0006", Severity: ir.SeverityError, Category: "Workspace",
+		MessageTemplate: "failed to parse SemanticIR JSON: %v",
+		Description:     "The blueprint semantic JSON payload is malformed.",
+		DocAnchor:       "fdn0006",
+	},
+	"FDN0007": {
+		Code: "FDN0007", Severity: ir.SeverityError, Category: "Configuration",
+		MessageTemplate: "incompatible contrib runtime version %q: this compiler emits contrib/go/runtime %s",
+		Description:     "The runtime dependency version specified in build configuration is incompatible.",
+		DocAnchor:       "fdn0007",
+	},
+	"FDN0100": {
+		Code: "FDN0100", Severity: ir.SeverityError, Category: "Syntax",
+		MessageTemplate: "unexpected character %s",
+		Description:     "The lexer encountered an unexpected character.",
+		DocAnchor:       "fdn0100",
+	},
+	"FDN0101": {
+		Code: "FDN0101", Severity: ir.SeverityError, Category: "Syntax",
+		MessageTemplate: "unterminated string literal",
+		Description:     "A string literal was opened but not closed before end of line or file.",
+		DocAnchor:       "fdn0101",
+	},
+	"FDN0102": {
+		Code: "FDN0102", Severity: ir.SeverityError, Category: "Syntax",
+		MessageTemplate: "expected %s, got %q",
+		Description:     "The parser encountered an unexpected token while expecting a specific grammar symbol.",
+		DocAnchor:       "fdn0102",
+	},
+	"FDN0103": {
+		Code: "FDN0103", Severity: ir.SeverityError, Category: "Syntax",
+		MessageTemplate: "unexpected token %q at top level",
+		Description:     "A token was encountered at top level outside any recognized declaration.",
+		DocAnchor:       "fdn0103",
+	},
+	"FDN0104": {
+		Code: "FDN0104", Severity: ir.SeverityError, Category: "Declarations",
+		MessageTemplate: "unknown error property %q",
+		Description:     "An error declaration specifies an unrecognized property or duplicate declaration.",
+		DocAnchor:       "fdn0104",
+	},
+	"FDN0105": {
+		Code: "FDN0105", Severity: ir.SeverityError, Category: "Syntax",
+		MessageTemplate: "expected action statement, got %q",
+		Description:     "An action body contains an unrecognized step keyword or invalid statement syntax.",
+		DocAnchor:       "fdn0105",
+	},
+	"FDN0106": {
+		Code: "FDN0106", Severity: ir.SeverityError, Category: "Syntax",
+		MessageTemplate: "expected expression, got %s",
+		Description:     "The expression parser encountered an unexpected token where an expression was expected.",
+		DocAnchor:       "fdn0106",
+	},
+	"FDN0107": {
+		Code: "FDN0107", Severity: ir.SeverityError, Category: "Syntax",
+		MessageTemplate: "expected scenario clause (given, when, expect), got %q",
+		Description:     "A scenario declaration contains an unrecognized clause or invalid clause syntax.",
+		DocAnchor:       "fdn0107",
+	},
+	"FDN0108": {
+		Code: "FDN0108", Severity: ir.SeverityError, Category: "Declarations",
+		MessageTemplate: "duplicate locale %q in error messages",
+		Description:     "An error declaration defines multiple message templates for the same locale.",
+		DocAnchor:       "fdn0108",
+	},
+	"FDN0115": {
+		Code: "FDN0115", Severity: ir.SeverityError, Category: "Declarations",
+		MessageTemplate: "@cron trait is reserved until distributed leader election is implemented",
+		Description:     "The @cron trait is reserved until distributed leader election is implemented.",
+		DocAnchor:       "fdn0115",
+	},
+	"FDN0200": {
+		Code: "FDN0200", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "duplicate %s declaration %q",
+		Description:     "A declaration name collides with another declaration in the same namespace.",
+		DocAnchor:       "fdn0200",
+	},
+	"FDN0201": {
+		Code: "FDN0201", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "invalid error kind %q in error %q",
+		Description:     "An error declaration specifies an unknown error kind.",
+		DocAnchor:       "fdn0201",
+	},
+	"FDN0202": {
+		Code: "FDN0202", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "unknown type %q",
+		Description:     "A type reference refers to an unknown primitive, entity, enum, or value type.",
+		DocAnchor:       "fdn0202",
+	},
+	"FDN0203": {
+		Code: "FDN0203", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "unknown entity reference %q",
+		Description:     "A reference refers to an entity that does not exist in the blueprint.",
+		DocAnchor:       "fdn0203",
+	},
+	"FDN0204": {
+		Code: "FDN0204", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "%s %q has no field %q",
+		Description:     "An expression or mapping accesses a field that does not exist on the target type.",
+		DocAnchor:       "fdn0204",
+	},
+	"FDN0205": {
+		Code: "FDN0205", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "type mismatch: expected %s, got %s",
+		Description:     "An expression or assignment evaluates to a type incompatible with the target context.",
+		DocAnchor:       "fdn0205",
+	},
+	"FDN0206": {
+		Code: "FDN0206", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "error %q is not declared in throws contract",
+		Description:     "An action step or handler throws an error not declared in the method contract.",
+		DocAnchor:       "fdn0206",
+	},
+	"FDN0207": {
+		Code: "FDN0207", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "unknown action %q in scenario when",
+		Description:     "A scenario when step references an action that does not exist.",
+		DocAnchor:       "fdn0207",
+	},
+	"FDN0208": {
+		Code: "FDN0208", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "undeclared identifier %q",
+		Description:     "An expression references an identifier that is not declared in scope.",
+		DocAnchor:       "fdn0208",
+	},
+	"FDN0209": {
+		Code: "FDN0209", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "undeclared policy %q in require",
+		Description:     "A require step references an authorization policy that does not exist.",
+		DocAnchor:       "fdn0209",
+	},
+	"FDN0210": {
+		Code: "FDN0210", Severity: ir.SeverityError, Category: "Invariants",
+		MessageTemplate: "unbounded 'while' iteration is forbidden in Action Pipelines",
+		Description:     "While loops are forbidden in actions to guarantee termination; use bounded for loops.",
+		DocAnchor:       "fdn0210",
+	},
+	"FDN0211": {
+		Code: "FDN0211", Severity: ir.SeverityError, Category: "Invariants",
+		MessageTemplate: "recursive or direct action invocation %q is forbidden in Action Pipelines",
+		Description:     "Direct recursive or cyclic action calls are forbidden in action pipelines.",
+		DocAnchor:       "fdn0211",
+	},
+	"FDN0212": {
+		Code: "FDN0212", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "non-exhaustive match over enum %q: missing variants %s",
+		Description:     "A match expression over an enum does not handle all declared variants.",
+		DocAnchor:       "fdn0212",
+	},
+	"FDN0213": {
+		Code: "FDN0213", Severity: ir.SeverityError, Category: "Invariants",
+		MessageTemplate: "calling @external slot method %s.%s inside @transactional action %q is forbidden",
+		Description:     "Calling external slot methods inside transactional actions is forbidden to prevent holding locks.",
+		DocAnchor:       "fdn0213",
+	},
+	"FDN0214": {
+		Code: "FDN0214", Severity: ir.SeverityError, Category: "Invariants",
+		MessageTemplate: "N+1 query hazard: %q on entity %q inside bounded 'for' loop in action %q is forbidden",
+		Description:     "Relational database operations inside a loop cause N+1 queries; use bulk set operations.",
+		DocAnchor:       "fdn0214",
+	},
+	"FDN0215": {
+		Code: "FDN0215", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "query many requires unique order_by field (@pk or @unique)",
+		Description:     "Queries returning multiple records must specify deterministic ordering using unique fields.",
+		DocAnchor:       "fdn0215",
+	},
+	"FDN0216": {
+		Code: "FDN0216", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "query many limit %d exceeds maximum limit %d",
+		Description:     "Query pagination limit exceeds the allowed maximum platform limit.",
+		DocAnchor:       "fdn0216",
+	},
+	"FDN0217": {
+		Code: "FDN0217", Severity: ir.SeverityError, Category: "Invariants",
+		MessageTemplate: "disjunction ('or') is not supported in where predicates",
+		Description:     "Disjunctions are forbidden in where clauses to guarantee sargable index query plans.",
+		DocAnchor:       "fdn0217",
+	},
+	"FDN0218": {
+		Code: "FDN0218", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "cannot classify type %q for field %q",
+		Description:     "The compiler cannot determine the semantic field kind for a field definition.",
+		DocAnchor:       "fdn0218",
+	},
+	"FDN0219": {
+		Code: "FDN0219", Severity: ir.SeverityWarning, Category: "Semantics",
+		MessageTemplate: "error %q collides with the platform's standard %q error",
+		Description:     "A custom error declaration reuses a reserved platform error name and will be shadowed.",
+		DocAnchor:       "fdn0219",
+	},
+	"FDN0220": {
+		Code: "FDN0220", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "error status %d must be between %d and %d in error %q",
+		Description:     "An error status code is invalid or outside the acceptable HTTP status range.",
+		DocAnchor:       "fdn0220",
+	},
+	"FDN0221": {
+		Code: "FDN0221", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "invalid error posture %q in error %q",
+		Description:     "An error declaration specifies an invalid posture; expected 'business' or 'technical'.",
+		DocAnchor:       "fdn0221",
+	},
+	"FDN0222": {
+		Code: "FDN0222", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "@http route path %q routes segment {%s} without matching parameter",
+		Description:     "An HTTP route path variable has no corresponding action parameter.",
+		DocAnchor:       "fdn0222",
+	},
+	"FDN0223": {
+		Code: "FDN0223", Severity: ir.SeverityError, Category: "Syntax",
+		MessageTemplate: "traits cannot be attached to a slot declaration; attach the trait to each method instead",
+		Description:     "Traits cannot be attached to slot declarations; attach traits to individual methods instead.",
+		DocAnchor:       "fdn0223",
+	},
+	"FDN0224": {
+		Code: "FDN0224", Severity: ir.SeverityWarning, Category: "Semantics",
+		MessageTemplate: "unknown trait @%s; un-namespaced traits outside the standard vocabulary are ignored",
+		Description:     "An un-namespaced trait is not part of the standard platform trait vocabulary.",
+		DocAnchor:       "fdn0224",
+	},
+	"FDN0225": {
+		Code: "FDN0225", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "trait namespace %q is reserved for standard traits",
+		Description:     "The 'foundation' trait namespace is reserved; write standard platform traits without a prefix.",
+		DocAnchor:       "fdn0225",
+	},
+	"FDN0226": {
+		Code: "FDN0226", Severity: ir.SeverityWarning, Category: "Semantics",
+		MessageTemplate: "invalid argument for standard trait @%s",
+		Description:     "A trait argument is missing, unknown, or has an invalid type.",
+		DocAnchor:       "fdn0226",
+	},
+	"FDN0227": {
+		Code: "FDN0227", Severity: ir.SeverityWarning, Category: "Invariants",
+		MessageTemplate: "action %q performs multiple write operations without @transactional",
+		Description:     "An action runs multiple write operations without @transactional and risks partial state updates on failure.",
+		DocAnchor:       "fdn0227",
+	},
+	"FDN0228": {
+		Code: "FDN0228", Severity: ir.SeverityWarning, Category: "Semantics",
+		MessageTemplate: "unused parameter or variable %q in action %q",
+		Description:     "An action parameter or variable is never read; prefix with underscore to silence.",
+		DocAnchor:       "fdn0228",
+	},
+	"FDN0230": {
+		Code: "FDN0230", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "unknown field %q on entity %q in @%s trait",
+		Description:     "A composite entity trait references a field that is not declared on the entity.",
+		DocAnchor:       "fdn0230",
+	},
+	"FDN0231": {
+		Code: "FDN0231", Severity: ir.SeverityError, Category: "Semantics",
+		MessageTemplate: "@event_handler on action %q subscribes to undeclared event %q",
+		Description:     "An event handler action or scenario step references an event that is not declared.",
+		DocAnchor:       "fdn0231",
+	},
+	"FDN0300": {
+		Code: "FDN0300", Severity: ir.SeverityError, Category: "Lowering",
+		MessageTemplate: "no emitter registered for target: kind=%s language=%s architecture=%s",
+		Description:     "No built-in or plugin emitter is registered to generate output for the target configuration.",
+		DocAnchor:       "fdn0300",
+	},
+	"FDN0310": {
+		Code: "FDN0310", Severity: ir.SeverityError, Category: "Lowering",
+		MessageTemplate: "invalid authn adapter %q; expected 'dev-headers' or 'jwt-oidc'",
+		Description:     "The specified authentication adapter is unsupported by the lowering engine.",
+		DocAnchor:       "fdn0310",
+	},
+	"FDN0400": {
+		Code: "FDN0400", Severity: ir.SeverityError, Category: "Manifest",
+		MessageTemplate: "security violation: file path %q escapes root directory",
+		Description:     "An emitted file path violates sandbox path traversal constraints.",
+		DocAnchor:       "fdn0400",
+	},
+	"FDN0401": {
+		Code: "FDN0401", Severity: ir.SeverityError, Category: "Manifest",
+		MessageTemplate: "corrupt %s: %v",
+		Description:     "The compiler manifest file is malformed or cannot be deserialized.",
+		DocAnchor:       "fdn0401",
+	},
+	"FDN0402": {
+		Code: "FDN0402", Severity: ir.SeverityError, Category: "Manifest",
+		MessageTemplate: "manifest conflict: tracked file %q was manually modified",
+		Description:     "A tracked file was modified on disk outside the compiler; use --force to overwrite.",
+		DocAnchor:       "fdn0402",
+	},
+	"FDN0410": {
+		Code: "FDN0410", Severity: ir.SeverityError, Category: "Storage",
+		MessageTemplate: "destructive schema change: %s was removed without @renamed_from hint",
+		Description:     "A column or table was removed without a rename hint, risking data loss; use --force to proceed.",
+		DocAnchor:       "fdn0410",
+	},
+	"FDN0411": {
+		Code: "FDN0411", Severity: ir.SeverityError, Category: "Storage",
+		MessageTemplate: "failed to serialize %s: %v",
+		Description:     "The compiler failed to write or serialize the storage migration lock file.",
+		DocAnchor:       "fdn0411",
+	},
+	"FDN0500": {
+		Code: "FDN0500", Severity: ir.SeverityError, Category: "Emitter",
+		MessageTemplate: "failed to format emitted source: %v",
+		Description:     "The code generator emitted source that failed language-specific formatting.",
+		DocAnchor:       "fdn0500",
+	},
+	"FDN0600": {
+		Code: "FDN0600", Severity: ir.SeverityError, Category: "Runner",
+		MessageTemplate: "target %q test failed: %v",
+		Description:     "The target test suite ran and reported test failures.",
+		DocAnchor:       "fdn0600",
+	},
+	"FDN0601": {
+		Code: "FDN0601", Severity: ir.SeverityError, Category: "Runner",
+		MessageTemplate: "no test runner registered for target %q language %q",
+		Description:     "No built-in test runner is available for the given target language.",
+		DocAnchor:       "fdn0601",
+	},
+	"FDN0602": {
+		Code: "FDN0602", Severity: ir.SeverityError, Category: "Runner",
+		MessageTemplate: "target %q test execution timed out after %s",
+		Description:     "The target test suite execution exceeded the configured timeout.",
+		DocAnchor:       "fdn0602",
+	},
+	"FDN0700": {
+		Code: "FDN0700", Severity: ir.SeverityError, Category: "Plugin",
+		MessageTemplate: "generator plugin %s timed out after %s",
+		Description:     "An external generator plugin exceeded its execution timeout or was canceled.",
+		DocAnchor:       "fdn0700",
+	},
+	"FDN0701": {
+		Code: "FDN0701", Severity: ir.SeverityError, Category: "Plugin",
+		MessageTemplate: "generator plugin %s failed: %v",
+		Description:     "An external generator plugin failed to run, crashed, or returned invalid JSON.",
+		DocAnchor:       "fdn0701",
+	},
+	"FDN0702": {
+		Code: "FDN0702", Severity: ir.SeverityWarning, Category: "Plugin",
+		MessageTemplate: "generator %q overwrote file %q previously emitted by %q",
+		Description:     "A generator plugin overwrote a file emitted by an earlier generator plugin.",
+		DocAnchor:       "fdn0702",
+	},
+}
+
+// Lookup returns the diagnostic definition for the given code.
+func Lookup(code string) (Definition, bool) {
+	def, ok := Registry[code]
+	return def, ok
+}
+
+// New creates an ir.Diagnostic for the code, span, and optional message arguments.
+// When the code exists in the registry, New formats MessageTemplate with args.
+// When the code is not registered, New creates an error diagnostic with a fallback message.
+func New(code string, span ir.Span, args ...any) ir.Diagnostic {
+	def, ok := Registry[code]
+	if !ok {
+		msg := code
+		if len(args) > 0 {
+			msg = fmt.Sprint(args...)
+		}
+		return ir.Diagnostic{
+			Code:     code,
+			Severity: ir.SeverityError,
+			Message:  msg,
+			Span:     span,
+		}
+	}
+	msg := def.MessageTemplate
+	if len(args) > 0 {
+		msg = fmt.Sprintf(def.MessageTemplate, args...)
+	}
+	return ir.Diagnostic{
+		Code:     def.Code,
+		Severity: def.Severity,
+		Message:  msg,
+		Span:     span,
+	}
+}

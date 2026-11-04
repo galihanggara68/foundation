@@ -155,10 +155,11 @@ type ValueDecl struct {
 }
 
 type EntityDecl struct {
-	Name   string      `json:"name"`
-	Fields []FieldDecl `json:"fields"`
-	Traits []TraitDecl `json:"traits,omitempty"`
-	Span   Span        `json:"span"`
+	Name      string      `json:"name"`
+	TableName string      `json:"table_name"`
+	Fields    []FieldDecl `json:"fields"`
+	Traits    []TraitDecl `json:"traits,omitempty"`
+	Span      Span        `json:"span"`
 }
 
 // ErrorKind is the closed, compiler-validated classification of a declared error.
@@ -203,10 +204,11 @@ type ErrorDecl struct {
 }
 
 type ParamDecl struct {
-	Name string    `json:"name"`
-	Type string    `json:"type"`
-	Kind FieldKind `json:"kind"`
-	Span Span      `json:"span"`
+	Name   string    `json:"name"`
+	Type   string    `json:"type"`
+	Kind   FieldKind `json:"kind"`
+	InPath bool      `json:"in_path"`
+	Span   Span      `json:"span"`
 }
 
 type ActionDecl struct {

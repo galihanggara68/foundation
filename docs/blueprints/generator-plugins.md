@@ -154,6 +154,7 @@ The plugin returns `GenerationResponse` on standard output (`stdout`):
 
 ```json
 {
+  "protocol_version": 1,
   "files": {
     "internal/domain/order_entity.go": "package domain\n\n// Rich Aggregate Root with invariants\ntype Order struct { ... }"
   },
@@ -165,10 +166,28 @@ The plugin returns `GenerationResponse` on standard output (`stdout`):
 }
 ```
 
+- `protocol_version`: Current protocol version integer (`1`). When a plugin omits this field, the compiler defaults the value to `1`.
 - `files`: Fully tracked files managed by `.foundation-manifest.json`. Builds overwrite these files and prune obsolete files.
 - `stubs`: Create-if-missing starter files (for example slot implementations or config starters). The compiler writes them once and never overwrites them.
 - `diagnostics`: Warnings or compile errors shown in compiler output.
 - `test_command`: Optional default test command executed during `foundation test`.
+
+### Protocol Version Evolution Rules
+
+The wire protocol follows strict evolution rules to preserve compatibility:
+
+1. **Additive Changes**:
+   Future protocol revisions add new optional fields.
+   The compiler and plugins ignore unrecognized fields during JSON decoding.
+
+2. **Backward Compatibility**:
+   The compiler accepts responses without a `protocol_version` field.
+   The compiler defaults an omitted or zero `protocol_version` to `1`.
+
+3. **Forward Compatibility and Rejection**:
+   The compiler rejects responses with a `protocol_version` greater than `ProtocolVersion`.
+   The compiler rejects negative protocol versions.
+   Plugins must return a supported protocol version.
 
 ---
 
@@ -202,7 +221,8 @@ import (
 func main() {
 	emitterkit.RunPlugin(func(req emitterkit.GenerationRequest) (emitterkit.GenerationResponse, error) {
 		resp := emitterkit.GenerationResponse{
-			Files: make(map[string]string),
+			ProtocolVersion: emitterkit.ProtocolVersion,
+			Files:           make(map[string]string),
 			Stubs: map[string]string{
 				"config/ddd.starter.json": "{\n  \"strict_invariants\": true\n}\n",
 			},

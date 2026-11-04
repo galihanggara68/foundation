@@ -213,6 +213,10 @@ var standardTraitDocs = map[string]string{
 		"**Arguments:**\n" +
 		"- `attempts`: Maximum retry attempts (numeric).\n" +
 		"- `backoff`: Backoff duration in milliseconds (numeric).",
+	"@route": "### `@route` Trait\n\nConfigures the HTTP route path for an action endpoint.\n\n" +
+		"**Examples:**\n" +
+		"- `@route(\"/orders/{id}\")`\n" +
+		"- `@route(path: \"/orders/{id}\")`",
 	"@table": "### `@table` Trait\n\nMaps the entity to a relational SQL database table.\n\n" +
 		"**Arguments:**\n" +
 		"- `name`: Override default physical table name (e.g. `@table(name = \"app_users\")`).\n" +

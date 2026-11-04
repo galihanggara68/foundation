@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
@@ -52,12 +53,11 @@ func executeGeneratorPipeline(
 	for _, genName := range target.EffectiveGenerators() {
 		pluginPath, err := plugin.Resolve(workspaceDir, genName)
 		if err != nil {
-			allDiags = append(allDiags, Diagnostic{
-				Code:     "FDN0701",
-				Severity: SeverityError,
-				Message:  fmt.Sprintf("failed to resolve generator plugin %q: %v", genName, err),
-				Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-			})
+			allDiags = append(allDiags, diagnostics.New(
+				"FDN0701",
+				Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+				fmt.Sprintf("failed to resolve generator plugin %q: %v", genName, err),
+			))
 			return nil, allDiags
 		}
 
@@ -107,12 +107,13 @@ func executeGeneratorPipeline(
 			// Warn on collision only when a downstream plugin mutates a file previously emitted
 			// by an upstream plugin (not intentional builtin scaffolding override or unchanged pass-through)
 			if exists && prevOwner != "builtin" && prevOwner != genName && content != virtualFiles[relPath] {
-				allDiags = append(allDiags, Diagnostic{
-					Code:     "FDN0702",
-					Severity: SeverityWarning,
-					Message:  fmt.Sprintf("generator %q overwrote file %q previously emitted by %q", genName, relPath, prevOwner),
-					Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-				})
+				allDiags = append(allDiags, diagnostics.New(
+					"FDN0702",
+					Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+					genName,
+					relPath,
+					prevOwner,
+				))
 			}
 			if !exists || content != virtualFiles[relPath] {
 				fileProvenance[relPath] = genName

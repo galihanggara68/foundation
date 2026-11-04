@@ -58,3 +58,9 @@ func ExtractFiles(emission compiler.Emission) (files map[string]string, stubs ma
 func ExportIdent(s string) string {
 	return compiler.ExportIdent(s)
 }
+
+// SafeRelPath confirms that rel is a clean relative path that stays within rootDir.
+// The function rejects empty paths, root paths, absolute paths, and directory traversal sequences.
+func SafeRelPath(rootDir, rel string) (string, error) {
+	return compiler.SafeRelPath(rootDir, rel)
+}

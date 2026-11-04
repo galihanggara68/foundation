@@ -2,13 +2,13 @@ package validate
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
-// HTTPPathParamsPass enforces that every {segment} in an action's @http route path is supplied by
-// an action parameter of exactly that name (FDN0222), so routing never dispatches on a path
-// variable the handler does not read.
+// HTTPPathParamsPass confirms that action parameters supply all route path segments (FDN0222).
+// The pass also sets InPath to true for parameters that appear in the route path.
 type HTTPPathParamsPass struct{}
 
 func (HTTPPathParamsPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagnostic {
@@ -16,8 +16,11 @@ func (HTTPPathParamsPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Di
 
 	for i := range sem.Actions {
 		a := &sem.Actions[i]
-		path, ok := actionHTTPPath(*a)
-		if !ok {
+		ir.EnrichActionParamsInPath(a)
+		sym.actions[a.Name] = *a
+
+		paths := ir.ActionRoutePaths(*a)
+		if len(paths) == 0 {
 			continue
 		}
 
@@ -26,35 +29,32 @@ func (HTTPPathParamsPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Di
 			params[p.Name] = true
 		}
 
-		reported := make(map[string]bool)
-		for _, name := range ir.HTTPPathParamNames(path) {
-			if name == "" || params[name] || reported[name] {
-				continue
+		for _, path := range paths {
+			reported := make(map[string]bool)
+			for _, name := range ir.HTTPPathParamNames(path) {
+				base := strings.Split(name, ":")[0]
+				if base == "" || params[base] || reported[base] {
+					continue
+				}
+				reported[base] = true
+				diags = append(diags, ir.Diagnostic{
+					Code:     "FDN0222",
+					Severity: ir.SeverityError,
+					Message:  fmt.Sprintf("@http route path %q on action %q routes path segment {%s} but no parameter of that name supplies it", path, a.Name, name),
+					Span:     a.Span,
+				})
 			}
-			reported[name] = true
-			diags = append(diags, ir.Diagnostic{
-				Code:     "FDN0222",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("@http route path %q on action %q routes path segment {%s} but no parameter of that name supplies it", path, a.Name, name),
-				Span:     a.Span,
-			})
 		}
 	}
 
 	return diags
 }
 
-// actionHTTPPath reads an action's @http route path the same way LowerActionHTTP does, reporting
-// false when the action is unrouted or the trait carries no path and the lowered default applies.
+// actionHTTPPath reads an action's route path from @http or @route traits.
 func actionHTTPPath(a ir.ActionDecl) (string, bool) {
-	path, ok := "", false
-	for _, tr := range a.Traits {
-		if tr.Name != "http" {
-			continue
-		}
-		if p, has := tr.Args["path"]; has {
-			path, ok = p, true
-		}
+	paths := ir.ActionRoutePaths(a)
+	if len(paths) == 0 {
+		return "", false
 	}
-	return path, ok && path != ""
+	return paths[0], true
 }

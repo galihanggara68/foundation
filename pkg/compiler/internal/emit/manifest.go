@@ -9,7 +9,6 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
@@ -70,27 +69,9 @@ var protectedLockfiles = map[string]bool{
 	"yarn.lock":         true,
 }
 
-// safeDiskPath resolves a relative file path against outDir, ensuring that the resolved
-// path remains strictly confined within outDir (preventing directory traversal / zip-slip attacks).
+// safeDiskPath delegates to SafeRelPath to resolve rel within outDir.
 func safeDiskPath(outDir, rel string) (string, error) {
-	cleanRel := filepath.Clean(filepath.FromSlash(rel))
-	if cleanRel == "." || cleanRel == "" {
-		return "", fmt.Errorf("invalid empty or root file path: %q", rel)
-	}
-	if filepath.IsAbs(cleanRel) {
-		return "", fmt.Errorf("security violation: absolute file path %q is forbidden", rel)
-	}
-	if cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("security violation: file path %q escapes output directory", rel)
-	}
-
-	diskPath := filepath.Join(outDir, cleanRel)
-	relToOut, err := filepath.Rel(outDir, diskPath)
-	if err != nil || relToOut == ".." || strings.HasPrefix(relToOut, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("security violation: resolved path %q escapes output directory %q", diskPath, outDir)
-	}
-
-	return diskPath, nil
+	return SafeRelPath(outDir, rel)
 }
 
 // ReconcileManifest compares the newly emitted files with the existing .foundation-manifest.json,

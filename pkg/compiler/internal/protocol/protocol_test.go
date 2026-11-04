@@ -22,37 +22,22 @@ func TestGenerationRequest_RoundTrip(t *testing.T) {
 		WorkspaceRoot:   "/workspace",
 		Target: protocol.TargetInfo{
 			TargetConfig: arch.TargetConfig{
-				Name:         "backend",
-				Kind:         "backend",
-				Language:     "go",
-				Architecture: "hexagonal",
-				HTTP:         "chi",
-				OutDir:       "gen/go",
+				Name: "backend", Kind: "backend", Language: "go", Architecture: "hexagonal", HTTP: "chi", OutDir: "gen/go",
 			},
-			Options: map[string]string{
-				"telemetry": "otel",
-			},
+			Options: map[string]string{"telemetry": "otel"},
 		},
 		SemanticIR: &ir.SemanticIR{
-			Entities: []ir.EntityDecl{
-				{
-					Name: "Order",
-					Fields: []ir.FieldDecl{
-						{Name: "id", Type: "UUID", Span: ir.Span{File: "domain.fdn", Line: 5, Column: 2}},
-						{Name: "total", Type: "Money", Span: ir.Span{File: "domain.fdn", Line: 6, Column: 2}},
-					},
-					Span: ir.Span{File: "domain.fdn", Line: 4, Column: 1},
+			Entities: []ir.EntityDecl{{
+				Name: "Order",
+				Fields: []ir.FieldDecl{
+					{Name: "id", Type: "UUID", Span: ir.Span{File: "domain.fdn", Line: 5, Column: 2}},
+					{Name: "total", Type: "Money", Span: ir.Span{File: "domain.fdn", Line: 6, Column: 2}},
 				},
-			},
+				Span: ir.Span{File: "domain.fdn", Line: 4, Column: 1},
+			}},
 		},
 		ArchitectureIR: &arch.ArchitectureIR{
-			TargetName: "backend",
-			Kind:       "backend",
-			Language:   "go",
-			Pattern:    "hexagonal",
-			HTTP:       "chi",
-			Module:     "example.com/shop",
-			OutDir:     "gen/go",
+			TargetName: "backend", Kind: "backend", Language: "go", Pattern: "hexagonal", HTTP: "chi", Module: "example.com/shop", OutDir: "gen/go",
 		},
 		Files: map[string]string{
 			"go.mod": "module example.com/shop\n\ngo 1.24\n",
@@ -96,12 +81,9 @@ func TestGenerationRequest_FullPayloadRoundTrip(t *testing.T) {
 	sem := &ir.SemanticIR{
 		Actors: []ir.ActorDecl{
 			{
-				Name: "User",
-				Fields: []ir.FieldDecl{
-					{Name: "id", Type: "uuid"},
-					{Name: "email", Type: "string"},
-				},
-				Span: ir.Span{File: "auth.fdn", Line: 1, Column: 1},
+				Name:   "User",
+				Fields: []ir.FieldDecl{{Name: "id", Type: "uuid"}, {Name: "email", Type: "string"}},
+				Span:   ir.Span{File: "auth.fdn", Line: 1, Column: 1},
 			},
 		},
 		Enums: []ir.EnumDecl{
@@ -109,12 +91,9 @@ func TestGenerationRequest_FullPayloadRoundTrip(t *testing.T) {
 		},
 		Values: []ir.ValueDecl{
 			{
-				Name: "Money",
-				Fields: []ir.FieldDecl{
-					{Name: "amount", Type: "decimal"},
-					{Name: "currency", Type: "string"},
-				},
-				Span: ir.Span{File: "types.fdn", Line: 5, Column: 1},
+				Name:   "Money",
+				Fields: []ir.FieldDecl{{Name: "amount", Type: "decimal"}, {Name: "currency", Type: "string"}},
+				Span:   ir.Span{File: "types.fdn", Line: 5, Column: 1},
 			},
 		},
 		Entities: []ir.EntityDecl{
@@ -132,32 +111,23 @@ func TestGenerationRequest_FullPayloadRoundTrip(t *testing.T) {
 		},
 		Events: []ir.EventDecl{
 			{
-				Name: "ItemCreated",
-				Fields: []ir.FieldDecl{
-					{Name: "id", Type: "uuid"},
-				},
-				Span: ir.Span{File: "shop.fdn", Line: 25, Column: 1},
+				Name:   "ItemCreated",
+				Fields: []ir.FieldDecl{{Name: "id", Type: "uuid"}},
+				Span:   ir.Span{File: "shop.fdn", Line: 25, Column: 1},
 			},
 		},
 		Policies: []ir.PolicyDecl{
 			{
-				Name: "CanAccess",
-				Params: []ir.ParamDecl{
-					{Name: "u", Type: "User"},
-				},
-				Span: ir.Span{File: "shop.fdn", Line: 30, Column: 1},
+				Name:   "CanAccess",
+				Params: []ir.ParamDecl{{Name: "u", Type: "User"}},
+				Span:   ir.Span{File: "shop.fdn", Line: 30, Column: 1},
 			},
 		},
 		Slots: []ir.SlotDecl{
 			{
 				Name: "PaymentGateway",
 				Methods: []ir.SlotMethodDecl{
-					{
-						Name:       "Charge",
-						Params:     []ir.ParamDecl{{Name: "amount", Type: "Money"}},
-						ReturnType: "string",
-						Throws:     []string{"PaymentFailed"},
-					},
+					{Name: "Charge", Params: []ir.ParamDecl{{Name: "amount", Type: "Money"}}, ReturnType: "string", Throws: []string{"PaymentFailed"}},
 				},
 				Span: ir.Span{File: "shop.fdn", Line: 35, Column: 1},
 			},
@@ -177,11 +147,7 @@ func TestGenerationRequest_FullPayloadRoundTrip(t *testing.T) {
 				WhenAction: "CreateItem",
 				WhenArgs:   []ir.Expr{{Kind: ir.ExprString, Value: "Book"}},
 				Expects: []ir.ExpectDecl{
-					{
-						Left:  ir.Expr{Kind: ir.ExprIdent, Value: "res"},
-						Op:    "==",
-						Right: ir.Expr{Kind: ir.ExprIdent, Value: "expected"},
-					},
+					{Left: ir.Expr{Kind: ir.ExprIdent, Value: "res"}, Op: "==", Right: ir.Expr{Kind: ir.ExprIdent, Value: "expected"}},
 				},
 				Span: ir.Span{File: "shop.fdn", Line: 55, Column: 1},
 			},
@@ -191,9 +157,7 @@ func TestGenerationRequest_FullPayloadRoundTrip(t *testing.T) {
 	bp := &arch.BuildProfile{
 		Project: arch.ProjectConfig{Name: "shop", Module: "example.com/shop"},
 		Storage: arch.StorageConfig{Dialect: "postgres", Mode: "hybrid"},
-		Targets: []arch.TargetConfig{
-			{Name: "backend", Kind: "backend", Language: "go", Architecture: "hexagonal", HTTP: "chi", OutDir: "gen/go"},
-		},
+		Targets: []arch.TargetConfig{{Name: "backend", Kind: "backend", Language: "go", Architecture: "hexagonal", HTTP: "chi", OutDir: "gen/go"}},
 	}
 
 	archIR, diags := arch.Lower(sem, bp, bp.Targets[0])
@@ -258,7 +222,7 @@ func TestGenerationRequest_DefaultsAndValidation(t *testing.T) {
 		t.Fatalf("expected valid request, got: %v", err)
 	}
 
-	mutations := []func(*protocol.GenerationRequest){
+	for _, mutate := range []func(*protocol.GenerationRequest){
 		func(r *protocol.GenerationRequest) { r.WorkspaceRoot = "" },
 		func(r *protocol.GenerationRequest) { r.Target.Name = "" },
 		func(r *protocol.GenerationRequest) { r.Target.Kind = "" },
@@ -266,8 +230,7 @@ func TestGenerationRequest_DefaultsAndValidation(t *testing.T) {
 		func(r *protocol.GenerationRequest) { r.Target.OutDir = "" },
 		func(r *protocol.GenerationRequest) { r.SemanticIR = nil },
 		func(r *protocol.GenerationRequest) { r.ProtocolVersion = 0 },
-	}
-	for _, mutate := range mutations {
+	} {
 		invalidReq := req
 		mutate(&invalidReq)
 		if err := invalidReq.Validate(); err == nil {
@@ -276,33 +239,19 @@ func TestGenerationRequest_DefaultsAndValidation(t *testing.T) {
 	}
 
 	// Negative protocol version fails DecodeRequest
-	negativeData := []byte(`{
-		"protocol_version": -1,
-		"workspace_root": "/workspace",
-		"target": {"name": "test", "kind": "backend", "language": "go", "out_dir": "gen"},
-		"semantic_ir": {}
-	}`)
+	negativeData := []byte(`{"protocol_version": -1, "workspace_root": "/workspace", "target": {"name": "test", "kind": "backend", "language": "go", "out_dir": "gen"}, "semantic_ir": {}}`)
 	if _, err := protocol.DecodeRequest(negativeData); err == nil {
 		t.Error("expected error for negative protocol_version -1, got nil")
 	}
 
 	// Future protocol version fails validation and DecodeRequest
-	futureData := []byte(`{
-		"protocol_version": 99,
-		"workspace_root": "/workspace",
-		"target": {"name": "test", "kind": "backend", "language": "go", "out_dir": "gen"},
-		"semantic_ir": {}
-	}`)
+	futureData := []byte(`{"protocol_version": 99, "workspace_root": "/workspace", "target": {"name": "test", "kind": "backend", "language": "go", "out_dir": "gen"}, "semantic_ir": {}}`)
 	if _, err := protocol.DecodeRequest(futureData); err == nil {
 		t.Fatal("expected error for future protocol_version 99, got nil")
 	}
 
 	// Missing protocol_version defaults to current ProtocolVersion for backward compatibility
-	noVersionData := []byte(`{
-		"workspace_root": "/workspace",
-		"target": {"name": "test", "kind": "backend", "language": "go", "out_dir": "gen"},
-		"semantic_ir": {}
-	}`)
+	noVersionData := []byte(`{"workspace_root": "/workspace", "target": {"name": "test", "kind": "backend", "language": "go", "out_dir": "gen"}, "semantic_ir": {}}`)
 	reqNoVersion, err := protocol.DecodeRequest(noVersionData)
 	if err != nil {
 		t.Fatalf("unexpected error decoding payload without protocol_version: %v", err)
@@ -327,6 +276,7 @@ func TestGenerationRequest_FileHelpers(t *testing.T) {
 
 func TestGenerationResponse_RoundTripAndDefaults(t *testing.T) {
 	resp := protocol.GenerationResponse{
+		ProtocolVersion: protocol.ProtocolVersion,
 		Files: map[string]string{
 			"src/domain/order.go": "package domain",
 		},
@@ -354,6 +304,9 @@ func TestGenerationResponse_RoundTripAndDefaults(t *testing.T) {
 		t.Fatalf("DecodeResponse failed: %v", err)
 	}
 
+	if decoded.ProtocolVersion != resp.ProtocolVersion {
+		t.Errorf("ProtocolVersion mismatch: got %d, want %d", decoded.ProtocolVersion, resp.ProtocolVersion)
+	}
 	if decoded.Files["src/domain/order.go"] != resp.Files["src/domain/order.go"] {
 		t.Errorf("Files mismatch: got %+v", decoded.Files)
 	}
@@ -386,6 +339,9 @@ func TestGenerationResponse_RoundTripAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeResponse empty failed: %v", err)
 	}
+	if emptyDecoded.ProtocolVersion != protocol.ProtocolVersion {
+		t.Errorf("expected ProtocolVersion %d on empty decoded response, got %d", protocol.ProtocolVersion, emptyDecoded.ProtocolVersion)
+	}
 	if emptyDecoded.Files == nil {
 		t.Error("expected non-nil Files map on empty decoded response")
 	}
@@ -394,6 +350,61 @@ func TestGenerationResponse_RoundTripAndDefaults(t *testing.T) {
 	}
 	if emptyDecoded.Diagnostics == nil {
 		t.Error("expected non-nil Diagnostics slice on empty decoded response")
+	}
+}
+
+// TestDecodeResponse_Validation confirms that DecodeResponse validates protocol versions.
+func TestDecodeResponse_Validation(t *testing.T) {
+	// Protocol version 1 decodes successfully.
+	v1Data := []byte(`{"protocol_version": 1, "files": {"out.go": "package out"}}`)
+	resp, err := protocol.DecodeResponse(v1Data)
+	if err != nil {
+		t.Fatalf("unexpected error for protocol_version 1: %v", err)
+	}
+	if resp.ProtocolVersion != 1 {
+		t.Errorf("expected ProtocolVersion 1, got %d", resp.ProtocolVersion)
+	}
+
+	// Omitted protocol_version defaults to 1.
+	omittedData := []byte(`{"files": {"out.go": "package out"}}`)
+	respOmitted, err := protocol.DecodeResponse(omittedData)
+	if err != nil {
+		t.Fatalf("unexpected error for omitted protocol_version: %v", err)
+	}
+	if respOmitted.ProtocolVersion != 1 {
+		t.Errorf("expected defaulted ProtocolVersion 1, got %d", respOmitted.ProtocolVersion)
+	}
+
+	// Zero protocol_version defaults to 1.
+	zeroData := []byte(`{"protocol_version": 0}`)
+	respZero, err := protocol.DecodeResponse(zeroData)
+	if err != nil {
+		t.Fatalf("unexpected error for zero protocol_version: %v", err)
+	}
+	if respZero.ProtocolVersion != 1 {
+		t.Errorf("expected defaulted ProtocolVersion 1, got %d", respZero.ProtocolVersion)
+	}
+
+	// Unsupported version 99 returns unsupported error.
+	unsupportedData := []byte(`{"protocol_version": 99}`)
+	_, err = protocol.DecodeResponse(unsupportedData)
+	if err == nil {
+		t.Fatal("expected error for protocol_version 99, got nil")
+	}
+	wantUnsupported := "unsupported generator protocol version 99 (compiler supports 1)"
+	if !strings.Contains(err.Error(), wantUnsupported) {
+		t.Errorf("expected error containing %q, got %v", wantUnsupported, err)
+	}
+
+	// Negative protocol version returns invalid error.
+	negativeData := []byte(`{"protocol_version": -1}`)
+	_, err = protocol.DecodeResponse(negativeData)
+	if err == nil {
+		t.Fatal("expected error for protocol_version -1, got nil")
+	}
+	wantInvalid := "invalid generator protocol version -1"
+	if !strings.Contains(err.Error(), wantInvalid) {
+		t.Errorf("expected error containing %q, got %v", wantInvalid, err)
 	}
 }
 

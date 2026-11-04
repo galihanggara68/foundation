@@ -13,7 +13,7 @@ import (
 // TraitValidationPass validates un-namespaced traits against the standard compiler traits registry:
 // - reports FDN0224 (warning) for unknown un-namespaced traits
 // - reports FDN0226 (warning) for argument problems on standard traits (unknown arg, missing required arg, non-numeric arg)
-// - reports FDN0203 (error) for unknown field references in composite entity traits
+// - reports FDN0230 (error) for unknown field references in composite entity traits
 // Namespaced traits outside the reserved "foundation" namespace are passed through and never judged.
 type TraitValidationPass struct{}
 
@@ -181,7 +181,7 @@ func checkCompositeEntityTrait(diags *[]ir.Diagnostic, tr ir.TraitDecl, entity *
 	for _, f := range fields {
 		if _, exists := entFields[f]; !exists {
 			*diags = append(*diags, ir.Diagnostic{
-				Code:     "FDN0203",
+				Code:     "FDN0230",
 				Severity: ir.SeverityError,
 				Message:  fmt.Sprintf("unknown field %q on entity %q in @%s trait", f, entName, tr.Name),
 				Span:     tr.Span,

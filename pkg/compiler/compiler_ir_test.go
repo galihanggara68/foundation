@@ -107,3 +107,44 @@ targets:
 		t.Fatalf("expected generated scenarios from .fdn.json build to pass, got: %+v", testDiags)
 	}
 }
+
+func TestCompile_PopulatesResolvedEntityTableName(t *testing.T) {
+	src := `
+entity UserAccount {
+  id: uuid @pk
+  name: string
+}
+
+entity CustomOrder @table(name: "orders_archive") {
+  id: uuid @pk
+  total: decimal
+}
+
+entity CatalogItem @table("product_catalog") {
+  id: uuid @pk
+  sku: string
+}
+`
+	sources := []compiler.SourceFile{
+		{Path: "models.fdn", Content: src},
+	}
+	sem, diags := compiler.Compile(sources)
+	if len(diags) != 0 {
+		t.Fatalf("unexpected compile diagnostics: %+v", diags)
+	}
+
+	entityMap := make(map[string]string)
+	for _, ent := range sem.Entities {
+		entityMap[ent.Name] = ent.TableName
+	}
+
+	if got := entityMap["UserAccount"]; got != "user_accounts" {
+		t.Errorf("UserAccount TableName = %q, want %q", got, "user_accounts")
+	}
+	if got := entityMap["CustomOrder"]; got != "orders_archive" {
+		t.Errorf("CustomOrder TableName = %q, want %q", got, "orders_archive")
+	}
+	if got := entityMap["CatalogItem"]; got != "product_catalog" {
+		t.Errorf("CatalogItem TableName = %q, want %q", got, "product_catalog")
+	}
+}

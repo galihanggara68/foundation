@@ -1,0 +1,96 @@
+actor UserActor {
+  id: uuid
+  role: string
+  is_active: bool
+}
+
+entity Customer {
+  id: uuid @pk
+  email: string @unique
+  tier: string
+}
+
+entity Order {
+  id: uuid @pk
+  customer_id: uuid
+  status: string
+  total: decimal(10, 2)
+}
+
+entity AuditLog {
+  id: uuid @pk
+  action_name: string
+  detail: string
+}
+
+event OrderPlaced {
+  order_id: uuid
+  customer_id: uuid
+  total: decimal(10, 2)
+}
+
+error CustomerNotFound {
+  kind: not_found
+  message: "customer not found"
+}
+
+error OrderNotFound {
+  kind: not_found
+  message: "order not found"
+}
+
+error UnauthorizedCustomer {
+  kind: unauthorized
+  message: "active customer credentials required"
+}
+
+policy CanPlaceOrder(actor: Actor) {
+  actor.role == "customer" && actor.is_active == true
+}
+
+action CreateCustomer(email: string, tier: string) -> Customer
+  @http(method: POST, path: "/customers")
+{
+  let customer = create Customer {
+    email: email,
+    tier: tier
+  }
+  return customer
+}
+
+action PlaceOrder(customer_id: uuid, total: decimal(10, 2)) -> Order
+  @http(method: POST, path: "/orders")
+  @transactional
+  @outbox
+{
+  require CanPlaceOrder(actor) else UnauthorizedCustomer
+  let customer = query one Customer where id == customer_id else CustomerNotFound
+  let order = create Order {
+    customer_id: customer.id,
+    status: "placed",
+    total: total
+  }
+  emit OrderPlaced {
+    order_id: order.id,
+    customer_id: order.customer_id,
+    total: order.total
+  }
+  return order
+}
+
+action GetOrder(order_id: uuid) -> Order
+  @http(method: GET, path: "/orders/{order_id}")
+{
+  let order = query one Order where id == order_id else OrderNotFound
+  return order
+}
+
+action RecordOrderAudit(ev: OrderPlaced) -> AuditLog
+  @event_handler(OrderPlaced)
+{
+  let log = create AuditLog {
+    action_name: "order_placed",
+    detail: "order recorded"
+  }
+  return log
+}

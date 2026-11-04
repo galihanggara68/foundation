@@ -1,0 +1,27 @@
+entity Order @index(fields: ["customer_id", "status"], name: "idx_cust_status") @unique(fields: ["tenant_id", "order_number"]) {
+  id: uuid @pk
+  tenant_id: uuid
+  order_number: string
+  customer_id: uuid
+  status: string
+  total: decimal(10, 2)
+}
+
+entity Member @unique(fields: ["organization_id", "email"]) {
+  id: uuid @pk
+  organization_id: uuid
+  email: string
+  role: string
+}
+
+error OrderNotFound {
+  kind: not_found
+  message: "order not found"
+}
+
+action GetOrder(order_id: uuid) -> Order
+  @http(method: GET, path: "/orders/{order_id}")
+{
+  let order = query one Order where id == order_id else OrderNotFound
+  return order
+}

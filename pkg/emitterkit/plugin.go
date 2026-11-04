@@ -14,9 +14,11 @@ type (
 	GenerationResponse = compiler.GenerationResponse
 	TargetInfo         = compiler.TargetInfo
 	TargetConfig       = compiler.TargetConfig
-	PlatformInfo       = compiler.PlatformInfo
-	PaginationDefaults = compiler.PaginationDefaults
-	Diagnostic         = compiler.Diagnostic
+	PlatformInfo         = compiler.PlatformInfo
+	PaginationDefaults   = compiler.PaginationDefaults
+	ReservedError        = compiler.ReservedError
+	DiagnosticDefinition = compiler.DiagnosticDefinition
+	Diagnostic           = compiler.Diagnostic
 	Emission           = compiler.Emission
 	SemanticIR         = compiler.SemanticIR
 	ArchitectureIR     = compiler.ArchitectureIR
@@ -79,6 +81,15 @@ const ProtocolVersion = compiler.ProtocolVersion
 // HandlerFunc processes a GenerationRequest and produces a GenerationResponse or an error.
 type HandlerFunc func(req GenerationRequest) (GenerationResponse, error)
 
+// DiagnosticRegistry stores all registered compiler diagnostic definitions.
+var DiagnosticRegistry = compiler.DiagnosticRegistry
+
+// LookupDiagnostic returns the diagnostic definition for the given code.
+var LookupDiagnostic = compiler.LookupDiagnostic
+
+// NewDiagnostic creates a Diagnostic for the code, span, and optional message arguments.
+var NewDiagnostic = compiler.NewDiagnostic
+
 // RunPlugin executes the plugin using standard input (request) and standard output (response).
 // If unhandled errors occur during execution, it logs to stderr and terminates with exit code 1.
 func RunPlugin(handler HandlerFunc) {
@@ -93,12 +104,11 @@ func RunPluginStream(in io.Reader, out io.Writer, handler HandlerFunc) error {
 	req, err := compiler.DecodeGenerationRequest(in)
 	if err != nil {
 		errResp := GenerationResponse{
-			Diagnostics: []Diagnostic{{
-				Code:     "FDN0701",
-				Severity: compiler.SeverityError,
-				Message:  fmt.Sprintf("failed to decode generation request: %v", err),
-				Span:     compiler.Span{File: "protocol", Line: 1, Column: 1},
-			}},
+			Diagnostics: []Diagnostic{NewDiagnostic(
+				"FDN0701",
+				compiler.Span{File: "protocol", Line: 1, Column: 1},
+				fmt.Sprintf("failed to decode generation request: %v", err),
+			)},
 		}
 		data, encErr := compiler.EncodeGenerationResponse(errResp)
 		if encErr != nil {
@@ -110,12 +120,11 @@ func RunPluginStream(in io.Reader, out io.Writer, handler HandlerFunc) error {
 
 	resp, handlerErr := handler(req)
 	if handlerErr != nil {
-		resp.Diagnostics = append(resp.Diagnostics, Diagnostic{
-			Code:     "FDN0701",
-			Severity: compiler.SeverityError,
-			Message:  handlerErr.Error(),
-			Span:     compiler.Span{File: "plugin", Line: 1, Column: 1},
-		})
+		resp.Diagnostics = append(resp.Diagnostics, NewDiagnostic(
+			"FDN0701",
+			compiler.Span{File: "plugin", Line: 1, Column: 1},
+			handlerErr,
+		))
 	}
 
 	if resp.Files == nil {

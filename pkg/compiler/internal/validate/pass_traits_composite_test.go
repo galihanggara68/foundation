@@ -107,7 +107,7 @@ entity Order @index(fields: ["customer_id", "status"]) @index(fields: ["customer
 	}
 }
 
-func TestValidate_CompositeIndex_UnknownField_ReturnsFDN0203Error(t *testing.T) {
+func TestValidate_CompositeIndex_UnknownField_ReturnsFDN0230Error(t *testing.T) {
 	src := `
 entity Order @index(fields: ["customer_id", "non_existent"]) {
   id: uuid @pk
@@ -120,12 +120,12 @@ entity Order @index(fields: ["customer_id", "non_existent"]) {
 	}
 
 	diags := validate.Validate(sem)
-	matches := findDiags(diags, "FDN0203")
+	matches := findDiags(diags, "FDN0230")
 	if len(matches) == 0 {
-		t.Fatalf("expected FDN0203 error for unknown field, got none: %+v", diags)
+		t.Fatalf("expected FDN0230 error for unknown field, got none: %+v", diags)
 	}
 	if matches[0].Severity != ir.SeverityError {
-		t.Errorf("expected FDN0203 to be an error, got %s", matches[0].Severity)
+		t.Errorf("expected FDN0230 to be an error, got %s", matches[0].Severity)
 	}
 	expectedMsg := `unknown field "non_existent" on entity "Order" in @index trait`
 	if !strings.Contains(matches[0].Message, expectedMsg) {
@@ -133,7 +133,7 @@ entity Order @index(fields: ["customer_id", "non_existent"]) {
 	}
 }
 
-func TestValidate_CompositeUnique_UnknownField_ReturnsFDN0203Error(t *testing.T) {
+func TestValidate_CompositeUnique_UnknownField_ReturnsFDN0230Error(t *testing.T) {
 	src := `
 entity Account @unique(fields: ["email", "bogus_field"]) {
   id: uuid @pk
@@ -146,12 +146,12 @@ entity Account @unique(fields: ["email", "bogus_field"]) {
 	}
 
 	diags := validate.Validate(sem)
-	matches := findDiags(diags, "FDN0203")
+	matches := findDiags(diags, "FDN0230")
 	if len(matches) == 0 {
-		t.Fatalf("expected FDN0203 error for unknown field on @unique, got none: %+v", diags)
+		t.Fatalf("expected FDN0230 error for unknown field on @unique, got none: %+v", diags)
 	}
 	if matches[0].Severity != ir.SeverityError {
-		t.Errorf("expected FDN0203 to be an error, got %s", matches[0].Severity)
+		t.Errorf("expected FDN0230 to be an error, got %s", matches[0].Severity)
 	}
 	expectedMsg := `unknown field "bogus_field" on entity "Account" in @unique trait`
 	if !strings.Contains(matches[0].Message, expectedMsg) {

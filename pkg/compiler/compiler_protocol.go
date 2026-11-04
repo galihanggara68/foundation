@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
@@ -18,8 +19,10 @@ type (
 	GenerationResponse = protocol.GenerationResponse
 	TargetInfo         = protocol.TargetInfo
 	TargetConfig       = arch.TargetConfig
-	PlatformInfo       = platform.Info
-	PaginationDefaults = platform.PaginationDefaults
+	PlatformInfo         = platform.Info
+	PaginationDefaults   = platform.PaginationDefaults
+	ReservedError        = platform.ReservedError
+	DiagnosticDefinition = diagnostics.Definition
 
 	// Root IR declarations.
 	SemanticIR     = ir.SemanticIR
@@ -109,12 +112,11 @@ func DecodeGenerationResponse(r io.Reader) (GenerationResponse, error) {
 // EmitBuiltin lowers and emits the built-in target for archIR with the compiler emitter registry.
 func EmitBuiltin(archIR *ArchitectureIR) (Emission, []Diagnostic) {
 	if archIR == nil {
-		return Emission{}, []Diagnostic{{
-			Code:     "FDN0300",
-			Severity: SeverityError,
-			Message:  "cannot emit nil architecture IR",
-			Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-		}}
+		return Emission{}, []Diagnostic{NewDiagnostic(
+			"FDN0300",
+			Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			"cannot emit nil architecture IR",
+		)}
 	}
 	reg := defaultRegistry()
 	key := arch.TargetKey{
@@ -124,12 +126,11 @@ func EmitBuiltin(archIR *ArchitectureIR) (Emission, []Diagnostic) {
 	}
 	emitter, ok := reg.emitters[key]
 	if !ok {
-		return Emission{}, []Diagnostic{{
-			Code:     "FDN0300",
-			Severity: SeverityError,
-			Message:  fmt.Sprintf("no emitter registered for target: kind=%s language=%s architecture=%s", archIR.Kind, archIR.Language, archIR.Pattern),
-			Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-		}}
+		return Emission{}, []Diagnostic{NewDiagnostic(
+			"FDN0300",
+			Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			fmt.Sprintf("no emitter registered for target: kind=%s language=%s architecture=%s", archIR.Kind, archIR.Language, archIR.Pattern),
+		)}
 	}
 	return emitter.Emit(archIR)
 }
@@ -137,4 +138,22 @@ func EmitBuiltin(archIR *ArchitectureIR) (Emission, []Diagnostic) {
 // ExportIdent converts a field or entity name into an exported Go identifier with Go initialisms (ID, SKU, URL).
 func ExportIdent(s string) string {
 	return arch.ExportIdent(s)
+}
+
+// SafeRelPath confirms that rel is a clean relative path that stays within rootDir.
+func SafeRelPath(rootDir, rel string) (string, error) {
+	return emit.SafeRelPath(rootDir, rel)
+}
+
+// DiagnosticRegistry stores all registered compiler diagnostic definitions.
+var DiagnosticRegistry = diagnostics.Registry
+
+// LookupDiagnostic returns the diagnostic definition for the given code.
+func LookupDiagnostic(code string) (DiagnosticDefinition, bool) {
+	return diagnostics.Lookup(code)
+}
+
+// NewDiagnostic creates a Diagnostic for the code, span, and optional message arguments.
+func NewDiagnostic(code string, span Span, args ...any) Diagnostic {
+	return diagnostics.New(code, span, args...)
 }

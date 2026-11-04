@@ -90,10 +90,11 @@ func (r *GenerationRequest) SetFile(path, content string) {
 
 // GenerationResponse is the payload returned from an external generator plugin to the Foundation compiler.
 type GenerationResponse struct {
-	Files       map[string]string `json:"files,omitempty"`
-	Stubs       map[string]string `json:"stubs,omitempty"`
-	Diagnostics []ir.Diagnostic   `json:"diagnostics,omitempty"`
-	TestCommand string            `json:"test_command,omitempty"`
+	ProtocolVersion int               `json:"protocol_version"`
+	Files           map[string]string `json:"files,omitempty"`
+	Stubs           map[string]string `json:"stubs,omitempty"`
+	Diagnostics     []ir.Diagnostic   `json:"diagnostics,omitempty"`
+	TestCommand     string            `json:"test_command,omitempty"`
 }
 
 // HasErrors reports whether any diagnostic in the response has error severity.
@@ -162,14 +163,27 @@ func DecodeRequest(data []byte) (GenerationRequest, error) {
 
 // EncodeResponse serializes a GenerationResponse to formatted JSON.
 func EncodeResponse(resp GenerationResponse) ([]byte, error) {
+	if resp.ProtocolVersion == 0 {
+		resp.ProtocolVersion = ProtocolVersion
+	}
 	return json.MarshalIndent(resp, "", "  ")
 }
 
-// DecodeResponse deserializes JSON bytes into a GenerationResponse, ensuring map and slice fields are non-nil.
+// DecodeResponse decodes JSON bytes into a GenerationResponse.
+// The function validates the protocol version and sets non-nil defaults for maps and slices.
 func DecodeResponse(data []byte) (GenerationResponse, error) {
 	var resp GenerationResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return GenerationResponse{}, fmt.Errorf("failed to decode generation response: %w", err)
+	}
+	if resp.ProtocolVersion < 0 {
+		return GenerationResponse{}, fmt.Errorf("invalid generator protocol version %d", resp.ProtocolVersion)
+	}
+	if resp.ProtocolVersion == 0 {
+		resp.ProtocolVersion = ProtocolVersion
+	}
+	if resp.ProtocolVersion > ProtocolVersion {
+		return GenerationResponse{}, fmt.Errorf("unsupported generator protocol version %d (compiler supports %d)", resp.ProtocolVersion, ProtocolVersion)
 	}
 	if resp.Files == nil {
 		resp.Files = make(map[string]string)

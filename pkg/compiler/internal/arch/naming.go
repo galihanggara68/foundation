@@ -69,7 +69,13 @@ func EntityTableName(ent ir.EntityDecl) string {
 			if custom, ok := tr.Args["name"]; ok && custom != "" {
 				return strings.Trim(custom, `"'`)
 			}
+			if custom, ok := tr.Args["_0"]; ok && custom != "" {
+				return strings.Trim(custom, `"'`)
+			}
 		}
+	}
+	if ent.TableName != "" {
+		return ent.TableName
 	}
 	return Pluralize(ToSnakeCase(ent.Name))
 }

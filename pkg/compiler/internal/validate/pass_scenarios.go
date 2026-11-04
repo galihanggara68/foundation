@@ -133,7 +133,7 @@ func (ScenarioTypeCheckPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir
 				ev, evOk := sym.events[ex.EmittedEvent]
 				if !evOk {
 					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0203",
+						Code:     "FDN0231",
 						Severity: ir.SeverityError,
 						Message:  fmt.Sprintf("undeclared event %q in scenario expect emitted", ex.EmittedEvent),
 						Span:     ex.Span,

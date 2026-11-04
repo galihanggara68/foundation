@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/frontend"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
@@ -31,12 +32,7 @@ type SourceFile struct {
 // It performs no filesystem I/O, allowing pure in-process compilation for testing, IDEs, or language servers.
 func Compile(sources []SourceFile) (*SemanticIR, []Diagnostic) {
 	if len(sources) == 0 {
-		return nil, []Diagnostic{{
-			Code:     "FDN0002",
-			Severity: SeverityError,
-			Message:  "no .fdn Blueprint files found in workspace",
-			Span:     Span{File: "workspace", Line: 1, Column: 1},
-		}}
+		return nil, []Diagnostic{diagnostics.New("FDN0002", Span{File: "workspace", Line: 1, Column: 1})}
 	}
 
 	sem := &SemanticIR{}
@@ -49,12 +45,7 @@ func Compile(sources []SourceFile) (*SemanticIR, []Diagnostic) {
 		if strings.HasSuffix(rel, ".fdn.json") {
 			fileIR = &SemanticIR{}
 			if uErr := json.Unmarshal([]byte(sf.Content), fileIR); uErr != nil {
-				fileDiags = append(fileDiags, Diagnostic{
-					Code:     "FDN0006",
-					Severity: SeverityError,
-					Message:  fmt.Sprintf("failed to parse SemanticIR JSON: %v", uErr),
-					Span:     Span{File: rel, Line: 1, Column: 1},
-				})
+				fileDiags = append(fileDiags, diagnostics.New("FDN0006", Span{File: rel, Line: 1, Column: 1}, uErr))
 				fileIR = nil
 			}
 		} else {
@@ -89,6 +80,15 @@ func Compile(sources []SourceFile) (*SemanticIR, []Diagnostic) {
 		return nil, valDiags
 	}
 
+	for i := range sem.Entities {
+		if sem.Entities[i].TableName == "" {
+			sem.Entities[i].TableName = arch.EntityTableName(sem.Entities[i])
+		}
+	}
+	for i := range sem.Actions {
+		ir.EnrichActionParamsInPath(&sem.Actions[i])
+	}
+
 	sem.Canonicalize()
 	return sem, valDiags
 }
@@ -97,20 +97,10 @@ func Compile(sources []SourceFile) (*SemanticIR, []Diagnostic) {
 func Check(workspaceDir string) (*SemanticIR, []Diagnostic) {
 	files, err := findFDNFiles(workspaceDir)
 	if err != nil {
-		return nil, []Diagnostic{{
-			Code:     "FDN0001",
-			Severity: SeverityError,
-			Message:  fmt.Sprintf("failed to scan workspace: %v", err),
-			Span:     Span{File: workspaceDir, Line: 1, Column: 1},
-		}}
+		return nil, []Diagnostic{diagnostics.New("FDN0001", Span{File: workspaceDir, Line: 1, Column: 1}, err)}
 	}
 	if len(files) == 0 {
-		return nil, []Diagnostic{{
-			Code:     "FDN0002",
-			Severity: SeverityError,
-			Message:  "no .fdn Blueprint files found in workspace",
-			Span:     Span{File: workspaceDir, Line: 1, Column: 1},
-		}}
+		return nil, []Diagnostic{diagnostics.New("FDN0002", Span{File: workspaceDir, Line: 1, Column: 1})}
 	}
 
 	var sources []SourceFile
@@ -119,12 +109,7 @@ func Check(workspaceDir string) (*SemanticIR, []Diagnostic) {
 	for _, f := range files {
 		src, readErr := os.ReadFile(f)
 		if readErr != nil {
-			diags = append(diags, Diagnostic{
-				Code:     "FDN0001",
-				Severity: SeverityError,
-				Message:  fmt.Sprintf("failed to read file: %v", readErr),
-				Span:     Span{File: f, Line: 1, Column: 1},
-			})
+			diags = append(diags, diagnostics.New("FDN0001", Span{File: f, Line: 1, Column: 1}, readErr))
 			continue
 		}
 		rel, relErr := filepath.Rel(workspaceDir, f)
@@ -170,12 +155,7 @@ func IR(workspaceDir string) ([]byte, []Diagnostic) {
 	}
 	b, err := json.MarshalIndent(sem, "", "  ")
 	if err != nil {
-		return nil, []Diagnostic{{
-			Code:     "FDN0005",
-			Severity: SeverityError,
-			Message:  fmt.Sprintf("failed to marshal SemanticIR: %v", err),
-			Span:     Span{File: workspaceDir, Line: 1, Column: 1},
-		}}
+		return nil, []Diagnostic{diagnostics.New("FDN0005", Span{File: workspaceDir, Line: 1, Column: 1}, err)}
 	}
 	return append(b, '\n'), diags
 }
@@ -230,12 +210,11 @@ func Build(workspaceDir string, opts BuildOptions) (*BuildResult, []Diagnostic) 
 
 			if scaffold == arch.ScaffoldBuiltin {
 				if !arch.IsBuiltinTarget(target) {
-					return nil, []Diagnostic{{
-						Code:     "FDN0300",
-						Severity: SeverityError,
-						Message:  fmt.Sprintf("scaffold: builtin requested but no built-in emitter exists for target: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
-						Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-					}}
+					return nil, []Diagnostic{diagnostics.New(
+						"FDN0300",
+						Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+						fmt.Sprintf("scaffold: builtin requested but no built-in emitter exists for target: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
+					)}
 				}
 				var bDiags []Diagnostic
 				archIR, builtinEmission, bDiags = lowerAndEmitBuiltin(sem, bp, target, storagePlan, reg)
@@ -316,12 +295,11 @@ func lowerAndEmitBuiltin(
 	}
 	emitter, ok := reg.emitters[key]
 	if !ok {
-		return nil, nil, []Diagnostic{{
-			Code:     "FDN0300",
-			Severity: SeverityError,
-			Message:  fmt.Sprintf("no emitter registered for target: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
-			Span:     Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-		}}
+		return nil, nil, []Diagnostic{diagnostics.New(
+			"FDN0300",
+			Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			fmt.Sprintf("no emitter registered for target: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
+		)}
 	}
 	emission, emitDiags := emitter.Emit(archIR)
 	if len(emitDiags) > 0 {

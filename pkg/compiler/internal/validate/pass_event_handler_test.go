@@ -7,7 +7,7 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/validate"
 )
 
-func TestValidate_EventHandler_UndeclaredEvent_ReturnsFDN0203(t *testing.T) {
+func TestValidate_EventHandler_UndeclaredEvent_ReturnsFDN0231(t *testing.T) {
 	src := `
 event OrderPlaced {
   id: uuid
@@ -27,13 +27,13 @@ action HandleUnknown(ev: OrderPlaced) -> bool
 	diags := validate.Validate(sem)
 	found := false
 	for _, d := range diags {
-		if d.Code == "FDN0203" {
+		if d.Code == "FDN0231" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected diagnostic FDN0203 for undeclared event, got: %+v", diags)
+		t.Fatalf("expected diagnostic FDN0231 for undeclared event, got: %+v", diags)
 	}
 }
 

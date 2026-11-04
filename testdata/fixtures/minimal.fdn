@@ -1,0 +1,17 @@
+entity Item {
+  id: uuid @pk
+  name: string
+  price: decimal(10, 2)
+}
+
+error ItemNotFound {
+  kind: not_found
+  message: "item not found"
+}
+
+action GetItem(id: uuid) -> Item
+  @http(method: GET, path: "/items/{id}")
+{
+  let item = query one Item where id == id else ItemNotFound
+  return item
+}

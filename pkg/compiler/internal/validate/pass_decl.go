@@ -21,8 +21,12 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 	for _, v := range sem.Values {
 		registerUniqueDecl(sym.values, "value", v.Name, v, v.Span, &diags)
 	}
-	for _, e := range sem.Entities {
-		registerUniqueDecl(sym.entities, "entity", e.Name, e, e.Span, &diags)
+	for i := range sem.Entities {
+		e := &sem.Entities[i]
+		if e.TableName == "" {
+			e.TableName = arch.EntityTableName(*e)
+		}
+		registerUniqueDecl(sym.entities, "entity", e.Name, *e, e.Span, &diags)
 	}
 	for i := range sem.Errors {
 		errDecl := &sem.Errors[i]
@@ -151,13 +155,17 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 		checkNoVersionTrait("value", v.Name, v.Fields)
 	}
 	tablesSeen := make(map[string]string)
-	for _, e := range sem.Entities {
+	for i := range sem.Entities {
+		e := &sem.Entities[i]
 		validateFields(e.Fields)
 		for _, tr := range e.Traits {
 			if tr.Name == "table" {
 				tblName := strings.Trim(tr.Args["_"], `"'`)
 				if tblName == "" {
 					tblName = strings.Trim(tr.Args["name"], `"'`)
+				}
+				if tblName == "" {
+					tblName = strings.Trim(tr.Args["_0"], `"'`)
 				}
 				if tblName == "" {
 					diags = append(diags, ir.Diagnostic{
@@ -169,7 +177,9 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 				}
 			}
 		}
-		physTable := arch.EntityTableName(e)
+		physTable := arch.EntityTableName(*e)
+		e.TableName = physTable
+		sym.entities[e.Name] = *e
 		if prevEnt, exists := tablesSeen[physTable]; exists {
 			diags = append(diags, ir.Diagnostic{
 				Code:     "FDN0216",
@@ -285,7 +295,7 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 				}
 				if evName == "" {
 					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0203",
+						Code:     "FDN0231",
 						Severity: ir.SeverityError,
 						Message:  fmt.Sprintf("@event_handler on action %q requires an event name", a.Name),
 						Span:     tr.Span,
@@ -294,7 +304,7 @@ func (DeclarationPass) Validate(sem *ir.SemanticIR, sym *SymbolTable) []ir.Diagn
 				}
 				if _, ok := sym.events[evName]; !ok {
 					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0203",
+						Code:     "FDN0231",
 						Severity: ir.SeverityError,
 						Message:  fmt.Sprintf("@event_handler on action %q subscribes to undeclared event %q", a.Name, evName),
 						Span:     tr.Span,

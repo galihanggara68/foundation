@@ -185,3 +185,53 @@ func TestExportedStoragePlanTypes(t *testing.T) {
 		t.Fatalf("expected table users, got %+v", plan.Tables)
 	}
 }
+
+// TestExportedPlatformTypes confirms that the compiler package exposes platform types and defaults.
+func TestExportedPlatformTypes(t *testing.T) {
+	req := compiler.GenerationRequest{
+		Platform: &compiler.PlatformInfo{
+			Pagination: compiler.PaginationDefaults{
+				DefaultLimit: 20,
+				MaxLimit:     100,
+			},
+			ReservedErrors: []compiler.ReservedError{
+				{
+					Name:    "NotFound",
+					Kind:    compiler.ErrorKind("not_found"),
+					Status:  404,
+					Posture: compiler.ErrorPosture("business"),
+				},
+			},
+		},
+	}
+
+	if req.Platform == nil {
+		t.Fatal("expected platform info to be present")
+	}
+	if req.Platform.Pagination.DefaultLimit != 20 {
+		t.Errorf("expected DefaultLimit 20, got %d", req.Platform.Pagination.DefaultLimit)
+	}
+	if len(req.Platform.ReservedErrors) != 1 {
+		t.Fatalf("expected 1 reserved error, got %d", len(req.Platform.ReservedErrors))
+	}
+	if req.Platform.ReservedErrors[0].Name != "NotFound" {
+		t.Errorf("expected error name NotFound, got %q", req.Platform.ReservedErrors[0].Name)
+	}
+}
+
+// TestExportedDiagnosticRegistry confirms that the compiler package exposes diagnostic registry helpers.
+func TestExportedDiagnosticRegistry(t *testing.T) {
+	if len(compiler.DiagnosticRegistry) == 0 {
+		t.Fatal("expected non-empty DiagnosticRegistry")
+	}
+
+	def, ok := compiler.LookupDiagnostic("FDN0001")
+	if !ok || def.Code != "FDN0001" {
+		t.Fatalf("expected FDN0001 definition, got: %+v", def)
+	}
+
+	diag := compiler.NewDiagnostic("FDN0001", compiler.Span{File: "test.fdn", Line: 1, Column: 1}, "disk error")
+	if diag.Code != "FDN0001" || diag.Severity != compiler.SeverityError {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+}

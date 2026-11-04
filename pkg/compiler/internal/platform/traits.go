@@ -60,6 +60,7 @@ var standardTraits = []Trait{
 	{Name: "range", Hosts: []TraitHost{TraitOnField}, Args: []TraitArg{{Name: "min", Numeric: true}, {Name: "max", Numeric: true}}},
 	{Name: "renamed_from", Hosts: []TraitHost{TraitOnField}, Args: []TraitArg{{Name: "name", Aliases: []string{"_"}, Required: true}}},
 	{Name: "retry", Hosts: []TraitHost{TraitOnAction}, Args: []TraitArg{{Name: "attempts", Numeric: true}, {Name: "backoff", Numeric: true}}},
+	{Name: "route", Hosts: []TraitHost{TraitOnAction}, Args: []TraitArg{{Name: "path", Aliases: []string{"_"}}}},
 	{Name: "table", Hosts: []TraitHost{TraitOnEntity}, Args: []TraitArg{{Name: "name", Aliases: []string{"_"}}}},
 	{Name: "transactional", Hosts: []TraitHost{TraitOnAction}},
 	{Name: "unique", Hosts: []TraitHost{TraitOnField, TraitOnEntity}, Args: []TraitArg{{Name: "fields", Aliases: []string{"_"}}, {Name: "name"}}},

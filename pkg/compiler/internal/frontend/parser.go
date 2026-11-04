@@ -3,6 +3,7 @@ package frontend
 import (
 	"fmt"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -118,6 +119,7 @@ func (p *parser) parseBlueprint() *ir.SemanticIR {
 		case "entity":
 			if e, ok := p.parseEntity(); ok {
 				e.Traits = append(preTraits, e.Traits...)
+				e.TableName = arch.EntityTableName(e)
 				sem.Entities = append(sem.Entities, e)
 			}
 		case "error":
@@ -147,6 +149,7 @@ func (p *parser) parseBlueprint() *ir.SemanticIR {
 		case "action":
 			if a, ok := p.parseAction(); ok {
 				a.Traits = append(preTraits, a.Traits...)
+				ir.EnrichActionParamsInPath(&a)
 				sem.Actions = append(sem.Actions, a)
 			}
 		case "scenario":

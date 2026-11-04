@@ -167,3 +167,53 @@ func TestExportedTypesInEmitterkit(t *testing.T) {
 		t.Fatalf("expected table users, got %+v", plan.Tables)
 	}
 }
+
+// TestExportedPlatformTypesInEmitterkit confirms that emitterkit exposes platform types and defaults.
+func TestExportedPlatformTypesInEmitterkit(t *testing.T) {
+	req := emitterkit.GenerationRequest{
+		Platform: &emitterkit.PlatformInfo{
+			Pagination: emitterkit.PaginationDefaults{
+				DefaultLimit: 20,
+				MaxLimit:     100,
+			},
+			ReservedErrors: []emitterkit.ReservedError{
+				{
+					Name:    "NotFound",
+					Kind:    emitterkit.ErrorKind("not_found"),
+					Status:  404,
+					Posture: emitterkit.ErrorPosture("business"),
+				},
+			},
+		},
+	}
+
+	if req.Platform == nil {
+		t.Fatal("expected platform info to be present")
+	}
+	if req.Platform.Pagination.DefaultLimit != 20 {
+		t.Errorf("expected DefaultLimit 20, got %d", req.Platform.Pagination.DefaultLimit)
+	}
+	if len(req.Platform.ReservedErrors) != 1 {
+		t.Fatalf("expected 1 reserved error, got %d", len(req.Platform.ReservedErrors))
+	}
+	if req.Platform.ReservedErrors[0].Name != "NotFound" {
+		t.Errorf("expected error name NotFound, got %q", req.Platform.ReservedErrors[0].Name)
+	}
+}
+
+// TestExportedDiagnosticRegistryInEmitterkit confirms that emitterkit exposes diagnostic registry helpers.
+func TestExportedDiagnosticRegistryInEmitterkit(t *testing.T) {
+	if len(emitterkit.DiagnosticRegistry) == 0 {
+		t.Fatal("expected non-empty DiagnosticRegistry in emitterkit")
+	}
+
+	def, ok := emitterkit.LookupDiagnostic("FDN0001")
+	if !ok || def.Code != "FDN0001" {
+		t.Fatalf("expected FDN0001 definition, got: %+v", def)
+	}
+
+	diag := emitterkit.NewDiagnostic("FDN0001", emitterkit.Span{File: "test.fdn", Line: 1, Column: 1}, "disk error")
+	if diag.Code != "FDN0001" || diag.Severity != emitterkit.SeverityError {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+}

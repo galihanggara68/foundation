@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/emit"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
@@ -325,12 +326,11 @@ func formatGo(path, src string) ([]byte, error) {
 }
 
 func errDiag(file string, err error) ir.Diagnostic {
-	return ir.Diagnostic{
-		Code:     "FDN0500",
-		Severity: ir.SeverityError,
-		Message:  err.Error(),
-		Span:     ir.Span{File: file, Line: 1, Column: 1},
-	}
+	return diagnostics.NewWithDetail(
+		"FDN0500",
+		ir.Span{File: file, Line: 1, Column: 1},
+		err.Error(),
+	)
 }
 
 func (lay goLayout) goType(fdnType string, inDomainPkg bool) string {

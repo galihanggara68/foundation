@@ -12,12 +12,11 @@ func EmitBuiltin(archIR *compiler.ArchitectureIR) (compiler.Emission, []compiler
 // EmitGoHexagonalScaffolding generates the standard Go Hexagonal file tree for archIR.
 func EmitGoHexagonalScaffolding(archIR *compiler.ArchitectureIR) (compiler.Emission, []compiler.Diagnostic) {
 	if archIR == nil {
-		return compiler.Emission{}, []compiler.Diagnostic{{
-			Code:     "FDN0300",
-			Severity: compiler.SeverityError,
-			Message:  "cannot emit Go hexagonal scaffolding for nil ArchitectureIR",
-			Span:     compiler.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-		}}
+		return compiler.Emission{}, []compiler.Diagnostic{NewDiagnosticWithDetail(
+			"FDN0300",
+			compiler.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			"cannot emit Go hexagonal scaffolding for nil ArchitectureIR",
+		)}
 	}
 	clone := *archIR
 	clone.Kind = "backend"

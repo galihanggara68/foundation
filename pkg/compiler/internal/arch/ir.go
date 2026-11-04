@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -63,12 +64,11 @@ func Lower(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig) (*Architec
 	}
 	lowerer, ok := defaultLowerers[key]
 	if !ok {
-		return nil, []ir.Diagnostic{{
-			Code:     "FDN0300",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("unsupported target combination: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
-			Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-		}}
+		return nil, []ir.Diagnostic{diagnostics.NewWithDetail(
+			"FDN0300",
+			ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			fmt.Sprintf("unsupported target combination: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
+		)}
 	}
 	target.Architecture = arch
 	return lowerer.Lower(sem, bp, target)

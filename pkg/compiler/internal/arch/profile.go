@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -90,12 +91,7 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 	path := filepath.Join(workspaceDir, "foundation.build.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, []ir.Diagnostic{{
-			Code:     "FDN0003",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("failed to read foundation.build.yaml: %v", err),
-			Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-		}}
+		return nil, []ir.Diagnostic{diagnostics.New("FDN0003", ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1}, err)}
 	}
 
 	bp := &BuildProfile{}
@@ -228,22 +224,20 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 		bp.Targets[i].Architecture = NormalizeTargetArchitecture(bp.Targets[i].Kind, bp.Targets[i].Architecture)
 		sc := bp.Targets[i].Scaffold
 		if sc != "" && sc != ScaffoldBuiltin && sc != ScaffoldNone {
-			return nil, []ir.Diagnostic{{
-				Code:     "FDN0004",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("invalid scaffold mode %q in target %q; expected 'builtin' or 'none'", sc, bp.Targets[i].Name),
-				Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-			}}
+			return nil, []ir.Diagnostic{diagnostics.NewWithDetail(
+				"FDN0004",
+				ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+				fmt.Sprintf("invalid scaffold mode %q in target %q; expected 'builtin' or 'none'", sc, bp.Targets[i].Name),
+			)}
 		}
 		if tt := bp.Targets[i].TestTimeout; tt != "" {
 			d, err := time.ParseDuration(tt)
 			if err != nil || d <= 0 {
-				return nil, []ir.Diagnostic{{
-					Code:     "FDN0004",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("invalid test_timeout %q in target %q: must be a positive duration", tt, bp.Targets[i].Name),
-					Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-				}}
+				return nil, []ir.Diagnostic{diagnostics.NewWithDetail(
+					"FDN0004",
+					ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+					fmt.Sprintf("invalid test_timeout %q in target %q: must be a positive duration", tt, bp.Targets[i].Name),
+				)}
 			}
 		}
 	}
@@ -255,22 +249,21 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 	if bp.Authn == "" {
 		bp.Authn = "dev-headers"
 	} else if bp.Authn != "dev-headers" && bp.Authn != "jwt-oidc" {
-		return nil, []ir.Diagnostic{{
-			Code:     "FDN0310",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("invalid authn adapter %q; expected 'dev-headers' or 'jwt-oidc'", bp.Authn),
-			Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-		}}
+		return nil, []ir.Diagnostic{diagnostics.New(
+			"FDN0310",
+			ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			bp.Authn,
+		)}
 	}
 
 	if bp.Dependencies.Runtime != "" {
 		if !isSemVerCompatible(ContribRuntimeVersion, bp.Dependencies.Runtime) {
-			return nil, []ir.Diagnostic{{
-				Code:     "FDN0007",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("incompatible contrib runtime version %q: this compiler emits contrib/go/runtime %s", bp.Dependencies.Runtime, ContribRuntimeVersion),
-				Span:     ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
-			}}
+			return nil, []ir.Diagnostic{diagnostics.New(
+				"FDN0007",
+				ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+				bp.Dependencies.Runtime,
+				ContribRuntimeVersion,
+			)}
 		}
 	}
 
@@ -359,10 +352,9 @@ func setTargetField(t *TargetConfig, k, v string) {
 }
 
 func yamlErr(line int, msg string) []ir.Diagnostic {
-	return []ir.Diagnostic{{
-		Code:     "FDN0004",
-		Severity: ir.SeverityError,
-		Message:  msg,
-		Span:     ir.Span{File: "foundation.build.yaml", Line: line, Column: 1},
-	}}
+	return []ir.Diagnostic{diagnostics.NewWithDetail(
+		"FDN0004",
+		ir.Span{File: "foundation.build.yaml", Line: line, Column: 1},
+		msg,
+	)}
 }

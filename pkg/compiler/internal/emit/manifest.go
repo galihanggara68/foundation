@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -80,32 +81,29 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 	// 0. Enforce path confinement security on all incoming virtual files
 	for rel := range trackedFiles {
 		if _, err := safeDiskPath(outDir, rel); err != nil {
-			return []ir.Diagnostic{{
-				Code:     "FDN0400",
-				Severity: ir.SeverityError,
-				Message:  err.Error(),
-				Span:     ir.Span{File: rel, Line: 1, Column: 1},
-			}}
+			return []ir.Diagnostic{diagnostics.NewWithDetail(
+				"FDN0400",
+				ir.Span{File: rel, Line: 1, Column: 1},
+				err.Error(),
+			)}
 		}
 	}
 	for rel := range stubFiles {
 		if _, err := safeDiskPath(outDir, rel); err != nil {
-			return []ir.Diagnostic{{
-				Code:     "FDN0400",
-				Severity: ir.SeverityError,
-				Message:  err.Error(),
-				Span:     ir.Span{File: rel, Line: 1, Column: 1},
-			}}
+			return []ir.Diagnostic{diagnostics.NewWithDetail(
+				"FDN0400",
+				ir.Span{File: rel, Line: 1, Column: 1},
+				err.Error(),
+			)}
 		}
 	}
 
 	if err := os.MkdirAll(outDir, 0755); err != nil {
-		return []ir.Diagnostic{{
-			Code:     "FDN0400",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("failed to create output directory %s: %v", outDir, err),
-			Span:     ir.Span{File: outDir, Line: 1, Column: 1},
-		}}
+		return []ir.Diagnostic{diagnostics.NewWithDetail(
+			"FDN0400",
+			ir.Span{File: outDir, Line: 1, Column: 1},
+			fmt.Sprintf("failed to create output directory %s: %v", outDir, err),
+		)}
 	}
 
 	manifestPath := filepath.Join(outDir, ManifestFileName)
@@ -114,12 +112,12 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 
 	if raw, err := os.ReadFile(manifestPath); err == nil {
 		if jsonErr := json.Unmarshal(raw, &prev); jsonErr != nil {
-			return []ir.Diagnostic{{
-				Code:     "FDN0401",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("corrupt %s: %v", ManifestFileName, jsonErr),
-				Span:     ir.Span{File: manifestPath, Line: 1, Column: 1},
-			}}
+			return []ir.Diagnostic{diagnostics.New(
+				"FDN0401",
+				ir.Span{File: manifestPath, Line: 1, Column: 1},
+				ManifestFileName,
+				jsonErr,
+			)}
 		}
 	}
 
@@ -147,12 +145,11 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 			}
 			actualHash := sha256Hex(diskBytes)
 			if actualHash != expectedHash {
-				conflicts = append(conflicts, ir.Diagnostic{
-					Code:     "FDN0402",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("manifest conflict: tracked file %q was manually modified (use --force to overwrite)", rel),
-					Span:     ir.Span{File: rel, Line: 1, Column: 1},
-				})
+				conflicts = append(conflicts, diagnostics.NewWithDetail(
+					"FDN0402",
+					ir.Span{File: rel, Line: 1, Column: 1},
+					fmt.Sprintf("manifest conflict: tracked file %q was manually modified (use --force to overwrite)", rel),
+				))
 			}
 		}
 		if len(conflicts) > 0 {
@@ -194,12 +191,11 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 		content := trackedFiles[rel]
 		diskPath, _ := safeDiskPath(outDir, rel)
 		if err := os.MkdirAll(filepath.Dir(diskPath), 0755); err != nil {
-			return []ir.Diagnostic{{
-				Code:     "FDN0400",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("failed to create parent directory for %s: %v", rel, err),
-				Span:     ir.Span{File: rel, Line: 1, Column: 1},
-			}}
+			return []ir.Diagnostic{diagnostics.NewWithDetail(
+				"FDN0400",
+				ir.Span{File: rel, Line: 1, Column: 1},
+				fmt.Sprintf("failed to create parent directory for %s: %v", rel, err),
+			)}
 		}
 		base := filepath.Base(rel)
 		if protectedLockfiles[base] {
@@ -209,12 +205,11 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 			}
 		}
 		if err := os.WriteFile(diskPath, content, 0644); err != nil {
-			return []ir.Diagnostic{{
-				Code:     "FDN0400",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("failed to write file %s: %v", rel, err),
-				Span:     ir.Span{File: rel, Line: 1, Column: 1},
-			}}
+			return []ir.Diagnostic{diagnostics.NewWithDetail(
+				"FDN0400",
+				ir.Span{File: rel, Line: 1, Column: 1},
+				fmt.Sprintf("failed to write file %s: %v", rel, err),
+			)}
 		}
 		nextManifest.Files[rel] = sha256Hex(content)
 	}
@@ -232,41 +227,37 @@ func ReconcileManifest(outDir string, trackedFiles map[string][]byte, stubFiles 
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(diskPath), 0755); err != nil {
-			return []ir.Diagnostic{{
-				Code:     "FDN0400",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("failed to create stub directory for %s: %v", rel, err),
-				Span:     ir.Span{File: rel, Line: 1, Column: 1},
-			}}
+			return []ir.Diagnostic{diagnostics.NewWithDetail(
+				"FDN0400",
+				ir.Span{File: rel, Line: 1, Column: 1},
+				fmt.Sprintf("failed to create stub directory for %s: %v", rel, err),
+			)}
 		}
 		if err := os.WriteFile(diskPath, stubFiles[rel], 0644); err != nil {
-			return []ir.Diagnostic{{
-				Code:     "FDN0400",
-				Severity: ir.SeverityError,
-				Message:  fmt.Sprintf("failed to write stub %s: %v", rel, err),
-				Span:     ir.Span{File: rel, Line: 1, Column: 1},
-			}}
+			return []ir.Diagnostic{diagnostics.NewWithDetail(
+				"FDN0400",
+				ir.Span{File: rel, Line: 1, Column: 1},
+				fmt.Sprintf("failed to write stub %s: %v", rel, err),
+			)}
 		}
 	}
 
 	// 5. Write deterministic .foundation-manifest.json
 	manifestBytes, err := json.MarshalIndent(nextManifest, "", "  ")
 	if err != nil {
-		return []ir.Diagnostic{{
-			Code:     "FDN0401",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("failed to serialize manifest: %v", err),
-			Span:     ir.Span{File: manifestPath, Line: 1, Column: 1},
-		}}
+		return []ir.Diagnostic{diagnostics.NewWithDetail(
+			"FDN0401",
+			ir.Span{File: manifestPath, Line: 1, Column: 1},
+			fmt.Sprintf("failed to serialize manifest: %v", err),
+		)}
 	}
 	manifestBytes = append(manifestBytes, '\n')
 	if err := os.WriteFile(manifestPath, manifestBytes, 0644); err != nil {
-		return []ir.Diagnostic{{
-			Code:     "FDN0401",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("failed to write manifest: %v", err),
-			Span:     ir.Span{File: manifestPath, Line: 1, Column: 1},
-		}}
+		return []ir.Diagnostic{diagnostics.NewWithDetail(
+			"FDN0401",
+			ir.Span{File: manifestPath, Line: 1, Column: 1},
+			fmt.Sprintf("failed to write manifest: %v", err),
+		)}
 	}
 
 	return nil

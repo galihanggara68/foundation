@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
@@ -113,21 +114,20 @@ func WriteLockFile(workspaceDir string, lock *LockSnapshot) []ir.Diagnostic {
 	lockPath := filepath.Join(workspaceDir, LockFileName)
 	b, err := json.MarshalIndent(lock, "", "  ")
 	if err != nil {
-		return []ir.Diagnostic{{
-			Code:     "FDN0411",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("failed to serialize %s: %v", LockFileName, err),
-			Span:     ir.Span{File: LockFileName, Line: 1, Column: 1},
-		}}
+		return []ir.Diagnostic{diagnostics.New(
+			"FDN0411",
+			ir.Span{File: LockFileName, Line: 1, Column: 1},
+			LockFileName,
+			err,
+		)}
 	}
 	b = append(b, '\n')
 	if err := os.WriteFile(lockPath, b, 0644); err != nil {
-		return []ir.Diagnostic{{
-			Code:     "FDN0411",
-			Severity: ir.SeverityError,
-			Message:  fmt.Sprintf("failed to write %s: %v", LockFileName, err),
-			Span:     ir.Span{File: LockFileName, Line: 1, Column: 1},
-		}}
+		return []ir.Diagnostic{diagnostics.NewWithDetail(
+			"FDN0411",
+			ir.Span{File: LockFileName, Line: 1, Column: 1},
+			fmt.Sprintf("failed to write %s: %v", LockFileName, err),
+		)}
 	}
 	return nil
 }
@@ -337,12 +337,11 @@ func diffEntitiesSQL(prevEntities, currEntities []ir.EntityDecl, enumSet map[str
 		for _, pf := range prev.Fields {
 			if !matchedPrevFields[pf.Name] {
 				if !force {
-					diags = append(diags, ir.Diagnostic{
-						Code:     "FDN0410",
-						Severity: ir.SeverityError,
-						Message:  fmt.Sprintf("destructive schema change: column %q on entity %q was removed without @renamed_from hint (use --force to allow DROP COLUMN)", pf.Name, curr.Name),
-						Span:     curr.Span,
-					})
+					diags = append(diags, diagnostics.NewWithDetail(
+						"FDN0410",
+						curr.Span,
+						fmt.Sprintf("destructive schema change: column %q on entity %q was removed without @renamed_from hint (use --force to allow DROP COLUMN)", pf.Name, curr.Name),
+					))
 				} else {
 					colDef := columnDefinitionSQL(pf, enumSet, prevTableMap)
 					upSB.WriteString(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s;\n", tableName, pf.Name))
@@ -356,12 +355,11 @@ func diffEntitiesSQL(prevEntities, currEntities []ir.EntityDecl, enumSet map[str
 	for _, prev := range prevEntities {
 		if !matchedPrevEntities[prev.Name] {
 			if !force {
-				diags = append(diags, ir.Diagnostic{
-					Code:     "FDN0410",
-					Severity: ir.SeverityError,
-					Message:  fmt.Sprintf("destructive schema change: entity %q was removed without @renamed_from hint (use --force to allow DROP TABLE)", prev.Name),
-					Span:     prev.Span,
-				})
+				diags = append(diags, diagnostics.NewWithDetail(
+					"FDN0410",
+					prev.Span,
+					fmt.Sprintf("destructive schema change: entity %q was removed without @renamed_from hint (use --force to allow DROP TABLE)", prev.Name),
+				))
 			} else {
 				tableName := EntityTableName(prev)
 				upSB.WriteString(fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE;\n", tableName))

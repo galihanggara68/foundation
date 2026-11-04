@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/protocol"
 )
@@ -154,12 +155,11 @@ func buildConfigSpan() ir.Span {
 }
 
 func pluginErrorDiag(code, msg string) []ir.Diagnostic {
-	return []ir.Diagnostic{{
-		Code:     code,
-		Severity: ir.SeverityError,
-		Message:  msg,
-		Span:     buildConfigSpan(),
-	}}
+	return []ir.Diagnostic{diagnostics.NewWithDetail(
+		code,
+		buildConfigSpan(),
+		msg,
+	)}
 }
 
 func cancellationDiag(pluginName string, err error) []ir.Diagnostic {

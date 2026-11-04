@@ -67,12 +67,12 @@ func Test(workspaceDir string) []Diagnostic {
 		key := targetRunnerKey{Kind: target.Kind, Language: target.Language}
 		runner, ok := testRunners[key]
 		if !ok {
-			return []Diagnostic{{
-				Code:     "FDN0601",
-				Severity: SeverityError,
-				Message:  fmt.Sprintf("no test runner registered for target %q language %q", target.Name, target.Language),
-				Span:     Span{File: target.OutDir, Line: 1, Column: 1},
-			}}
+			return []Diagnostic{NewDiagnostic(
+				"FDN0601",
+				Span{File: target.OutDir, Line: 1, Column: 1},
+				target.Name,
+				target.Language,
+			)}
 		}
 		if runnerDiags := runner(target, outDir); len(runnerDiags) > 0 {
 			return runnerDiags
@@ -112,12 +112,11 @@ func runExternalTestCommand(target arch.TargetConfig, outDir, cmdStr string, tim
 	err := cmd.Wait()
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return []Diagnostic{{
-				Code:     "FDN0602",
-				Severity: SeverityError,
-				Message:  fmt.Sprintf("target %q test execution timed out after %s (command: %q)", target.Name, timeout, cmdStr),
-				Span:     Span{File: target.OutDir, Line: 1, Column: 1},
-			}}
+			return []Diagnostic{NewDiagnosticWithDetail(
+				"FDN0602",
+				Span{File: target.OutDir, Line: 1, Column: 1},
+				fmt.Sprintf("target %q test execution timed out after %s (command: %q)", target.Name, timeout, cmdStr),
+			)}
 		}
 		return []Diagnostic{testFailureDiag(target, fmt.Sprintf("test execution (%s)", cmdStr), err, outBuf.String())}
 	}
@@ -133,12 +132,11 @@ func runInDir(dir, name string, args ...string) (string, error) {
 }
 
 func testFailureDiag(target arch.TargetConfig, stage string, err error, out string) Diagnostic {
-	return Diagnostic{
-		Code:     "FDN0600",
-		Severity: SeverityError,
-		Message:  fmt.Sprintf("target %q %s failed: %v\n%s", target.Name, stage, err, out),
-		Span:     Span{File: target.OutDir, Line: 1, Column: 1},
-	}
+	return NewDiagnosticWithDetail(
+		"FDN0600",
+		Span{File: target.OutDir, Line: 1, Column: 1},
+		fmt.Sprintf("target %q %s failed: %v\n%s", target.Name, stage, err, out),
+	)
 }
 
 func runGoTestSuite(target arch.TargetConfig, outDir string) []Diagnostic {

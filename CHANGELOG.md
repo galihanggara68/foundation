@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-04
+
+### Added
+- **Generator Protocol Integrity and Storage Plan Emission** ([ADR 0022](./docs/adr/0022-generator-protocol-integrity-and-storage-emission.md)):
+  - Full IR and storage type re-exports in `pkg/compiler` and `pkg/emitterkit` remove duplicate mirrors in downstream plugins.
+  - Decode-time request validation confirms semantic models, workspace roots, and target parameters before execution.
+  - Architecture lowering attaches fully populated `StoragePlan` instances to architecture models for external generator plugins.
+  - Storage plan emission generates composite SQL indexes and unique constraints for `@index` and `@unique` entity traits.
+- **Platform Facts, Diagnostic Registry, and Protocol Evolution** ([ADR 0023](./docs/adr/0023-platform-facts-diagnostic-registry-and-protocol-evolution.md)):
+  - Platform facts collection publishes canonical pagination limits, error classifications, and target definitions to generators.
+  - Path safety helper `emitterkit.SafeDiskPath` prevents directory traversal across all emitter targets.
+  - Semantic IR exposes compiler-resolved physical table names and route parameter flags directly on declarations.
+  - Standard test corpus and test harness (`pkg/emitterkit/testing`) provide byte-deterministic golden verification.
+  - Centralized diagnostic catalog (`diagnostics.Registry`) defines all standard diagnostic codes with severity levels and documentation anchors.
+  - Two-way generator protocol version negotiation confirms version compatibility between the compiler and plugins.
+
+### Changed
+- All compiler packages construct diagnostics through the central catalog.
+- `DecodeResponse` confirms that plugin responses match the supported protocol version.
+- Trait parsing preserves positional arguments without key collision overwrites.
+
+---
+
 ## [0.8.0] - 2026-11-04
 
 ### Added

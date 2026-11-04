@@ -289,4 +289,3 @@ action MatchMulti(status: Status, acc_id: uuid, rec_id: uuid, amt: int) -> int {
 		t.Errorf("expected FDN0227 severity to be warning, got %s", diag.Severity)
 	}
 }
-

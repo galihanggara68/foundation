@@ -10,21 +10,21 @@ import (
 
 // Wire protocol, semantic IR, and storage plan types re-exported for SDK and plugin authors.
 type (
-	GenerationRequest  = compiler.GenerationRequest
-	GenerationResponse = compiler.GenerationResponse
-	TargetInfo         = compiler.TargetInfo
-	TargetConfig       = compiler.TargetConfig
+	GenerationRequest    = compiler.GenerationRequest
+	GenerationResponse   = compiler.GenerationResponse
+	TargetInfo           = compiler.TargetInfo
+	TargetConfig         = compiler.TargetConfig
 	PlatformInfo         = compiler.PlatformInfo
 	PaginationDefaults   = compiler.PaginationDefaults
 	ReservedError        = compiler.ReservedError
 	DiagnosticDefinition = compiler.DiagnosticDefinition
 	Diagnostic           = compiler.Diagnostic
-	Emission           = compiler.Emission
-	SemanticIR         = compiler.SemanticIR
-	ArchitectureIR     = compiler.ArchitectureIR
-	EntityDecl         = compiler.EntityDecl
-	FieldDecl          = compiler.FieldDecl
-	ActionDecl         = compiler.ActionDecl
+	Emission             = compiler.Emission
+	SemanticIR           = compiler.SemanticIR
+	ArchitectureIR       = compiler.ArchitectureIR
+	EntityDecl           = compiler.EntityDecl
+	FieldDecl            = compiler.FieldDecl
+	ActionDecl           = compiler.ActionDecl
 
 	// Root IR declarations.
 	ActorDecl      = compiler.ActorDecl

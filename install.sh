@@ -51,7 +51,7 @@ if [ -z "${TAG}" ]; then
   TAG="$(echo "${LATEST_JSON}" | grep '"tag_name":' | head -n 1 | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/' || true)"
   if [ -z "${TAG}" ]; then
     # Fallback default release
-    TAG="v0.7.0"
+    TAG="v0.9.0"
   fi
 fi
 

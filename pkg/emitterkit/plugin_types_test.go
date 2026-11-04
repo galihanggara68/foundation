@@ -26,7 +26,7 @@ func TestExportedTypesInEmitterkit(t *testing.T) {
 			Body:   emitterkit.Expr{Kind: emitterkit.ExprKind("ident"), Value: "true"},
 		}},
 		Values: []emitterkit.ValueDecl{{
-			Name: "Money",
+			Name:   "Money",
 			Fields: []emitterkit.FieldDecl{{Name: "amount", Type: "decimal"}},
 		}},
 		Entities: []emitterkit.EntityDecl{{

@@ -97,7 +97,7 @@ curl -fsSL https://raw.githubusercontent.com/galihanggara68/foundation/main/inst
 You can set a custom installation directory or version:
 
 ```bash
-FOUNDATION_INSTALL_DIR=$HOME/.local/bin FOUNDATION_VERSION=v0.7.0 curl -fsSL https://raw.githubusercontent.com/galihanggara68/foundation/main/install.sh | sh
+FOUNDATION_INSTALL_DIR=$HOME/.local/bin FOUNDATION_VERSION=v0.9.0 curl -fsSL https://raw.githubusercontent.com/galihanggara68/foundation/main/install.sh | sh
 ```
 
 #### Option B: Install via `go install` (Requires Go 1.23+)
@@ -105,7 +105,7 @@ FOUNDATION_INSTALL_DIR=$HOME/.local/bin FOUNDATION_VERSION=v0.7.0 curl -fsSL htt
 ```bash
 go install github.com/galihanggara68/foundation/cmd/foundation@latest
 # Or install a specific version:
-go install github.com/galihanggara68/foundation/cmd/foundation@v0.7.0
+go install github.com/galihanggara68/foundation/cmd/foundation@v0.9.0
 ```
 
 #### Option C: Build from Source

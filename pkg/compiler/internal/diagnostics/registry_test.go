@@ -153,4 +153,3 @@ func TestNewWithDetail(t *testing.T) {
 		t.Fatalf("expected custom warning detail, got: %s", diag.Message)
 	}
 }
-

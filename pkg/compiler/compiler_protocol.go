@@ -14,11 +14,11 @@ import (
 
 // Wire protocol, semantic IR, and storage plan types exported for SDK and plugin authors.
 type (
-	Emission           = emit.Emission
-	GenerationRequest  = protocol.GenerationRequest
-	GenerationResponse = protocol.GenerationResponse
-	TargetInfo         = protocol.TargetInfo
-	TargetConfig       = arch.TargetConfig
+	Emission             = emit.Emission
+	GenerationRequest    = protocol.GenerationRequest
+	GenerationResponse   = protocol.GenerationResponse
+	TargetInfo           = protocol.TargetInfo
+	TargetConfig         = arch.TargetConfig
 	PlatformInfo         = platform.Info
 	PaginationDefaults   = platform.PaginationDefaults
 	ReservedError        = platform.ReservedError

@@ -194,16 +194,16 @@ var standardTraitDocs = map[string]string{
 		"**Examples:**\n" +
 		"- `@http(method: \"POST\", path: \"/orders\")`\n" +
 		"- `@http(method: \"GET\", path: \"/orders/{id}\")`",
-	"@idempotent":   "### `@idempotent` Trait\n\nEnforces client idempotency keys to guarantee at-most-once mutation semantics across network retries.",
-	"@index":        "### `@index` Trait\n\nCreates a database index on the field for optimized queries.",
-	"@internal":     "### `@internal` Trait\n\nMarks an action as internal to the domain service, inaccessible via public APIs.",
+	"@idempotent": "### `@idempotent` Trait\n\nEnforces client idempotency keys to guarantee at-most-once mutation semantics across network retries.",
+	"@index":      "### `@index` Trait\n\nCreates a database index on the field for optimized queries.",
+	"@internal":   "### `@internal` Trait\n\nMarks an action as internal to the domain service, inaccessible via public APIs.",
 	"@len": "### `@len` Trait\n\nConstrains the minimum and maximum length of a string or collection field.\n\n" +
 		"**Arguments:**\n" +
 		"- `min`: Minimum length (numeric).\n" +
 		"- `max`: Maximum length (numeric).",
-	"@outbox":       "### `@outbox` Trait\n\nGuarantees transactional event publishing via the transactional outbox pattern.",
-	"@pk":           "### `@pk` Trait\n\nMarks a field as the primary key of the entity.",
-	"@pure":         "### `@pure` Trait\n\nMarks a slot method as pure and free of side effects.",
+	"@outbox": "### `@outbox` Trait\n\nGuarantees transactional event publishing via the transactional outbox pattern.",
+	"@pk":     "### `@pk` Trait\n\nMarks a field as the primary key of the entity.",
+	"@pure":   "### `@pure` Trait\n\nMarks a slot method as pure and free of side effects.",
 	"@range": "### `@range` Trait\n\nConstrains the minimum and maximum numeric value of a field.\n\n" +
 		"**Arguments:**\n" +
 		"- `min`: Minimum value (numeric).\n" +

@@ -26,7 +26,7 @@ func TestExportedSemanticIRTypes(t *testing.T) {
 			Body:   compiler.Expr{Kind: compiler.ExprKind("ident"), Value: "true"},
 		}},
 		Values: []compiler.ValueDecl{{
-			Name: "Money",
+			Name:   "Money",
 			Fields: []compiler.FieldDecl{{Name: "amount", Type: "decimal"}},
 		}},
 		Entities: []compiler.EntityDecl{{

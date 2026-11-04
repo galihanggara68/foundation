@@ -88,7 +88,7 @@ targets:
 	}
 
 	_, diags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(diags) > 0 {
+	if compiler.HasErrors(diags) {
 		t.Fatalf("unexpected build diagnostics: %v", diags)
 	}
 

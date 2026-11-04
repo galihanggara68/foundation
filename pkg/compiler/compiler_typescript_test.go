@@ -38,7 +38,7 @@ targets:
 
 	// 1. Initial Build
 	res, diags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(diags) != 0 {
+	if compiler.HasErrors(diags) {
 		t.Fatalf("expected TypeScript clean architecture build to succeed, got: %+v", diags)
 	}
 	if len(res.Architectures) != 1 || res.Architectures[0].Language != "typescript" || res.Architectures[0].Pattern != "clean" {
@@ -110,7 +110,7 @@ export function createPricingEngineSlot(): PricingEngineSlot {
 		t.Fatalf("write custom TS stub: %v", err)
 	}
 
-	if _, diags := compiler.Build(dir, compiler.BuildOptions{Force: false}); len(diags) != 0 {
+	if _, diags := compiler.Build(dir, compiler.BuildOptions{Force: false}); compiler.HasErrors(diags) {
 		t.Fatalf("expected rebuild after editing TS slot stub to succeed without conflict, got: %+v", diags)
 	}
 

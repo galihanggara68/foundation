@@ -64,7 +64,7 @@ targets:
 
 	// 1. Initial Build with both CreateItem and DeleteItem
 	_, diags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(diags) > 0 {
+	if compiler.HasErrors(diags) {
 		t.Fatalf("initial build failed: %+v", diags)
 	}
 

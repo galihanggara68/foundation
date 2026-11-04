@@ -44,7 +44,7 @@ func generateMegaBlueprint(n int) string {
 		sb.WriteString("}\n\n")
 
 		// Add an action for each entity
-		fmt.Fprintf(&sb, "action Action_%04d(val: int) -> bool {\n", i)
+		fmt.Fprintf(&sb, "action Action_%04d(_val: int) -> bool {\n", i)
 		fmt.Fprintf(&sb, "  return true\n")
 		sb.WriteString("}\n\n")
 	}
@@ -100,7 +100,7 @@ targets:
 			runtime.ReadMemStats(&mEnd)
 			heapAllocMB := float64(mEnd.TotalAlloc-mStart.TotalAlloc) / (1024 * 1024)
 
-			if len(diags) > 0 {
+			if compiler.HasErrors(diags) {
 				for _, d := range diags {
 					t.Errorf("Unexpected diagnostic: [%s] %s: %s", d.Severity, d.Code, d.Message)
 				}

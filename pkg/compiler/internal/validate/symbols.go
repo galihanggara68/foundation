@@ -30,6 +30,7 @@ func Validate(sem *ir.SemanticIR) []ir.Diagnostic {
 		QueryManyLimitCapPass{},
 		TerminationPass{},
 		InvariantPass{},
+		UnusedVariablePass{},
 		ScenarioTypeCheckPass{},
 	}
 	var diags []ir.Diagnostic

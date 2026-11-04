@@ -225,7 +225,7 @@ targets:
 
 	// 1. Build as hexagonal first
 	writeProfile("hexagonal")
-	if _, diags := compiler.Build(dir, compiler.BuildOptions{}); len(diags) != 0 {
+	if _, diags := compiler.Build(dir, compiler.BuildOptions{}); compiler.HasErrors(diags) {
 		t.Fatalf("initial hexagonal build failed: %+v", diags)
 	}
 
@@ -243,7 +243,7 @@ targets:
 	// 2. Switch Build Profile from hexagonal -> layered
 	writeProfile("layered")
 	res, diags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(diags) != 0 {
+	if compiler.HasErrors(diags) {
 		t.Fatalf("expected layered build to succeed, got diagnostics: %+v", diags)
 	}
 	if len(res.Architectures) != 1 || res.Architectures[0].Pattern != "layered" {
@@ -308,7 +308,7 @@ targets:
 
 	// 4. Switch back from layered -> hexagonal and verify pruning + tests pass
 	writeProfile("hexagonal")
-	if _, diags := compiler.Build(dir, compiler.BuildOptions{}); len(diags) != 0 {
+	if _, diags := compiler.Build(dir, compiler.BuildOptions{}); compiler.HasErrors(diags) {
 		t.Fatalf("expected switch back to hexagonal to succeed, got: %+v", diags)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "internal/services/placeorder_service.go")); !os.IsNotExist(err) {

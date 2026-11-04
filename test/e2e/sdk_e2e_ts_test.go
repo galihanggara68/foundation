@@ -153,7 +153,7 @@ targets:
 
 	// 1. Compile project with targets
 	_, diags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(diags) > 0 {
+	if compiler.HasErrors(diags) {
 		t.Fatalf("compiler.Build failed: %+v", diags)
 	}
 

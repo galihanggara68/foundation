@@ -124,9 +124,28 @@ func (f FieldDecl) HasTrait(name string) bool {
 }
 
 type TraitDecl struct {
-	Name string            `json:"name"`
-	Args map[string]string `json:"args,omitempty"`
-	Span Span              `json:"span"`
+	Name     string              `json:"name"`
+	Args     map[string]string   `json:"args,omitempty"`
+	ListArgs map[string][]string `json:"list_args,omitempty"`
+	Span     Span                `json:"span"`
+}
+
+// GetStringArg returns the string argument value for the specified key.
+func (t TraitDecl) GetStringArg(key string) (string, bool) {
+	if t.Args == nil {
+		return "", false
+	}
+	val, ok := t.Args[key]
+	return val, ok
+}
+
+// GetListArg returns the list argument value for the specified key.
+func (t TraitDecl) GetListArg(key string) ([]string, bool) {
+	if t.ListArgs == nil {
+		return nil, false
+	}
+	val, ok := t.ListArgs[key]
+	return val, ok
 }
 
 type ValueDecl struct {

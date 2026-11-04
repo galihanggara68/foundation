@@ -90,7 +90,7 @@ targets:
 	}
 
 	res, diags := compiler.Build(dir, compiler.BuildOptions{})
-	if len(diags) > 0 {
+	if compiler.HasErrors(diags) {
 		t.Fatalf("unexpected build diagnostics: %v", diags)
 	}
 	if len(res.Architectures) != 2 {

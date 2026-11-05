@@ -1,7 +1,12 @@
 package protocol
 
 // GenerationRequestSchemaJSON defines the JSON Schema Draft-07 specification for GenerationRequest.
-const GenerationRequestSchemaJSON = `{
+// The compiler assembles the schema from a head fragment, the shared declaration definitions, and a closing brace.
+const GenerationRequestSchemaJSON = schemaRequestHead + irDeclarationsSchemaJSON + schemaRequestTail
+
+// schemaRequestHead is the GenerationRequest schema up to and including the comma after its
+// "properties" member, immediately before the shared "definitions" member.
+const schemaRequestHead = `{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "GenerationRequest",
   "description": "Payload sent from the Foundation compiler to an external generator plugin.",
@@ -48,53 +53,17 @@ const GenerationRequestSchemaJSON = `{
       "type": "object",
       "description": "Validated semantic IR model containing domain definitions.",
       "properties": {
-        "actor": { "type": "object" },
-        "actors": { "type": "array", "items": { "type": "object" } },
-        "enums": { "type": "array", "items": { "type": "object" } },
-        "values": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": { "type": "string" },
-              "fields": {
-                "type": "array",
-                "items": { "$ref": "#/definitions/FieldDecl" }
-              }
-            }
-          }
-        },
-        "entities": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": { "type": "string" },
-              "fields": {
-                "type": "array",
-                "items": { "$ref": "#/definitions/FieldDecl" }
-              }
-            }
-          }
-        },
+        "actor": { "$ref": "#/definitions/ActorDecl" },
+        "actors": { "type": "array", "items": { "$ref": "#/definitions/ActorDecl" } },
+        "enums": { "type": "array", "items": { "$ref": "#/definitions/EnumDecl" } },
+        "values": { "type": "array", "items": { "$ref": "#/definitions/ValueDecl" } },
+        "entities": { "type": "array", "items": { "$ref": "#/definitions/EntityDecl" } },
         "errors": { "type": "array", "items": { "$ref": "#/definitions/ErrorDecl" } },
-        "events": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": { "type": "string" },
-              "fields": {
-                "type": "array",
-                "items": { "$ref": "#/definitions/FieldDecl" }
-              }
-            }
-          }
-        },
-        "policies": { "type": "array", "items": { "type": "object" } },
-        "slots": { "type": "array", "items": { "type": "object" } },
-        "actions": { "type": "array", "items": { "type": "object" } },
-        "scenarios": { "type": "array", "items": { "type": "object" } }
+        "events": { "type": "array", "items": { "$ref": "#/definitions/EventDecl" } },
+        "policies": { "type": "array", "items": { "$ref": "#/definitions/PolicyDecl" } },
+        "slots": { "type": "array", "items": { "$ref": "#/definitions/SlotDecl" } },
+        "actions": { "type": "array", "items": { "$ref": "#/definitions/ActionDecl" } },
+        "scenarios": { "type": "array", "items": { "$ref": "#/definitions/ScenarioDecl" } }
       }
     },
     "architecture_ir": {
@@ -110,14 +79,14 @@ const GenerationRequestSchemaJSON = `{
         "out_dir": { "type": "string" },
         "storage": { "type": "object" },
         "layers": { "type": "array", "items": { "type": "object" } },
-        "domain_enums": { "type": "array", "items": { "type": "object" } },
-        "domain_values": { "type": "array", "items": { "type": "object" } },
-        "domain_entities": { "type": "array", "items": { "type": "object" } },
+        "domain_enums": { "type": "array", "items": { "$ref": "#/definitions/EnumDecl" } },
+        "domain_values": { "type": "array", "items": { "$ref": "#/definitions/ValueDecl" } },
+        "domain_entities": { "type": "array", "items": { "$ref": "#/definitions/EntityDecl" } },
         "domain_errors": { "type": "array", "items": { "$ref": "#/definitions/ErrorDecl" } },
-        "domain_events": { "type": "array", "items": { "type": "object" } },
-        "domain_policies": { "type": "array", "items": { "type": "object" } },
-        "domain_actor": { "type": "object" },
-        "slots": { "type": "array", "items": { "type": "object" } },
+        "domain_events": { "type": "array", "items": { "$ref": "#/definitions/EventDecl" } },
+        "domain_policies": { "type": "array", "items": { "$ref": "#/definitions/PolicyDecl" } },
+        "domain_actor": { "$ref": "#/definitions/ActorDecl" },
+        "slots": { "type": "array", "items": { "$ref": "#/definitions/SlotDecl" } },
         "ports": { "type": "array", "items": { "type": "object" } },
         "use_cases": { "type": "array", "items": { "type": "object" } }
       }
@@ -144,102 +113,29 @@ const GenerationRequestSchemaJSON = `{
               "description": "Hard ceiling that any requested page size is clamped to."
             }
           }
+        },
+        "dependencies": {
+          "type": "array",
+          "description": "Canonical third-party dependency versions the compiler publishes for downstream generators.",
+          "items": {
+            "type": "object",
+            "required": [ "language", "package", "version" ],
+            "properties": {
+              "language": { "type": "string" },
+              "package": { "type": "string" },
+              "version": { "type": "string" }
+            }
+          }
         }
       }
     }
   },
-  "definitions": {
-    "FieldDecl": {
-      "type": "object",
-      "description": "A named, type-bearing field declared on an entity, value, or event.",
-      "required": [
-        "name",
-        "type"
-      ],
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string",
-          "description": "Declared type string, including any array-ness (e.g. 'Customer' or '[]string'). The kind below classifies its element type."
-        },
-        "kind": {
-          "type": "string",
-          "description": "Closed, compiler-validated field kind. Optional: v1 documents produced before the taxonomy existed omit it.",
-          "enum": [
-            "uuid",
-            "string",
-            "int",
-            "decimal",
-            "bool",
-            "timestamp",
-            "enum",
-            "entity",
-            "value",
-            "event",
-            "actor",
-            "page",
-            "result"
-          ]
-        },
-        "optional": {
-          "type": "boolean"
-        }
-      }
-    },
-    "ErrorDecl": {
-      "type": "object",
-      "description": "A declared domain error: what it is called, how it is classified, and the text a caller may see.",
-      "required": [
-        "name",
-        "kind",
-        "message"
-      ],
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string",
-          "description": "Closed, compiler-validated error kind, drawn from the platform's standard vocabulary.",
-          "enum": [
-            "not_found",
-            "validation",
-            "conflict",
-            "unauthenticated",
-            "unauthorized",
-            "forbidden",
-            "internal"
-          ]
-        },
-        "message": {
-          "type": "string",
-          "description": "Fallback text for an error with no locale-specific message; empty when a declaration carries only 'messages'."
-        },
-        "messages": {
-          "type": "object",
-          "description": "Text per locale tag (e.g. \"en\", \"en-US\"). Optional: v1 documents produced before locale messages existed omit it.",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "status": {
-          "type": "integer",
-          "description": "HTTP status the transport answers with, resolved by the compiler: a declared status wins, otherwise the kind's standard status. Optional: v1 documents produced before resolution omit it."
-        },
-        "posture": {
-          "type": "string",
-          "description": "Whether the message is caller-facing text or an internal diagnostic, resolved by the compiler. Optional: v1 documents produced before posture existed omit it.",
-          "enum": [
-            "business",
-            "technical"
-          ]
-        }
-      }
-    }
-  }
-}`
+`
+
+// schemaRequestTail closes the GenerationRequest root object after the "definitions" member.
+const schemaRequestTail = `
+}
+`
 
 // GenerationResponseSchemaJSON defines the JSON Schema Draft-07 specification for GenerationResponse.
 const GenerationResponseSchemaJSON = `{

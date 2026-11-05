@@ -1,8 +1,10 @@
 package platform_test
 
 import (
+	"reflect"
 	"testing"
 
+	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/platform"
 )
@@ -16,6 +18,32 @@ func TestDefaultInfo_CarriesCompilerOwnedPaginationDefaults(t *testing.T) {
 	if got.Pagination.MaxLimit != platform.DefaultMaxPageLimit {
 		t.Errorf("max_limit: got %d, want %d", got.Pagination.MaxLimit, platform.DefaultMaxPageLimit)
 	}
+}
+
+func TestDefaultInfo_CarriesDependencyBOM(t *testing.T) {
+	want := []platform.DependencyVersion{
+		{Language: "go", Package: "github.com/galihanggara68/foundation/contrib/go/runtime", Version: "v0.2.0"},
+		{Language: "go", Package: "github.com/go-chi/chi/v5", Version: "v5.3.0"},
+		{Language: "go", Package: "github.com/jackc/pgx/v5", Version: "v5.7.2"},
+		{Language: "go", Package: "github.com/lib/pq", Version: "v1.10.9"},
+		{Language: "go", Package: "go.opentelemetry.io/otel", Version: "v1.32.0"},
+		{Language: "go", Package: "gorm.io/gorm", Version: "v1.25.12"},
+	}
+	if got := platform.DefaultInfo().Dependencies; !reflect.DeepEqual(got, want) {
+		t.Fatalf("dependency BOM mismatch:\n  got:  %+v\n  want: %+v", got, want)
+	}
+}
+
+func TestStandardDependencies_ContribRuntimeMatchesCompilerPin(t *testing.T) {
+	for _, dep := range platform.StandardDependencies() {
+		if dep.Package == "github.com/galihanggara68/foundation/contrib/go/runtime" {
+			if dep.Version != "v"+arch.ContribRuntimeVersion {
+				t.Fatalf("contrib runtime BOM %q does not match arch.ContribRuntimeVersion %q", dep.Version, arch.ContribRuntimeVersion)
+			}
+			return
+		}
+	}
+	t.Fatal("expected the contrib runtime in the BOM")
 }
 
 func TestDefaultInfo_CarriesStandardReservedErrors(t *testing.T) {

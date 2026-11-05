@@ -2,16 +2,6 @@ package diagnostics
 
 import "github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 
-// Definition holds metadata for a compiler diagnostic code.
-type Definition struct {
-	Code            string
-	Severity        ir.Severity
-	Category        string
-	MessageTemplate string
-	Description     string
-	DocAnchor       string
-}
-
 // Registry stores all registered compiler diagnostic definitions.
 var Registry = map[string]Definition{
 	"FDN0001": {
@@ -385,6 +375,24 @@ var Registry = map[string]Definition{
 		MessageTemplate: "target %q test execution timed out after %s",
 		Description:     "The target test suite execution exceeded the configured timeout.",
 		DocAnchor:       "fdn0602",
+	},
+	"FDN0603": {
+		Code: "FDN0603", Severity: ir.SeverityError, Category: "Runner",
+		MessageTemplate: "diagnostic prefix %q is claimed by multiple targets: %s",
+		Description:     "Two or more targets in the build profile declare the same diagnostic prefix.",
+		DocAnchor:       "fdn0603",
+	},
+	"FDN0604": {
+		Code: "FDN0604", Severity: ir.SeverityError, Category: "Runner",
+		MessageTemplate: "diagnostic prefix %q is reserved for compiler diagnostics",
+		Description:     "A target tried to claim the FDN prefix, which the compiler reserves.",
+		DocAnchor:       "fdn0604",
+	},
+	"FDN0605": {
+		Code: "FDN0605", Severity: ir.SeverityWarning, Category: "Runner",
+		MessageTemplate: "plugin %q emitted diagnostic %q outside its declared prefix %q",
+		Description:     "A generator plugin emitted a diagnostic code that does not start with its target prefix.",
+		DocAnchor:       "fdn0605",
 	},
 	"FDN0700": {
 		Code: "FDN0700", Severity: ir.SeverityError, Category: "Plugin",

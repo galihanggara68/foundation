@@ -1,0 +1,14 @@
+{
+  "name": "@foundation-contrib/emitterkit",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Zero-dependency reference client for the Foundation generation protocol",
+  "main": "src/index.js",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": ["foundation", "emitterkit", "plugin"],
+  "author": "Foundation Authors",
+  "license": "Apache-2.0"
+}

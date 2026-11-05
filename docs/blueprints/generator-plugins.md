@@ -69,9 +69,19 @@ targets:
 | `scaffold` | `string` | `"builtin"` | `"builtin"` pre-populates target files in memory before plugins run; `"none"` starts with an empty file tree. |
 | `options` | `map[string]string` | `{}` | Key-value options passed to the plugin through `GenerationRequest.target.options` and CLI flags (`--key=value`). |
 | `test_command` | `string` | `""` | Command executed by `foundation test` (for example `pytest` or `cargo test`). |
+| `diagnostic_prefix` | `string` | `""` | Diagnostic code prefix owned by this target's generators (for example `ACME`). |
 
 > [!NOTE]
 > The compiler enforces a 30-second default timeout for each generator plugin process.
+
+### Diagnostic Namespaces
+
+Two generators must not claim the same diagnostic prefix.
+The compiler governs prefix ownership:
+- The prefix `FDN` is reserved for compiler and core tool diagnostics.
+  The compiler rejects a target that declares `FDN` with `FDN0604`.
+- The compiler stops with `FDN0603` when two or more targets declare the same non-empty prefix.
+- The pipeline logs a warning `FDN0605` when a plugin emits a diagnostic code outside its target prefix.
 
 ---
 
@@ -284,3 +294,29 @@ Inspect the reference implementations shipped in this repository:
 - [`cmd/foundation-gen-rich-ddd/main.go`](../../cmd/foundation-gen-rich-ddd/main.go): Transforms domain models into rich DDD Aggregate Roots with validation and mutation methods.
 - [`cmd/foundation-gen-otel/main.go`](../../cmd/foundation-gen-otel/main.go): Injects W3C distributed tracing middleware (`traceparent`, `X-Trace-ID`) and wraps HTTP server routing.
 - [`cmd/foundation-gen-python-fastapi/main.go`](../../cmd/foundation-gen-python-fastapi/main.go): Clean-slate Python generator emitting runnable FastAPI services tested with `pytest`.
+
+---
+
+## 8. Non-Go SDKs
+
+Python and TypeScript authors use the reference clients instead of hand-written JSON decoders:
+- [`contrib/emitterkit-py`](../../contrib/emitterkit-py): Python client with `run_plugin`, `decode_request`, and `encode_response`.
+- [`contrib/emitterkit-ts`](../../contrib/emitterkit-ts): TypeScript client with `runPlugin`, `decodeRequest`, and `encodeResponse`.
+
+Both clients decode a `GenerationRequest` from standard input and encode a `GenerationResponse` to standard output.
+The published JSON Schema for the wire protocol is in [`docs/schemas/generation-protocol-v1.json`](../../docs/schemas/generation-protocol-v1.json).
+
+---
+
+## 9. IR Ordering Invariants
+
+The compiler orders IR collections deterministically so plugin output stays byte-stable:
+- The compiler sorts top-level declaration slices (`actors`, `enums`, `values`, `entities`, `errors`, `events`, `policies`, `slots`, `actions`, `scenarios`) alphabetically by name.
+- `EntityDecl.fields`, `ValueDecl.fields`, and `EventDecl.fields` keep declaration order from the `.fdn` blueprint.
+- `ActionDecl.steps` keeps strict execution sequence order.
+- The compiler sorts `StoragePlan.tables` alphabetically by physical table name.
+- The compiler publishes `platform.dependencies` in stable alphabetical order.
+
+The compiler also materializes implied capability slots.
+A blueprint that declares events yields a derived `EventDispatcher` slot in `semantic_ir.slots` with one `Dispatch<EventName>` method per event.
+Derived slots are absent from `architecture_ir.slots`; built-in emitters synthesize their own ports.

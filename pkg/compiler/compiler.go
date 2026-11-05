@@ -89,8 +89,45 @@ func Compile(sources []SourceFile) (*SemanticIR, []Diagnostic) {
 		ir.EnrichActionParamsInPath(&sem.Actions[i])
 	}
 
+	ensureDerivedSlots(sem)
 	sem.Canonicalize()
 	return sem, valDiags
+}
+
+// eventDispatcherSlotName is the standard implied capability slot for declared events.
+const eventDispatcherSlotName = "EventDispatcher"
+
+// ensureDerivedSlots materializes implied capability slots the compiler owns.
+// When a blueprint declares events, a derived EventDispatcher slot exposes the standard
+// dispatcher port so each generator does not synthesize its own.
+func ensureDerivedSlots(sem *SemanticIR) {
+	if len(sem.Events) == 0 {
+		return
+	}
+	for _, sl := range sem.Slots {
+		if sl.Name == eventDispatcherSlotName {
+			return
+		}
+	}
+
+	names := make([]string, 0, len(sem.Events))
+	for _, ev := range sem.Events {
+		names = append(names, ev.Name)
+	}
+	sort.Strings(names)
+
+	methods := make([]ir.SlotMethodDecl, 0, len(names))
+	for _, name := range names {
+		methods = append(methods, ir.SlotMethodDecl{
+			Name:   "Dispatch" + name,
+			Params: []ir.ParamDecl{{Name: "event", Type: name, Kind: ir.KindEvent}},
+		})
+	}
+	sem.Slots = append(sem.Slots, ir.SlotDecl{
+		Name:    eventDispatcherSlotName,
+		Methods: methods,
+		Derived: true,
+	})
 }
 
 // Check scans workspaceDir for .fdn and .fdn.json Blueprints, parses them, and runs all semantic validation passes.

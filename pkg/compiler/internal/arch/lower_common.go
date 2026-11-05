@@ -6,6 +6,19 @@ import (
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/ir"
 )
 
+// emittableSlots returns the source-declared slots. The compiler materializes derived slots
+// as capability declarations for external generators; built-in emitters synthesize their own ports.
+func emittableSlots(slots []ir.SlotDecl) []ir.SlotDecl {
+	var out []ir.SlotDecl
+	for _, sl := range slots {
+		if sl.Derived {
+			continue
+		}
+		out = append(out, sl)
+	}
+	return out
+}
+
 func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfig, layers []ArchLayer, useCaseSuffix string) *ArchitectureIR {
 	arch := &ArchitectureIR{
 		TargetName:     target.Name,
@@ -21,7 +34,7 @@ func lowerBackendCommon(sem *ir.SemanticIR, bp *BuildProfile, target TargetConfi
 		DomainErrors:   sem.Errors,
 		DomainEvents:   sem.Events,
 		DomainPolicies: sem.Policies,
-		Slots:          sem.Slots,
+		Slots:          emittableSlots(sem.Slots),
 		Scenarios:      sem.Scenarios,
 		Layers:         layers,
 	}

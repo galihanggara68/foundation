@@ -50,6 +50,7 @@ type SlotMethodDecl struct {
 type SlotDecl struct {
 	Name    string           `json:"name"`
 	Methods []SlotMethodDecl `json:"methods"`
+	Derived bool             `json:"derived,omitempty"`
 	Span    Span             `json:"span"`
 }
 

@@ -101,6 +101,7 @@ See [ADR 0017](../adr/0017-jwt-verification-contract.md) for more details.
 | `options` | `map[string]string` | *(Optional)* Custom key-value options passed to external plugins. |
 | `test_command` | `string` | *(Optional)* Command executed by `foundation test` for this target. |
 | `test_timeout` | `string` | *(Optional)* Test runner timeout duration (for example `"60s"` or `"2m"`). |
+| `diagnostic_prefix` | `string` | *(Optional)* Diagnostic code prefix owned by this target's generators (for example `ACME`). The `FDN` prefix is reserved. |
 
 ---
 

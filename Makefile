@@ -83,6 +83,10 @@ test-contrib:
 	(cd contrib/go/runtime && go test -v -race ./...)
 	@echo "==> Running contrib/ts/runtime tests..."
 	(cd contrib/ts/runtime && npm test)
+	@echo "==> Running contrib/emitterkit-py tests..."
+	(cd contrib/emitterkit-py && python3 -m unittest discover -s tests)
+	@echo "==> Running contrib/emitterkit-ts tests..."
+	(cd contrib/emitterkit-ts && npm test)
 
 test-all: test-unit test-e2e test-security test-durability test-scale test-contrib
 

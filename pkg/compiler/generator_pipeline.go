@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/diagnostics"
@@ -55,7 +56,7 @@ func executeGeneratorPipeline(
 		if err != nil {
 			allDiags = append(allDiags, diagnostics.New(
 				"FDN0701",
-				Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+				arch.BuildProfileSpan(),
 				fmt.Sprintf("failed to resolve generator plugin %q: %v", genName, err),
 			))
 			return nil, allDiags
@@ -86,6 +87,23 @@ func executeGeneratorPipeline(
 
 		// Surface plugin-emitted diagnostics
 		allDiags = append(allDiags, resp.Diagnostics...)
+
+		// Warn when a plugin emits a code outside its target's declared diagnostic prefix (FDN0605).
+		// This runs before the error short-circuit, so out-of-prefix error codes also warn.
+		if target.DiagnosticPrefix != "" {
+			for _, d := range resp.Diagnostics {
+				if !strings.HasPrefix(d.Code, target.DiagnosticPrefix) {
+					allDiags = append(allDiags, diagnostics.New(
+						"FDN0605",
+						arch.BuildProfileSpan(),
+						genName,
+						d.Code,
+						target.DiagnosticPrefix,
+					))
+				}
+			}
+		}
+
 		if resp.HasErrors() {
 			return nil, allDiags
 		}
@@ -109,7 +127,7 @@ func executeGeneratorPipeline(
 			if exists && prevOwner != "builtin" && prevOwner != genName && content != virtualFiles[relPath] {
 				allDiags = append(allDiags, diagnostics.New(
 					"FDN0702",
-					Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+					arch.BuildProfileSpan(),
 					genName,
 					relPath,
 					prevOwner,

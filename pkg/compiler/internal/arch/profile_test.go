@@ -3,6 +3,7 @@ package arch_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/galihanggara68/foundation/pkg/compiler/internal/arch"
@@ -179,5 +180,90 @@ targets:
 	effGens1 := t1.EffectiveGenerators()
 	if len(effGens1) != 1 || effGens1[0] != "python" {
 		t.Errorf("expected 1 effective generator 'python', got: %v", effGens1)
+	}
+}
+
+func writeProfile(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "foundation.build.yaml"), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write yaml: %v", err)
+	}
+}
+
+func TestLoadBuildProfile_DiagnosticPrefixParsing(t *testing.T) {
+	dir := t.TempDir()
+	writeProfile(t, dir, `
+project:
+  name: shop
+  module: example.com/shop
+
+targets:
+  - name: custom-backend
+    kind: backend
+    language: go
+    architecture: hexagonal
+    generator: "gen-custom"
+    diagnostic_prefix: ACME
+`)
+
+	bp, diags := arch.LoadBuildProfile(dir)
+	if len(diags) > 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if bp.Targets[0].DiagnosticPrefix != "ACME" {
+		t.Errorf("expected prefix ACME, got %q", bp.Targets[0].DiagnosticPrefix)
+	}
+}
+
+func TestLoadBuildProfile_DiagnosticPrefixCollision(t *testing.T) {
+	dir := t.TempDir()
+	writeProfile(t, dir, `
+project:
+  name: shop
+  module: example.com/shop
+
+targets:
+  - name: custom-backend
+    kind: backend
+    language: go
+    architecture: hexagonal
+    generator: "gen-custom"
+    diagnostic_prefix: ACME
+  - name: telemetry-ext
+    kind: backend
+    language: go
+    architecture: hexagonal
+    generator: "gen-otel"
+    diagnostic_prefix: ACME
+`)
+
+	_, diags := arch.LoadBuildProfile(dir)
+	if len(diags) == 0 || diags[0].Code != "FDN0603" {
+		t.Fatalf("expected FDN0603 collision, got %+v", diags)
+	}
+	if !strings.Contains(diags[0].Message, "ACME") || !strings.Contains(diags[0].Message, "custom-backend") {
+		t.Errorf("expected message to name the prefix and targets, got %q", diags[0].Message)
+	}
+}
+
+func TestLoadBuildProfile_DiagnosticPrefixReserved(t *testing.T) {
+	dir := t.TempDir()
+	writeProfile(t, dir, `
+project:
+  name: shop
+  module: example.com/shop
+
+targets:
+  - name: custom-backend
+    kind: backend
+    language: go
+    architecture: hexagonal
+    generator: "gen-custom"
+    diagnostic_prefix: FDN
+`)
+
+	_, diags := arch.LoadBuildProfile(dir)
+	if len(diags) == 0 || diags[0].Code != "FDN0604" {
+		t.Fatalf("expected FDN0604 reserved prefix, got %+v", diags)
 	}
 }

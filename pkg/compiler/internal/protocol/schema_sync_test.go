@@ -2,7 +2,6 @@ package protocol_test
 
 import (
 	"encoding/json"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -31,8 +30,8 @@ var fieldKindVocabulary = []string{
 //
 //  1. The published file is a bundle: it declares "$schema" once at its root, while
 //     each embedded const is a standalone schema carrying its own "$schema".
-//  2. The published bundle hoists the shared FieldDecl definition to its own root
-//     "definitions" section, while the embedded GenerationRequest schema keeps it
+//  2. The published bundle hoists every shared definition to its own root
+//     "definitions" section, while the embedded GenerationRequest schema keeps them
 //     under its own root "definitions".
 //
 // Everything else must be deeply equal, so any future divergence fails this test.
@@ -54,8 +53,9 @@ func TestPublishedSchemaInSync(t *testing.T) {
 	embeddedDefs := map[string]any{
 		"GenerationRequest":  embeddedRequest,
 		"GenerationResponse": embeddedResponse,
-		"FieldDecl":          requestDefs["FieldDecl"],
-		"ErrorDecl":          requestDefs["ErrorDecl"],
+	}
+	for name, def := range requestDefs {
+		embeddedDefs[name] = def
 	}
 
 	if !reflect.DeepEqual(embeddedDefs, publishedDefs) {
@@ -68,8 +68,7 @@ func TestPublishedSchemaInSync(t *testing.T) {
 // field-kind vocabulary as an optional property of FieldDecl and wires it into the
 // entity/value/event field arrays inside semantic_ir.
 func TestPublishedSchemaDocumentsFieldKind(t *testing.T) {
-	published := schemaReadObject(t, publishedSchemaRelPath)
-	defs := schemaObject(t, published, "definitions")
+	defs := publishedDefinitions(t)
 
 	fieldDecl := schemaObject(t, defs, "FieldDecl")
 	kind := schemaObject(t, schemaObject(t, fieldDecl, "properties"), "kind")
@@ -87,13 +86,17 @@ func TestPublishedSchemaDocumentsFieldKind(t *testing.T) {
 		t.Fatalf("FieldDecl.kind enum mismatch:\n  got:  %v\n  want: %v", got, fieldKindVocabulary)
 	}
 
-	request := schemaObject(t, defs, "GenerationRequest")
-	semanticProps := schemaObject(t, schemaObject(t, schemaObject(t, request, "properties"), "semantic_ir"), "properties")
+	semanticProps := semanticIRProperties(t)
 	for _, collection := range []string{"entities", "values", "events"} {
+		declName := semanticIRCollectionDefs[collection]
 		items := schemaObject(t, schemaObject(t, semanticProps, collection), "items")
-		fields := schemaObject(t, schemaObject(t, items, "properties"), "fields")
+		if ref := schemaString(t, items, "$ref"); ref != "#/definitions/"+declName {
+			t.Fatalf("semantic_ir.%s.items must reference %s, got %q", collection, declName, ref)
+		}
+		declProps := schemaObject(t, schemaObject(t, defs, declName), "properties")
+		fields := schemaObject(t, declProps, "fields")
 		if ref := schemaString(t, schemaObject(t, fields, "items"), "$ref"); ref != "#/definitions/FieldDecl" {
-			t.Fatalf("semantic_ir.%s.fields must reference FieldDecl, got %q", collection, ref)
+			t.Fatalf("%s.fields must reference FieldDecl, got %q", declName, ref)
 		}
 	}
 }
@@ -151,8 +154,7 @@ func TestAdditiveCompatibility_V1RequestWithoutKind(t *testing.T) {
 // TestPublishedSchemaDocumentsPlatform asserts the published bundle exposes the
 // compiler-owned platform policy as an optional object on the request.
 func TestPublishedSchemaDocumentsPlatform(t *testing.T) {
-	published := schemaReadObject(t, publishedSchemaRelPath)
-	defs := schemaObject(t, published, "definitions")
+	defs := publishedDefinitions(t)
 	request := schemaObject(t, defs, "GenerationRequest")
 
 	if schemaContains(schemaStrings(t, request, "required"), "platform") {
@@ -166,6 +168,15 @@ func TestPublishedSchemaDocumentsPlatform(t *testing.T) {
 	for _, field := range []string{"default_limit", "max_limit"} {
 		if got := schemaString(t, schemaObject(t, paginationProps, field), "type"); got != "integer" {
 			t.Fatalf("platform.pagination.%s must be an integer, got %q", field, got)
+		}
+	}
+
+	platformProps := schemaObject(t, platformProp, "properties")
+	depsItems := schemaObject(t, schemaObject(t, platformProps, "dependencies"), "items")
+	depProps := schemaObject(t, depsItems, "properties")
+	for _, field := range []string{"language", "package", "version"} {
+		if got := schemaString(t, schemaObject(t, depProps, field), "type"); got != "string" {
+			t.Fatalf("platform.dependencies.items.%s must be a string, got %q", field, got)
 		}
 	}
 }
@@ -212,8 +223,7 @@ func TestAdditiveCompatibility_V1RequestWithoutPlatform(t *testing.T) {
 // TestPublishedSchemaDocumentsErrorDecl asserts the published bundle exposes the v2
 // error shape as an optional, additive definition and wires it into both error arrays.
 func TestPublishedSchemaDocumentsErrorDecl(t *testing.T) {
-	published := schemaReadObject(t, publishedSchemaRelPath)
-	defs := schemaObject(t, published, "definitions")
+	defs := publishedDefinitions(t)
 
 	errorDecl := schemaObject(t, defs, "ErrorDecl")
 	props := schemaObject(t, errorDecl, "properties")
@@ -263,7 +273,7 @@ func TestPublishedSchemaDocumentsErrorDecl(t *testing.T) {
 
 	request := schemaObject(t, defs, "GenerationRequest")
 	requestProps := schemaObject(t, request, "properties")
-	semanticProps := schemaObject(t, schemaObject(t, requestProps, "semantic_ir"), "properties")
+	semanticProps := semanticIRProperties(t)
 	if ref := schemaString(t, schemaObject(t, schemaObject(t, semanticProps, "errors"), "items"), "$ref"); ref != "#/definitions/ErrorDecl" {
 		t.Errorf("semantic_ir.errors must reference ErrorDecl, got %q", ref)
 	}
@@ -337,7 +347,7 @@ func TestAdditiveCompatibility_V1RequestWithoutResolvedErrorFields(t *testing.T)
 	if err := json.Unmarshal([]byte(preV2Request), &v1Doc); err != nil {
 		t.Fatalf("fixture is not valid JSON: %v", err)
 	}
-	defs := schemaObject(t, schemaReadObject(t, publishedSchemaRelPath), "definitions")
+	defs := publishedDefinitions(t)
 	for _, field := range schemaStrings(t, schemaObject(t, defs, "ErrorDecl"), "required") {
 		if _, present := v1Doc.SemanticIR.Errors[0][field]; !present {
 			t.Errorf("the published schema requires ErrorDecl.%s, which a v1 document does not carry", field)
@@ -361,75 +371,4 @@ func TestAdditiveCompatibility_V1RequestWithoutResolvedErrorFields(t *testing.T)
 	if found := resolved.Messages["en"]; found != "no such order" {
 		t.Fatalf("locale messages did not decode: %+v", resolved.Messages)
 	}
-}
-
-func schemaReadObject(t *testing.T, path string) map[string]any {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("reading published schema %s: %v", path, err)
-	}
-	return schemaParseObject(t, string(data))
-}
-
-func schemaParseObject(t *testing.T, data string) map[string]any {
-	t.Helper()
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(data), &obj); err != nil {
-		t.Fatalf("schema is not valid JSON: %v", err)
-	}
-	return obj
-}
-
-func schemaObject(t *testing.T, obj map[string]any, key string) map[string]any {
-	t.Helper()
-	value, ok := obj[key].(map[string]any)
-	if !ok {
-		t.Fatalf("expected %q to be an object, got %T", key, obj[key])
-	}
-	return value
-}
-
-func schemaString(t *testing.T, obj map[string]any, key string) string {
-	t.Helper()
-	value, ok := obj[key].(string)
-	if !ok {
-		t.Fatalf("expected %q to be a string, got %T", key, obj[key])
-	}
-	return value
-}
-
-func schemaStrings(t *testing.T, obj map[string]any, key string) []string {
-	t.Helper()
-	raw, ok := obj[key].([]any)
-	if !ok {
-		t.Fatalf("expected %q to be an array, got %T", key, obj[key])
-	}
-	out := make([]string, len(raw))
-	for i, item := range raw {
-		value, ok := item.(string)
-		if !ok {
-			t.Fatalf("expected %q[%d] to be a string, got %T", key, i, item)
-		}
-		out[i] = value
-	}
-	return out
-}
-
-func schemaContains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
-}
-
-func schemaMarshal(t *testing.T, value any) string {
-	t.Helper()
-	data, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		t.Fatalf("marshaling schema for diagnostics: %v", err)
-	}
-	return string(data)
 }

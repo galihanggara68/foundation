@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -50,18 +51,19 @@ const (
 )
 
 type TargetConfig struct {
-	Name         string            `json:"name"`
-	Kind         string            `json:"kind"`
-	Language     string            `json:"language"`
-	Architecture string            `json:"architecture"`
-	HTTP         string            `json:"http"`
-	OutDir       string            `json:"out_dir"`
-	Generators   []string          `json:"generators,omitempty"`
-	Generator    string            `json:"generator,omitempty"`
-	Scaffold     ScaffoldKind      `json:"scaffold,omitempty"`
-	Options      map[string]string `json:"options,omitempty"`
-	TestCommand  string            `json:"test_command,omitempty"`
-	TestTimeout  string            `json:"test_timeout,omitempty"`
+	Name             string            `json:"name"`
+	Kind             string            `json:"kind"`
+	Language         string            `json:"language"`
+	Architecture     string            `json:"architecture"`
+	HTTP             string            `json:"http"`
+	OutDir           string            `json:"out_dir"`
+	Generators       []string          `json:"generators,omitempty"`
+	Generator        string            `json:"generator,omitempty"`
+	Scaffold         ScaffoldKind      `json:"scaffold,omitempty"`
+	Options          map[string]string `json:"options,omitempty"`
+	TestCommand      string            `json:"test_command,omitempty"`
+	TestTimeout      string            `json:"test_timeout,omitempty"`
+	DiagnosticPrefix string            `json:"diagnostic_prefix,omitempty"`
 }
 
 // EffectiveGenerators returns the resolved slice of generator plugin names.
@@ -242,6 +244,10 @@ func LoadBuildProfile(workspaceDir string) (*BuildProfile, []ir.Diagnostic) {
 		}
 	}
 
+	if prefixDiags := validateDiagnosticPrefixes(bp.Targets); len(prefixDiags) > 0 {
+		return nil, prefixDiags
+	}
+
 	if bp.Project.Module == "" {
 		bp.Project.Module = "example.com/" + bp.Project.Name
 	}
@@ -348,7 +354,51 @@ func setTargetField(t *TargetConfig, k, v string) {
 		t.TestCommand = v
 	case "test_timeout":
 		t.TestTimeout = v
+	case "diagnostic_prefix":
+		t.DiagnosticPrefix = v
 	}
+}
+
+// BuildProfileSpan returns the diagnostic span the compiler uses for foundation.build.yaml errors.
+func BuildProfileSpan() ir.Span {
+	return ir.Span{File: "foundation.build.yaml", Line: 1, Column: 1}
+}
+
+// reservedDiagnosticPrefix is the diagnostic prefix the compiler reserves for its own codes.
+const reservedDiagnosticPrefix = "FDN"
+
+// validateDiagnosticPrefixes reserves the FDN prefix and rejects duplicate non-empty
+// diagnostic prefixes across targets, so two plugins cannot claim the same codes.
+func validateDiagnosticPrefixes(targets []TargetConfig) []ir.Diagnostic {
+	var diags []ir.Diagnostic
+	span := BuildProfileSpan()
+
+	owners := make(map[string][]string)
+	for _, t := range targets {
+		if t.DiagnosticPrefix == "" {
+			continue
+		}
+		if t.DiagnosticPrefix == reservedDiagnosticPrefix {
+			diags = append(diags, diagnostics.New("FDN0604", span, t.DiagnosticPrefix))
+			continue
+		}
+		owners[t.DiagnosticPrefix] = append(owners[t.DiagnosticPrefix], t.Name)
+	}
+
+	prefixes := make([]string, 0, len(owners))
+	for prefix := range owners {
+		prefixes = append(prefixes, prefix)
+	}
+	sort.Strings(prefixes)
+	for _, prefix := range prefixes {
+		names := owners[prefix]
+		if len(names) < 2 {
+			continue
+		}
+		sort.Strings(names)
+		diags = append(diags, diagnostics.New("FDN0603", span, prefix, strings.Join(names, ", ")))
+	}
+	return diags
 }
 
 func yamlErr(line int, msg string) []ir.Diagnostic {

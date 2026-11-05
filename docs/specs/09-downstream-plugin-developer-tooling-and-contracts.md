@@ -308,7 +308,7 @@ targets:
 1. The compiler reserves prefix `FDN` exclusively for compiler and core tool diagnostics.
 2. Target generators cannot declare prefix `FDN`.
 3. If two targets in the pipeline declare identical non-empty `diagnostic_prefix` values, compiler validation raises diagnostic `FDN0603`:
-   - `[FDN0603] diagnostic prefix "ACME" is claimed by multiple plugins: custom-backend, telemetry-ext`.
+   - `[FDN0603] diagnostic prefix "ACME" is claimed by multiple targets: custom-backend, telemetry-ext`.
 4. The pipeline runner checks emitted diagnostic codes in `GenerationResponse.Diagnostics`.
 5. If a plugin emits a diagnostic code that does not start with its declared prefix, the pipeline logs a warning diagnostic.
 
@@ -412,7 +412,7 @@ Provide lightweight client packages in `contrib/`:
   - Implement lightweight Python client package in `contrib/emitterkit-py`.
   - Implement lightweight TypeScript client package in `contrib/emitterkit-ts`.
 - **Ticket 09: Implied Capabilities, Platform BOM, and Determinism Contracts**
-  - Materialize `EventDispatcher` slot in `pkg/compiler/internal/lowering/`.
+  - Materialize the derived `EventDispatcher` slot in `pkg/compiler` (Compile) and exclude it from `ArchitectureIR` in `pkg/compiler/internal/arch/`.
   - Add `BOM` version catalogue to `platform.Info`.
   - Add explicit collection ordering documentation in generator guides.
 
@@ -456,7 +456,7 @@ Provide lightweight client packages in `contrib/`:
 
 ### Scenario 6: Diagnostic Prefix Collision Detection
 - **Given** a `foundation.build.yaml` with two targets declaring `diagnostic_prefix: "ACME"`
-- **When** running `foundation check`
+- **When** running `foundation build`
 - **Then** compilation fails with diagnostic `FDN0603`
 - **And** the diagnostic message reports the colliding target names.
 

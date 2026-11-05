@@ -45,6 +45,8 @@ func BuildStoragePlan(workspaceDir string, sem *ir.SemanticIR, bp *BuildProfile,
 
 	tableMap := buildTableMap(sem.Entities)
 	plan.Tables = BuildTableSchemas(sem.Entities, enumSet, tableMap)
+	// The compiler orders tables by physical table name so the storage plan is deterministic.
+	sort.Slice(plan.Tables, func(i, j int) bool { return plan.Tables[i].Name < plan.Tables[j].Name })
 
 	schemaSQL := generateDeclarativeSchemaSQL(sem.Entities, enumSet, hasIdem, hasOutbox)
 	if plan.Mode == "declarative" || plan.Mode == "both" {

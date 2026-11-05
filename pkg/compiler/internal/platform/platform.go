@@ -15,8 +15,16 @@ const (
 // Info carries the platform policy that the compiler owns.
 // Emitters consume platform decisions instead of inventing local constants.
 type Info struct {
-	Pagination     PaginationDefaults `json:"pagination"`
-	ReservedErrors []ReservedError    `json:"reserved_errors"`
+	Pagination     PaginationDefaults  `json:"pagination"`
+	ReservedErrors []ReservedError     `json:"reserved_errors"`
+	Dependencies   []DependencyVersion `json:"dependencies"`
+}
+
+// DependencyVersion is one canonical third-party dependency the compiler publishes per language.
+type DependencyVersion struct {
+	Language string `json:"language"`
+	Package  string `json:"package"`
+	Version  string `json:"version"`
 }
 
 // PaginationDefaults describes the platform page-size policy.
@@ -81,6 +89,18 @@ func StandardReservedErrors() []ReservedError {
 	}
 }
 
+// StandardDependencies returns the canonical dependency versions in stable (alphabetical) order.
+func StandardDependencies() []DependencyVersion {
+	return []DependencyVersion{
+		{Language: "go", Package: "github.com/galihanggara68/foundation/contrib/go/runtime", Version: "v0.2.0"},
+		{Language: "go", Package: "github.com/go-chi/chi/v5", Version: "v5.3.0"},
+		{Language: "go", Package: "github.com/jackc/pgx/v5", Version: "v5.7.2"},
+		{Language: "go", Package: "github.com/lib/pq", Version: "v1.10.9"},
+		{Language: "go", Package: "go.opentelemetry.io/otel", Version: "v1.32.0"},
+		{Language: "go", Package: "gorm.io/gorm", Version: "v1.25.12"},
+	}
+}
+
 // DefaultInfo returns the compiler-owned platform policy.
 func DefaultInfo() Info {
 	return Info{
@@ -89,5 +109,6 @@ func DefaultInfo() Info {
 			MaxLimit:     DefaultMaxPageLimit,
 		},
 		ReservedErrors: StandardReservedErrors(),
+		Dependencies:   StandardDependencies(),
 	}
 }

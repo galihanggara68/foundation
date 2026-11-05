@@ -106,3 +106,149 @@ targets:
 		t.Fatalf("expected FDN0004 for invalid scaffold mode, got: %+v", diags)
 	}
 }
+
+func TestBuild_DiagnosticPrefixCollision_FDN0603(t *testing.T) {
+	dir := setupTestWorkspace(t)
+	buildYAML := `
+project:
+  name: shop
+  module: example.com/shop
+
+targets:
+  - name: custom-backend
+    kind: backend
+    language: go
+    architecture: custom
+    out_dir: gen/custom
+    generator: ./tools/gen-1
+    diagnostic_prefix: ACME
+  - name: telemetry-ext
+    kind: backend
+    language: go
+    architecture: custom
+    out_dir: gen/telemetry
+    generator: ./tools/gen-2
+    diagnostic_prefix: ACME
+`
+	if err := os.WriteFile(filepath.Join(dir, "foundation.build.yaml"), []byte(buildYAML), 0644); err != nil {
+		t.Fatalf("failed to write yaml: %v", err)
+	}
+
+	_, diags := compiler.Build(dir, compiler.BuildOptions{})
+	found := false
+	for _, d := range diags {
+		if d.Code == "FDN0603" {
+			found = true
+			if !strings.Contains(d.Message, "ACME") {
+				t.Errorf("expected FDN0603 to name the prefix, got: %s", d.Message)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected FDN0603 prefix collision, got: %+v", diags)
+	}
+}
+
+func TestBuild_DiagnosticPrefixMismatch_FDN0605(t *testing.T) {
+	dir := setupTestWorkspace(t)
+	gen := filepath.Join(dir, "tools", "gen-ns")
+	createExecutablePlugin(t, gen, `
+cat > /dev/null
+cat << 'EOF'
+{
+  "files": { "gen.txt": "ok" },
+  "diagnostics": [
+    { "code": "OTHER01", "severity": "warning", "message": "outside namespace", "span": { "file": "x", "line": 1, "column": 1 } }
+  ]
+}
+EOF
+exit 0
+`)
+
+	buildYAML := `
+project:
+  name: shop
+  module: example.com/shop
+
+targets:
+  - name: custom
+    kind: backend
+    language: go
+    architecture: custom
+    out_dir: gen/custom
+    generator: ./tools/gen-ns
+    scaffold: none
+    diagnostic_prefix: ACME
+`
+	if err := os.WriteFile(filepath.Join(dir, "foundation.build.yaml"), []byte(buildYAML), 0644); err != nil {
+		t.Fatalf("failed to write yaml: %v", err)
+	}
+
+	_, diags := compiler.Build(dir, compiler.BuildOptions{})
+	found := false
+	for _, d := range diags {
+		if d.Code == "FDN0605" && d.Severity == compiler.SeverityWarning {
+			found = true
+			if !strings.Contains(d.Message, "OTHER01") {
+				t.Errorf("expected FDN0605 to name the offending code, got: %s", d.Message)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected FDN0605 prefix mismatch warning, got: %+v", diags)
+	}
+}
+
+func TestBuild_DiagnosticPrefixMismatchOnError_FDN0605(t *testing.T) {
+	dir := setupTestWorkspace(t)
+	gen := filepath.Join(dir, "tools", "gen-ns-err")
+	createExecutablePlugin(t, gen, `
+cat > /dev/null
+cat << 'EOF'
+{
+  "files": { "gen.txt": "ok" },
+  "diagnostics": [
+    { "code": "OTHER99", "severity": "error", "message": "outside namespace", "span": { "file": "x", "line": 1, "column": 1 } }
+  ]
+}
+EOF
+exit 0
+`)
+
+	buildYAML := `
+project:
+  name: shop
+  module: example.com/shop
+
+targets:
+  - name: custom
+    kind: backend
+    language: go
+    architecture: custom
+    out_dir: gen/custom
+    generator: ./tools/gen-ns-err
+    scaffold: none
+    diagnostic_prefix: ACME
+`
+	if err := os.WriteFile(filepath.Join(dir, "foundation.build.yaml"), []byte(buildYAML), 0644); err != nil {
+		t.Fatalf("failed to write yaml: %v", err)
+	}
+
+	_, diags := compiler.Build(dir, compiler.BuildOptions{})
+	foundWarn := false
+	foundErr := false
+	for _, d := range diags {
+		if d.Code == "FDN0605" && d.Severity == compiler.SeverityWarning {
+			foundWarn = true
+		}
+		if d.Code == "OTHER99" && d.Severity == compiler.SeverityError {
+			foundErr = true
+		}
+	}
+	if !foundErr {
+		t.Fatalf("expected the plugin error diagnostic to surface, got: %+v", diags)
+	}
+	if !foundWarn {
+		t.Fatalf("expected FDN0605 even when the out-of-prefix code is an error, got: %+v", diags)
+	}
+}

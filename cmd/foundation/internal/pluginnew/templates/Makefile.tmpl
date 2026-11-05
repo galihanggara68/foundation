@@ -1,0 +1,13 @@
+.PHONY: test-short smoke lint update-goldens
+
+test-short:
+	go test -v -short ./...
+
+smoke:
+	go test -v -run TestSmoke ./...
+
+lint:
+	golangci-lint run ./...
+
+update-goldens:
+	go test ./... -update

@@ -1,0 +1,26 @@
+package main
+
+import (
+	"github.com/galihanggara68/foundation/pkg/emitterkit"
+)
+
+// IntermediateModel represents the intermediate data model.
+type IntermediateModel struct {
+	PluginName string   `json:"plugin_name"`
+	Entities   []string `json:"entities,omitempty"`
+}
+
+// dumpModel checks the generation request and builds the intermediate model.
+func dumpModel(req emitterkit.GenerationRequest) (any, error) {
+	model := IntermediateModel{
+		PluginName: "{{.PluginName}}",
+	}
+
+	if req.SemanticIR != nil {
+		for _, entity := range req.SemanticIR.Entities {
+			model.Entities = append(model.Entities, entity.Name)
+		}
+	}
+
+	return model, nil
+}

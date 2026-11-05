@@ -50,33 +50,35 @@ func TestRegistry_CodeFormat(t *testing.T) {
 	}
 }
 
-// TestRegistry_CodebaseDrift confirms that all FDN codes in the codebase exist in the registry.
+// TestRegistry_CodebaseDrift confirms that all FDN codes in pkg/ and cmd/ exist in the registry.
 func TestRegistry_CodebaseDrift(t *testing.T) {
 	root := findRepoRoot(t)
-	pkgDir := filepath.Join(root, "pkg")
 	codeRe := regexp.MustCompile(`\bFDN[0-9]{4}\b`)
 
-	err := filepath.Walk(pkgDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		matches := codeRe.FindAllString(string(data), -1)
-		for _, code := range matches {
-			if _, ok := diagnostics.Registry[code]; !ok {
-				t.Errorf("file %s references unregistered diagnostic code %s", path, code)
+	for _, sub := range []string{"pkg", "cmd"} {
+		dir := filepath.Join(root, sub)
+		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
 			}
+			if info.IsDir() || !strings.HasSuffix(path, ".go") {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			matches := codeRe.FindAllString(string(data), -1)
+			for _, code := range matches {
+				if _, ok := diagnostics.Registry[code]; !ok {
+					t.Errorf("file %s references unregistered diagnostic code %s", path, code)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("failed to walk %s directory: %v", sub, err)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("failed to walk pkg directory: %v", err)
 	}
 }
 

@@ -1,0 +1,29 @@
+package main
+
+import (
+	"flag"
+	"path/filepath"
+	"testing"
+
+	emittertesting "github.com/galihanggara68/foundation/pkg/emitterkit/testing"
+)
+
+var updateGoldens = flag.Bool("update", false, "update golden files")
+
+func TestGoldenTree(t *testing.T) {
+	h := emittertesting.NewHarness(t)
+	req, err := h.LoadWireFixture(filepath.Join("testdata", "requests", "sample.json"))
+	if err != nil {
+		t.Fatalf("load wire fixture: %v", err)
+	}
+
+	resp, err := handleGenerate(req)
+	if err != nil {
+		t.Fatalf("handleGenerate failed: %v", err)
+	}
+
+	goldenDir := filepath.Join("testdata", "golden")
+	h.AssertGoldenTree(resp, goldenDir, emittertesting.TreeGoldenOptions{
+		UpdateGoldens: *updateGoldens,
+	})
+}

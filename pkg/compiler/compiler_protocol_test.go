@@ -1,6 +1,9 @@
 package compiler_test
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/galihanggara68/foundation/pkg/compiler"
@@ -239,4 +242,131 @@ func TestExportedDiagnosticRegistry(t *testing.T) {
 	if detailDiag.Code != "FDN0227" || detailDiag.Severity != compiler.SeverityWarning || detailDiag.Message != "custom warning" {
 		t.Fatalf("unexpected detail diagnostic: %+v", detailDiag)
 	}
+}
+
+// TestCaptureRequest confirms that CaptureRequest creates valid generation request envelopes.
+func TestCaptureRequest(t *testing.T) {
+	dir := t.TempDir()
+
+	blueprint := `
+entity Product {
+  id: uuid @pk
+  name: string
+  price: decimal
+}
+
+action CreateProduct(name: string, price: decimal) -> Product
+  @http(method: POST, path: "/v1/products")
+{
+  let p = create Product { name: name, price: price }
+  return p
+}
+`
+	buildProfile := `
+project:
+  name: store
+  module: example.com/store
+
+storage:
+  dialect: postgres
+  mode: declarative
+
+targets:
+  - name: backend
+    kind: backend
+    language: go
+    architecture: hexagonal
+    http: chi
+    out_dir: ./dist/backend
+  - name: client
+    kind: sdk
+    language: go
+    architecture: sdk
+    out_dir: ./dist/sdk
+`
+	if err := os.WriteFile(filepath.Join(dir, "store.fdn"), []byte(blueprint), 0o644); err != nil {
+		t.Fatalf("failed to write blueprint: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "foundation.build.yaml"), []byte(buildProfile), 0o644); err != nil {
+		t.Fatalf("failed to write build profile: %v", err)
+	}
+
+	t.Run("default target", func(t *testing.T) {
+		data, diags := compiler.CaptureRequest(dir, "")
+		if compiler.HasErrors(diags) {
+			t.Fatalf("unexpected capture error: %+v", diags)
+		}
+
+		req, err := compiler.DecodeGenerationRequest(bytes.NewReader(data))
+		if err != nil {
+			t.Fatalf("failed to decode generation request: %v", err)
+		}
+
+		if req.ProtocolVersion != compiler.ProtocolVersion {
+			t.Errorf("expected protocol version %d, got %d", compiler.ProtocolVersion, req.ProtocolVersion)
+		}
+		if req.WorkspaceRoot != dir {
+			t.Errorf("expected workspace root %q, got %q", dir, req.WorkspaceRoot)
+		}
+		if req.Target.Name != "backend" {
+			t.Errorf("expected target backend, got %q", req.Target.Name)
+		}
+		if req.Target.Kind != "backend" {
+			t.Errorf("expected kind backend, got %q", req.Target.Kind)
+		}
+		if req.SemanticIR == nil || len(req.SemanticIR.Entities) != 1 {
+			t.Fatalf("expected semantic IR with 1 entity, got: %+v", req.SemanticIR)
+		}
+		if req.Platform == nil || req.Platform.Pagination.DefaultLimit == 0 {
+			t.Fatalf("expected platform facts, got: %+v", req.Platform)
+		}
+		if req.ArchitectureIR == nil {
+			t.Fatal("expected architecture IR to be populated")
+		}
+		if req.ArchitectureIR.Storage.Dialect != "postgres" {
+			t.Errorf("expected storage dialect postgres, got %q", req.ArchitectureIR.Storage.Dialect)
+		}
+		if len(req.ArchitectureIR.Storage.Tables) == 0 {
+			t.Error("expected lowered storage tables")
+		}
+		if len(req.Files) == 0 {
+			t.Error("expected files map from builtin emitter")
+		}
+	})
+
+	t.Run("explicit sdk target", func(t *testing.T) {
+		data, diags := compiler.CaptureRequest(dir, "client")
+		if compiler.HasErrors(diags) {
+			t.Fatalf("unexpected capture error: %+v", diags)
+		}
+
+		req, err := compiler.DecodeGenerationRequest(bytes.NewReader(data))
+		if err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		if req.Target.Name != "client" || req.Target.Kind != "sdk" {
+			t.Errorf("expected client sdk target, got %+v", req.Target)
+		}
+		if len(req.Files) == 0 {
+			t.Error("expected sdk emitted files in files map")
+		}
+	})
+
+	t.Run("missing target", func(t *testing.T) {
+		_, diags := compiler.CaptureRequest(dir, "unknown")
+		if !compiler.HasErrors(diags) {
+			t.Fatal("expected error diagnostic for unknown target")
+		}
+		if diags[0].Code != "FDN0302" {
+			t.Errorf("expected diagnostic FDN0302, got %s", diags[0].Code)
+		}
+	})
+
+	t.Run("invalid blueprint dir", func(t *testing.T) {
+		emptyDir := t.TempDir()
+		_, diags := compiler.CaptureRequest(emptyDir, "")
+		if !compiler.HasErrors(diags) {
+			t.Fatal("expected error diagnostic for empty directory")
+		}
+	})
 }

@@ -62,8 +62,9 @@ Production plugin implementations expose nine areas of friction and divergence:
    Intercept `-dump-model`, invoke the model translation callback, emit formatted JSON to standard output, and exit cleanly with code 0 before code generation begins.
 
 5. **Provide Automated Conformance Checker via CLI**:
-   Add `foundation plugin doctor <binary>` to execute five synthetic protocol probes:
-   version echo, byte-level determinism, malformed request error reporting (`FDN0701`), standard output purity, and process exit code discipline.
+   Add `foundation plugin doctor <binary>` to run five synthetic protocol probes:
+   version echo, byte-level determinism, malformed request error reporting, standard output purity, and process exit code discipline.
+   Probe failures use diagnostics `FDN0703` through `FDN0707`; a malformed request must report the plugin diagnostic `FDN0701`.
 
 6. **Establish Stable Extension Anchors and Chaining Helpers**:
    Emit standard comment anchors (`// foundation:anchor:<name>`) at key extension points in built-in emitters.

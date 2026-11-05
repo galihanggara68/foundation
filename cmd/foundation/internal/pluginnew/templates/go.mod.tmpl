@@ -1,0 +1,8 @@
+module {{.ModulePath}}
+
+go 1.22
+
+require github.com/galihanggara68/foundation {{.FoundationVersion}}
+{{if .ReplacePath}}
+replace github.com/galihanggara68/foundation => {{.ReplacePath}}
+{{end}}

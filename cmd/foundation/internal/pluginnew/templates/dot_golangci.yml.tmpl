@@ -1,0 +1,14 @@
+linters:
+  enable:
+    - forbidigo
+    - govet
+    - staticcheck
+    - errcheck
+
+linters-settings:
+  forbidigo:
+    forbid:
+      - p: '^fmt\.Print.*$'
+        msg: "Do not write to standard output directly. Standard output carries the wire protocol response."
+      - p: '^os\.Stdout$'
+        msg: "Do not write to os.Stdout directly. Standard output carries the wire protocol response."

@@ -1,0 +1,21 @@
+package main
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/galihanggara68/foundation/pkg/emitterkit"
+	emittertesting "github.com/galihanggara68/foundation/pkg/emitterkit/testing"
+)
+
+func TestDeterminism(t *testing.T) {
+	h := emittertesting.NewHarness(t)
+	req, err := h.LoadWireFixture(filepath.Join("testdata", "requests", "sample.json"))
+	if err != nil {
+		t.Fatalf("load wire fixture: %v", err)
+	}
+
+	h.AssertDeterministic(func() (emitterkit.GenerationResponse, error) {
+		return handleGenerate(req)
+	})
+}

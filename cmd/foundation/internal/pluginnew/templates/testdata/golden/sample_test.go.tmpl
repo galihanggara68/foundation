@@ -1,0 +1,9 @@
+package sample
+
+import "testing"
+
+func TestGreeting(t *testing.T) {
+	if got := Greeting(); got == "" {
+		t.Fatal("expected non-empty greeting")
+	}
+}

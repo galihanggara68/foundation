@@ -308,6 +308,24 @@ var Registry = map[string]Definition{
 		Description:     "No built-in or plugin emitter is registered to generate output for the target configuration.",
 		DocAnchor:       "fdn0300",
 	},
+	"FDN0301": {
+		Code: "FDN0301", Severity: ir.SeverityError, Category: "Configuration",
+		MessageTemplate: "no targets configured in foundation.build.yaml",
+		Description:     "The build profile declares no targets, so the compiler cannot capture a generation request.",
+		DocAnchor:       "fdn0301",
+	},
+	"FDN0302": {
+		Code: "FDN0302", Severity: ir.SeverityError, Category: "Configuration",
+		MessageTemplate: "target %q not found in foundation.build.yaml",
+		Description:     "The requested target name does not match any target in the build profile.",
+		DocAnchor:       "fdn0302",
+	},
+	"FDN0303": {
+		Code: "FDN0303", Severity: ir.SeverityError, Category: "Protocol",
+		MessageTemplate: "failed to encode generation request: %v",
+		Description:     "The compiler failed to serialize the generation request envelope into wire JSON.",
+		DocAnchor:       "fdn0303",
+	},
 	"FDN0310": {
 		Code: "FDN0310", Severity: ir.SeverityError, Category: "Lowering",
 		MessageTemplate: "invalid authn adapter %q; expected 'dev-headers' or 'jwt-oidc'",
@@ -385,5 +403,35 @@ var Registry = map[string]Definition{
 		MessageTemplate: "generator %q overwrote file %q previously emitted by %q",
 		Description:     "A generator plugin overwrote a file emitted by an earlier generator plugin.",
 		DocAnchor:       "fdn0702",
+	},
+	"FDN0703": {
+		Code: "FDN0703", Severity: ir.SeverityError, Category: "Plugin",
+		MessageTemplate: "protocol version mismatch: expected %d, got %d",
+		Description:     "A plugin echoed a protocol version that differs from the compiler protocol version.",
+		DocAnchor:       "fdn0703",
+	},
+	"FDN0704": {
+		Code: "FDN0704", Severity: ir.SeverityError, Category: "Plugin",
+		MessageTemplate: "non-deterministic generation: output bytes differ between identical runs",
+		Description:     "A plugin produced different output bytes for two identical requests.",
+		DocAnchor:       "fdn0704",
+	},
+	"FDN0705": {
+		Code: "FDN0705", Severity: ir.SeverityError, Category: "Plugin",
+		MessageTemplate: "invalid malformed request handling: %v",
+		Description:     "A plugin did not report diagnostic FDN0701 for a malformed request payload.",
+		DocAnchor:       "fdn0705",
+	},
+	"FDN0706": {
+		Code: "FDN0706", Severity: ir.SeverityError, Category: "Plugin",
+		MessageTemplate: "standard output pollution detected: %v",
+		Description:     "A plugin wrote data to standard output outside the single JSON response document.",
+		DocAnchor:       "fdn0706",
+	},
+	"FDN0707": {
+		Code: "FDN0707", Severity: ir.SeverityError, Category: "Plugin",
+		MessageTemplate: "invalid process exit posture: %v",
+		Description:     "A plugin exited with a non-zero status code while handling a request without a crash.",
+		DocAnchor:       "fdn0707",
 	},
 }

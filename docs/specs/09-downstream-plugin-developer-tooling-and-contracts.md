@@ -82,8 +82,11 @@ This specification resolves these gaps across four functional areas:
 Add the `plugin new` subcommand to the Foundation CLI in `cmd/foundation/main.go`:
 
 ```bash
-foundation plugin new <plugin-name> [--dir <output-dir>] [--module <go-module-path>]
+foundation plugin new <plugin-name> [--dir <output-dir>] [--module <go-module-path>] [--replace <foundation-path>]
 ```
+
+The `--replace` flag writes a `replace` directive into the generated `go.mod`.
+Plugin authors use the flag to test a plugin against a local Foundation checkout.
 
 The command generates the following project directory structure:
 
@@ -119,16 +122,16 @@ foundation capture --dir <blueprint-dir> [--target <target-name>] [--out <output
 ```
 
 #### Workflow:
-1. Parse the blueprint directory using `compiler.CompileDir(dir)`.
+1. Parse the blueprint directory using `compiler.Check(dir)`.
 2. Stop and report errors if parsing or semantic analysis yields diagnostics.
 3. Lower the semantic model into architectural representations using `compiler.Lower(sem)`.
 4. Construct the standard `GenerationRequest` struct:
    - Populate `ProtocolVersion` with `protocol.ProtocolVersion`.
    - Populate `Semantic` with `sem`.
-   - Populate `StoragePlan` from the architectural model.
+   - Populate `ArchitectureIR` with the lowered architectural model, including `ArchitectureIR.Storage`.
    - Populate `Platform` with `platform.DefaultInfo()`.
    - Populate `Target` with the selected target configuration.
-   - Populate `Files` with virtual upstream files if executing in a pipeline context.
+   - Populate `Files` with the built-in emitter output that a chained pipeline plugin receives.
 5. Serialize the request via `protocol.EncodeRequest(req)`.
 6. Write deterministic JSON bytes to `--out` or standard output.
 
@@ -200,15 +203,15 @@ Add the `plugin doctor` subcommand to `cmd/foundation/main.go`:
 foundation plugin doctor <path-to-binary> [--verbose]
 ```
 
-The doctor executes five synthetic test probes against the plugin binary:
+The doctor runs five synthetic test probes against the plugin binary:
 
 | Probe | Input Payload | Verification Rule | Failure Diagnostic |
 |---|---|---|---|
-| 1. Version Echo | Standard synthetic `GenerationRequest` | `resp.ProtocolVersion == protocol.ProtocolVersion` | `FDN0702`: Protocol version mismatch |
-| 2. Byte Determinism | Run identical synthetic request twice | Byte outputs of run 1 and run 2 are identical | `FDN0703`: Non-deterministic generation |
-| 3. Malformed Request | Invalid JSON string (`{malformed...`) | Response contains diagnostic `FDN0701` | `FDN0704`: Invalid malformed error handling |
-| 4. Stdout Purity | Standard synthetic `GenerationRequest` | Zero bytes outside the single JSON response document | `FDN0705`: Standard output pollution detected |
-| 5. Exit Code Discipline | Normal execution and graceful error | Binary exits with code 0 on handled errors; non-zero only on unhandled crashes | `FDN0706`: Invalid process exit posture |
+| 1. Version Echo | Standard synthetic `GenerationRequest` | `resp.ProtocolVersion == protocol.ProtocolVersion` | `FDN0703`: Protocol version mismatch |
+| 2. Byte Determinism | Run identical synthetic request twice | Byte outputs of run 1 and run 2 are identical | `FDN0704`: Non-deterministic generation |
+| 3. Malformed Request | Invalid JSON string (`{malformed...`) | Response contains diagnostic `FDN0701` | `FDN0705`: Invalid malformed error handling |
+| 4. Stdout Purity | Standard synthetic `GenerationRequest` | Zero bytes outside the single JSON response document | `FDN0706`: Standard output pollution detected |
+| 5. Exit Code Discipline | Normal run and handled error | Binary exits with code 0 on handled errors; non-zero only on unhandled crashes | `FDN0707`: Invalid process exit posture |
 
 The doctor reports individual probe status to standard output and exits with code 0 only when all probes succeed.
 
@@ -236,7 +239,7 @@ func WithDumpModel(fn ModelDumperFunc) PluginOption {
     }
 }
 
-// RunPluginWithFlags parses command-line flags and executes the plugin handler.
+// RunPluginWithFlags parses command-line flags and runs the plugin handler.
 func RunPluginWithFlags(handler HandlerFunc, opts ...PluginOption) {
     // 1. Initialize configuration.
     // 2. Parse flags: -dump-model.
@@ -391,7 +394,7 @@ Provide lightweight client packages in `contrib/`:
   - Wire semantic compilation and architectural lowering to request envelope serialization.
   - Add tests validating captured request structure.
 - **Ticket 05: Plugin Scaffolding Generator (`foundation plugin new`)**
-  - Create embedded template project structure in `cmd/foundation/internal/scaffold/`.
+  - Create embedded template project structure in `cmd/foundation/internal/pluginnew/`.
   - Add `plugin new` subcommand to `cmd/foundation`.
   - Add integration tests verifying generated projects compile and pass short tests.
 - **Ticket 06: Plugin Conformance Doctor (`foundation plugin doctor`)**
@@ -428,7 +431,7 @@ Provide lightweight client packages in `contrib/`:
 - **When** running `foundation capture --dir ./testdata/fixtures/ecommerce`
 - **Then** the command outputs valid JSON adhering to `GenerationRequest`
 - **And** `req.ProtocolVersion` matches `protocol.ProtocolVersion`
-- **And** `req.StoragePlan` contains lowered relational tables.
+- **And** `req.ArchitectureIR.Storage` contains lowered relational tables.
 
 ### Scenario 3: Tree Golden Assertion Regression Detection
 - **Given** a response with emitted files and a golden directory on disk
@@ -442,7 +445,7 @@ Provide lightweight client packages in `contrib/`:
 - **When** running `foundation plugin doctor ./bin/compliant-plugin`
 - **Then** all five probes pass and the process exits with code 0
 - **When** running `foundation plugin doctor ./bin/polluting-plugin` (which prints logs to standard output)
-- **Then** probe 4 fails with diagnostic `FDN0705` and the process exits with code 1.
+- **Then** probe 4 fails with diagnostic `FDN0706` and the process exits with code 1.
 
 ### Scenario 5: Pipeline Anchor Modification and Missing Anchor Failure
 - **Given** generated source code containing `// foundation:anchor:http-router-middleware`
@@ -478,9 +481,15 @@ Provide lightweight client packages in `contrib/`:
 - `pkg/emitterkit/chain/chain.go`: Anchor lookup and code manipulation package.
 - `pkg/emitterkit/chain/chain_test.go`: Tests for anchor manipulation.
 - `pkg/emitterkit/testing/tree_golden.go`: Tree golden comparison implementation.
-- `pkg/emitterkit/testing/smoke_runner.go`: Smoke test process execution runner.
+- `pkg/emitterkit/testing/smoke_runner.go`: Smoke test process runner.
+- `cmd/foundation/capture.go`: Capture subcommand and request envelope export.
+- `cmd/foundation/plugin.go`: Plugin subcommand router.
+- `cmd/foundation/plugin_new.go`: `plugin new` subcommand.
+- `cmd/foundation/plugin_doctor.go`: `plugin doctor` subcommand.
+- `cmd/foundation/internal/pluginnew/scaffold.go`: Embedded template scaffolding generator.
 - `cmd/foundation/internal/pluginnew/templates/`: Embedded template files for plugin generation.
 - `cmd/foundation/internal/doctor/probes.go`: Probe implementations for plugin doctor.
+- `test/e2e/plugin_tooling_e2e_test.go`: Black-box integration tests for plugin tooling.
 - `contrib/emitterkit-py/`: Reference Python plugin client SDK.
 - `contrib/emitterkit-ts/`: Reference TypeScript plugin client SDK.
 

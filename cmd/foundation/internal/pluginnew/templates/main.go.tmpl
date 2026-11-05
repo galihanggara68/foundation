@@ -1,0 +1,57 @@
+package main
+
+import (
+	"github.com/galihanggara68/foundation/pkg/emitterkit"
+)
+
+func main() {
+	emitterkit.RunPluginWithFlags(handleGenerate, emitterkit.WithDumpModel(dumpModel))
+}
+
+// handleGenerate processes generation requests and returns emitted files.
+func handleGenerate(req emitterkit.GenerationRequest) (emitterkit.GenerationResponse, error) {
+	resp := emitterkit.GenerationResponse{
+		ProtocolVersion: req.ProtocolVersion,
+		Files:           make(map[string]string),
+		TestCommand:     "go test ./...",
+	}
+
+	resp.Files["go.mod"] = emitGeneratedGoMod()
+	resp.Files["sample.go"] = emitSample()
+	resp.Files["sample_test.go"] = emitSampleTest()
+
+	return resp, nil
+}
+
+// emitGeneratedGoMod returns the Go module definition for generated files.
+func emitGeneratedGoMod() string {
+	return `module sample
+
+go 1.22
+`
+}
+
+// emitSample returns the generated Go source code for the sample package.
+func emitSample() string {
+	return `package sample
+
+// Greeting returns a welcome message for the generated plugin.
+func Greeting() string {
+	return "hello from {{.PluginName}}"
+}
+`
+}
+
+// emitSampleTest returns the unit test source code for the sample package.
+func emitSampleTest() string {
+	return `package sample
+
+import "testing"
+
+func TestGreeting(t *testing.T) {
+	if got := Greeting(); got == "" {
+		t.Fatal("expected non-empty greeting")
+	}
+}
+`
+}

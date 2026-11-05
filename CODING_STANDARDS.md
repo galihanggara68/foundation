@@ -8,7 +8,7 @@ The `code-review` agent checks these rules on every change.
 ## 1. Package Layout and Module Boundaries
 
 ### Compiler Driver Interface (`pkg/compiler`)
-- External callers access the compiler only through top-level driver functions: `Check`, `Build`, `IR`, `Test`, and `LSP`.
+- External callers access the compiler only through top-level driver functions: `Check`, `Build`, `IR`, `Test`, `LSP`, and `CaptureRequest`.
 - Keep the public interface small.
 - Hide parsers, validators, lowering strategies, and emitters inside `pkg/compiler/internal/`.
 

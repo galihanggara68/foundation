@@ -129,6 +129,11 @@ _Avoid_: Template engine, custom script, codegen hook
 The JSON contract for communication between the compiler and generator plugins over standard input and output.
 _Avoid_: Plugin API, RPC protocol
 
+**Capture**:
+A compiler operation that exports a complete Generation Request wire envelope for a selected target.
+Plugin authors run `foundation capture` to build authoritative test fixtures.
+_Avoid_: Dump, snapshot, export
+
 **Generator Pipeline**:
 An ordered sequence of generator plugins.
 The pipeline transforms the virtual file tree before the compiler writes files to disk.

@@ -162,3 +162,126 @@ func NewDiagnostic(code string, span Span, args ...any) Diagnostic {
 func NewDiagnosticWithDetail(code string, span Span, msg string) Diagnostic {
 	return diagnostics.NewWithDetail(code, span, msg)
 }
+
+// CaptureRequest compiles the blueprints in dir and returns an encoded GenerationRequest envelope
+// for the selected target. The envelope is the wire payload that the compiler sends to a generator
+// plugin. Plugin authors use the envelope to build authoritative test fixtures.
+// An empty targetName selects the first configured target.
+func CaptureRequest(dir string, targetName string) ([]byte, []Diagnostic) {
+	sem, diags := Check(dir)
+	if HasErrors(diags) {
+		return nil, diags
+	}
+
+	bp, bpDiags := arch.LoadBuildProfile(dir)
+	if len(bpDiags) > 0 {
+		return nil, bpDiags
+	}
+
+	if len(bp.Targets) == 0 {
+		return nil, []Diagnostic{diagnostics.New(
+			"FDN0301",
+			Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			"no targets configured in foundation.build.yaml",
+		)}
+	}
+
+	target, found := selectCaptureTarget(bp.Targets, targetName)
+	if !found {
+		return nil, []Diagnostic{diagnostics.NewWithDetail(
+			"FDN0302",
+			Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			fmt.Sprintf("target %q not found in foundation.build.yaml", targetName),
+		)}
+	}
+
+	warnDiags := diags
+	hasStorage := bp.Storage.Dialect != "" || bp.Storage.Mode != "" || target.Kind == "backend"
+	var storagePlan arch.StoragePlanIR
+	if hasStorage {
+		var storageDiags []Diagnostic
+		storagePlan, _, storageDiags = arch.BuildStoragePlan(dir, sem, bp, false)
+		if HasErrors(storageDiags) {
+			return nil, storageDiags
+		}
+		warnDiags = append(warnDiags, storageDiags...)
+	}
+
+	archIR, reqFiles, captureDiags := lowerCaptureTarget(sem, bp, target, storagePlan, hasStorage)
+	if len(captureDiags) > 0 {
+		return nil, captureDiags
+	}
+	warnDiags = append(warnDiags, captureDiags...)
+
+	platformInfo := platform.DefaultInfo()
+	req := protocol.GenerationRequest{
+		ProtocolVersion: protocol.ProtocolVersion,
+		WorkspaceRoot:   dir,
+		Target:          protocol.TargetInfoFromConfig(target, target.Options),
+		SemanticIR:      sem,
+		ArchitectureIR:  archIR,
+		Platform:        &platformInfo,
+		Files:           reqFiles,
+	}
+
+	payload, err := protocol.EncodeRequest(req)
+	if err != nil {
+		return nil, []Diagnostic{diagnostics.New(
+			"FDN0303",
+			Span{File: dir, Line: 1, Column: 1},
+			err,
+		)}
+	}
+	return payload, warnDiags
+}
+
+// selectCaptureTarget resolves a target by name, or falls back to the first target when name is empty.
+func selectCaptureTarget(targets []arch.TargetConfig, name string) (arch.TargetConfig, bool) {
+	if name == "" {
+		return targets[0], true
+	}
+	for _, t := range targets {
+		if t.Name == name {
+			return t, true
+		}
+	}
+	return arch.TargetConfig{}, false
+}
+
+// lowerCaptureTarget lowers and emits the selected target the same way Build does, and returns the
+// architecture IR with the virtual upstream files that a chained pipeline plugin receives.
+func lowerCaptureTarget(sem *ir.SemanticIR, bp *arch.BuildProfile, target arch.TargetConfig, storagePlan arch.StoragePlanIR, hasStorage bool) (*arch.ArchitectureIR, map[string]string, []Diagnostic) {
+	reqFiles := make(map[string]string)
+
+	if arch.IsBuiltinTarget(target) {
+		archIR, emission, diags := lowerAndEmitBuiltin(sem, bp, target, storagePlan, defaultRegistry())
+		if len(diags) > 0 {
+			return nil, nil, diags
+		}
+		if emission != nil {
+			for p, content := range emission.TrackedFiles {
+				reqFiles[p] = string(content)
+			}
+			for p, content := range emission.StubFiles {
+				if _, exists := reqFiles[p]; !exists {
+					reqFiles[p] = string(content)
+				}
+			}
+		}
+		return archIR, reqFiles, nil
+	}
+
+	if target.EffectiveScaffold() == arch.ScaffoldBuiltin {
+		return nil, nil, []Diagnostic{diagnostics.New(
+			"FDN0300",
+			Span{File: "foundation.build.yaml", Line: 1, Column: 1},
+			fmt.Sprintf("no emitter registered for target: kind=%s language=%s architecture=%s", target.Kind, target.Language, target.Architecture),
+		)}
+	}
+
+	archIR := arch.NewCustomArchitectureIR(target, bp.Project.Module)
+	if archIR != nil && hasStorage {
+		archIR.Storage = storagePlan
+	}
+	return archIR, reqFiles, nil
+}

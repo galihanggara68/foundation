@@ -1,0 +1,36 @@
+package main
+
+import (
+	"path/filepath"
+	"testing"
+
+	emittertesting "github.com/galihanggara68/foundation/pkg/emitterkit/testing"
+)
+
+func TestSmoke(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping smoke test in short mode")
+	}
+
+	h := emittertesting.NewHarness(t)
+	req, err := h.LoadWireFixture(filepath.Join("testdata", "requests", "sample.json"))
+	if err != nil {
+		t.Fatalf("load wire fixture: %v", err)
+	}
+
+	resp, err := handleGenerate(req)
+	if err != nil {
+		t.Fatalf("handleGenerate failed: %v", err)
+	}
+
+	result := h.RunSmokeSuite(resp, "")
+	if result.Error != nil {
+		t.Fatalf("smoke suite failed: %v\noutput: %s", result.Error, result.Output)
+	}
+	if !result.BuildSuccess {
+		t.Fatalf("smoke build failed\noutput: %s", result.Output)
+	}
+	if !result.TestSuccess {
+		t.Fatalf("smoke test assertions failed\noutput: %s", result.Output)
+	}
+}

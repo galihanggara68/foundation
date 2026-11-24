@@ -60,11 +60,16 @@ func runPluginNew(args []string, stdout, stderr io.Writer) int {
 
 	targetDir := resolveTargetDir(*dir, pluginName)
 
+	foundationVer := "v0.10.0"
+	if version != "" && version != "dev" {
+		foundationVer = version
+	}
+
 	opts := pluginnew.ScaffoldOptions{
 		PluginName:        pluginName,
 		TargetDir:         targetDir,
 		ModulePath:        modulePath,
-		FoundationVersion: "v0.1.0",
+		FoundationVersion: foundationVer,
 		ReplacePath:       *replace,
 	}
 

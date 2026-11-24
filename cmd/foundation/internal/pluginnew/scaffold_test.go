@@ -64,7 +64,7 @@ func TestScaffold_DefaultOptions_CreatesExpectedFiles(t *testing.T) {
 	if !strings.Contains(goModContent, "module sample-plugin") {
 		t.Errorf("expected module declaration in go.mod, got: %s", goModContent)
 	}
-	if !strings.Contains(goModContent, "require github.com/galihanggara68/foundation v0.1.0") {
+	if !strings.Contains(goModContent, "require github.com/galihanggara68/foundation v0.10.0") {
 		t.Errorf("expected foundation dependency in go.mod, got: %s", goModContent)
 	}
 

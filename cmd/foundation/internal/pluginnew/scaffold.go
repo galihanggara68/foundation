@@ -47,7 +47,7 @@ func Scaffold(opts ScaffoldOptions) error {
 		opts.ModulePath = opts.PluginName
 	}
 	if opts.FoundationVersion == "" {
-		opts.FoundationVersion = "v0.1.0"
+		opts.FoundationVersion = "v0.10.0"
 	}
 
 	if err := os.MkdirAll(opts.TargetDir, 0755); err != nil {

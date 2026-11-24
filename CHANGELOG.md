@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-11-24
+
+### Added
+- **Downstream Plugin Developer Tooling and Chain Contracts** ([ADR 0024](./docs/adr/0024-plugin-developer-tooling-and-chain-contracts.md), [Spec 09](./docs/specs/09-downstream-plugin-developer-tooling-and-contracts.md)):
+  - Testing harness in `pkg/emitterkit/testing` adds tree golden comparisons and isolated smoke runner execution.
+  - Runtime flag handling in `pkg/emitterkit` adds `-dump-model` intermediate model inspection without standard output pollution.
+  - Source chain helpers in `pkg/emitterkit/chain` manage code modifications around comment anchors.
+  - Built-in hexagonal emitters expose stable insertion anchors for HTTP middlewares, routes, and package imports.
+  - Subcommand `foundation capture` serializes complete and authoritative `GenerationRequest` wire fixtures.
+  - Subcommand `foundation plugin new` scaffolds complete plugin repositories with embedded testing and linting templates.
+  - Subcommand `foundation plugin doctor` validates external generator plugins across five synthetic protocol probes.
+  - Diagnostic prefix reservation detects namespace collisions (`FDN0603`) and reports prefix mismatches (`FDN0605`).
+  - Canonical JSON Schema Draft-07 specification defines complete properties for `SemanticIR` declarations.
+  - Reference client SDK packages in `contrib/emitterkit-py` and `contrib/emitterkit-ts` support Python and TypeScript plugins.
+  - Platform Bill of Materials (BOM) publishes canonical dependency versions to downstream generators.
+  - Lowering automatically materializes implied `EventDispatcher` ports when blueprints declare events.
+
+---
+
 ## [0.9.0] - 2026-11-04
 
 ### Added
